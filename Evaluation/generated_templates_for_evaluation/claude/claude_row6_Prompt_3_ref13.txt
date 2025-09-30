@@ -1,0 +1,109 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: kubernetes-cluster
+  template_version: 1.0.0
+  template_author: admin
+
+description: Kubernetes cluster deployment template
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:2.0.0
+
+node_types:
+  org.alien4cloud.nodes.KubernetesMaster:
+    derived_from: tosca.nodes.Compute
+    properties:
+      dns_domain:
+        type: string
+        default: cluster.local
+      kubernetes_version:
+        type: string
+        default: 1.2.1
+      kubectl_version:
+        type: string
+        default: 1.5.3
+
+  org.alien4cloud.nodes.KubernetesWorker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      kubernetes_version:
+        type: string
+        default: 1.2.1
+
+topology_template:
+  node_templates:
+    private_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+
+    kubernetes_master:
+      type: org.alien4cloud.nodes.KubernetesMaster
+      properties:
+        dns_domain: cluster.local
+        kubernetes_version: 1.2.1
+        kubectl_version: 1.5.3
+      requirements:
+        - network: private_network
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+
+    kubernetes_worker:
+      type: org.alien4cloud.nodes.KubernetesWorker
+      properties:
+        kubernetes_version: 1.2.1
+      requirements:
+        - network: private_network
+        - dependency: kubernetes_master
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: 1
+
+    docker_runtime:
+      type: tosca.nodes.Container.Runtime.Docker
+      requirements:
+        - host: kubernetes_master
+        - host: kubernetes_worker
+
+    etcd:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        docker_version: 2.2.1
+      requirements:
+        - host: docker_runtime
+
+    flannel:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 0.5.5
+      requirements:
+        - host: kubernetes_master
+        - host: kubernetes_worker
+
+    kubernetes_dashboard:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        namespace: kube-system
+      requirements:
+        - host: kubernetes_master
+
+  outputs:
+    dashboard_endpoint:
+      description: Kubernetes Dashboard UI endpoint
+      value: { get_attribute: [kubernetes_dashboard, endpoint] }
+    api_endpoint:
+      description: Kubernetes API endpoint
+      value: { get_attribute: [kubernetes_master, endpoint] }

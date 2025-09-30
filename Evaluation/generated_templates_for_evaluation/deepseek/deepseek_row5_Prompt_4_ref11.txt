@@ -1,0 +1,115 @@
+tosca_definitions_version: alien4cloud-1.4
+
+topology_template:
+  description: ElasticSearch Replicated Setup with Java Runtime and Testing Component
+  node_templates:
+    elasticsearch_node:
+      type: Alien4Cloud::Component::ElasticSearch
+      properties:
+        cluster_name: my_elasticsearch_cluster
+        node_name: elasticsearch_node
+        network:
+          private_network: true
+          interfaces:
+            eth0:
+              network_name: private_network
+              ip_address: 10.0.1.100
+              netmask: 255.255.255.0
+              gateway: 10.0.1.1
+
+    elasticsearch_replica:
+      type: Alien4Cloud::Component::ElasticSearch
+      properties:
+        cluster_name: my_elasticsearch_cluster
+        node_name: elasticsearch_replica
+        network:
+          private_network: true
+          interfaces:
+            eth0:
+              network_name: private_network
+              ip_address: 10.0.1.101
+              netmask: 255.255.255.0
+              gateway: 10.0.1.1
+
+    java_runtime:
+      type: Alien4Cloud::Component::JavaRuntime
+      properties:
+        java_version: 11
+        runtime_type: Tomcat
+        network:
+          private_network: true
+          public_network: true
+          interfaces:
+            eth0:
+              network_name: private_network
+              ip_address: 10.0.1.200
+              netmask: 255.255.255.0
+              gateway: 10.0.1.1
+            eth1:
+              network_name: public_network
+              ip_address: 10.0.2.100
+              netmask: 255.255.255.0
+              gateway: 10.0.2.1
+
+    testing_component:
+      type: Alien4Cloud::Component::TestingComponent
+      properties:
+        test_type: IntegrationTest
+        test_framework: JUnit
+        network:
+          private_network: true
+          public_network: true
+          interfaces:
+            eth0:
+              network_name: private_network
+              ip_address: 10.0.1.300
+              netmask: 255.255.255.0
+              gateway: 10.0.1.1
+            eth1:
+              network_name: public_network
+              ip_address: 10.0.2.200
+              netmask: 255.255.255.0
+              gateway: 10.0.2.1
+
+  relationship_templates:
+    - type: ConnectsTo
+      source: elasticsearch_node
+      target: elasticsearch_replica
+      properties:
+        network: private_network
+
+    - type: ConnectsTo
+      source: java_runtime
+      target: elasticsearch_node
+      properties:
+        network: private_network
+
+    - type: ConnectsTo
+      source: testing_component
+      target: java_runtime
+      properties:
+        network: private_network
+
+    - type: ConnectsTo
+      source: testing_component
+      target: elasticsearch_node
+      properties:
+        network: private_network
+
+  policies:
+    - policy_name: elasticsearch_replication_policy
+      type: ReplicationPolicy
+      targets:
+        - elasticsearch_node
+        - elasticsearch_replica
+      properties:
+        replication_factor: 2
+        min_replica_count: 2
+
+    - policy_name: integration_test_policy
+      type: IntegrationTestPolicy
+      targets:
+        - testing_component
+      properties:
+        test_execution: post-deployment
+        test_results_path: /test_results

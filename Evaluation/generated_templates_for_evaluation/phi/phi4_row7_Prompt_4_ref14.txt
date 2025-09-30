@@ -1,0 +1,77 @@
+node_types:
+  tosca.nodes.WebApp:
+    derived_from: tosca.topology.nodes.Application
+    properties:
+      war_file:
+        type: string
+        required: true
+
+  tosca.nodes.JavaEnvironment:
+    derived_from: tosca.nodes.SoftwareComponent
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+
+  tosca.nodes.ComputeResource:
+    derived_from: tosca.topology.nodes.Compute
+    properties:
+      architecture:
+        type: string
+        required: true
+        constraints:
+          - valid_values: ["x86_64", "ppc64le", "arm64"]
+      os_type:
+        type: string
+        required: true
+
+  tosca.nodes.ApacheTomcatServer:
+    derived_from: tosca.nodes.SoftwareComponent
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+    properties:
+      version:
+        type: string
+        required: false
+
+topology_template:
+  inputs:
+    war_file_path:
+      description: The path to the WAR file for deployment.
+      type: string
+      required: true
+
+  node_templates:
+    compute:
+      type: tosca.nodes.ComputeResource
+      properties:
+        architecture: x86_64
+        os_type: linux
+
+    java_environment:
+      type: tosca.nodes.JavaEnvironment
+      requirements:
+        - host:
+            node: compute
+
+    tomcat_server:
+      type: tosca.nodes.ApacheTomcatServer
+      requirements:
+        - host:
+            node: compute
+
+    web_app:
+      type: tosca.nodes.WebApp
+      properties:
+        war_file: { get_input: war_file_path }
+      requirements:
+        - host:
+            node: tomcat_server
+
+  outputs:
+    application_url:
+      value: >-
+        http://{ get_attribute: [tomcat_server, host, address] }:{ get_attribute: [tomcat_server, port, 'http'] }/your_context_path
+    server_url:
+      value: >-
+        http://{ get_attribute: [tomcat_server, host, address] }:{ get_attribute: [tomcat_server, port, 'http'] }

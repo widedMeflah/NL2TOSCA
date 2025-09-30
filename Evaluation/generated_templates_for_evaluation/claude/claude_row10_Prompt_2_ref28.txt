@@ -1,0 +1,47 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying Elasticsearch
+
+topology_template:
+  inputs:
+    es_password:
+      type: string
+      description: Password for the elastic user
+      required: true
+    kibana_password:
+      type: string
+      description: Password for the kibana_system user
+      required: true
+
+  node_templates:
+    elasticsearch:
+      type: tosca.nodes.indigo.Elasticsearch
+      properties:
+        es_version: 7.4.1
+        elastic_password: { get_input: es_password }
+        kibana_system_password: { get_input: kibana_password }
+        network_name: PUBLIC
+      requirements:
+        - host: elastic_server
+
+    elastic_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { valid_values: [ 2, 4 ] }
+            mem_size: { valid_values: [ 4 GB, 8 GB ] }
+        os:
+          properties:
+            type: linux
+
+  outputs:
+    elastic_endpoint:
+      value: { concat: [ 'http://', get_attribute: [ elastic_server, public_address ], ':9200' ] }
+    instance_ip:
+      value: { get_attribute: [ elastic_server, public_address ] }
+    instance_creds:
+      value: { get_attribute: [ elastic_server, credential, 0 ] }

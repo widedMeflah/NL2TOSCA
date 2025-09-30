@@ -1,0 +1,122 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for a two-tier Wine Cellar application with Apache/PHP and MySQL on Ubuntu
+
+topology_template:
+  node_templates:
+    web_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            cpu_frequency: 2.0 GHz
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - network:
+            node: web_network
+            relationship:
+              type: tosca.relationships.ConnectsTo
+      artifacts:
+        web_app:
+          file: https://example.com/winecellar-app.zip
+          type: tosca.artifacts.File
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_apache_php.sh
+            inputs:
+              app_artifact: { get_artifact: [ SELF, web_app ] }
+
+    web_software:
+      type: tosca.nodes.WebServer.Apache
+      requirements:
+        - host:
+            node: web_server
+            relationship:
+              type: tosca.relationships.HostedOn
+      properties:
+        ports:
+          http: 80
+          https: 443
+
+    db_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            cpu_frequency: 2.0 GHz
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - network:
+            node: db_network
+            relationship:
+              type: tosca.relationships.ConnectsTo
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_mysql.sh
+            inputs:
+              root_password: { get_input: db_root_password }
+
+    db_software:
+      type: tosca.nodes.Database.MySQL
+      requirements:
+        - host:
+            node: db_server
+            relationship:
+              type: tosca.relationships.HostedOn
+      properties:
+        port: 3306
+        root_password: { get_input: db_root_password }
+
+    web_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: 192.168.1.0/24
+
+    db_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: 192.168.2.0/24
+
+    web_app:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host:
+            node: web_software
+            relationship:
+              type: tosca.relationships.HostedOn
+        - database_endpoint:
+            node: db_software
+            relationship:
+              type: tosca.relationships.ConnectsTo
+
+  inputs:
+    db_root_password:
+      type: string
+      description: Root password for MySQL database
+      default: "secure_password"
+
+  outputs:
+    web_server_ip:
+      description: IP address of the web server
+      value: { get_attribute: [ web_server, private_address ] }
+    db_server_ip:
+      description: IP address of the database server
+      value: { get_attribute: [ db_server, private_address ] }

@@ -1,0 +1,121 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: JavaScriptApplicationSystem
+  template_version: 1.0.0
+  template_author: Anonymous
+
+description: A TOSCA-compliant system for running a JavaScript application with data storage.
+
+node_types:
+  Custom.JavaScriptApp:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      port:
+        type: integer
+        default: 8080
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - database:
+          capability: Custom.DatabaseEndpoint
+          relationship: tosca.relationships.ConnectsTo
+    capabilities:
+      app_endpoint:
+        type: tosca.capabilities.Endpoint
+        properties:
+          protocol: http
+          port: { get_property: [SELF, port] }
+          url_path: /app
+
+  Custom.Database:
+    derived_from: tosca.nodes.Database
+    properties:
+      port:
+        type: integer
+        default: 27017
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+    capabilities:
+      db_endpoint:
+        type: Custom.DatabaseEndpoint
+        properties:
+          protocol: tcp
+          port: { get_property: [SELF, port] }
+
+  Custom.DatabaseEndpoint:
+    derived_from: tosca.capabilities.Endpoint.Database
+
+  Custom.UbuntuCompute:
+    derived_from: tosca.nodes.Compute
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+        properties:
+          num_cpus: 2
+          mem_size: 4 GB
+      os:
+        type: tosca.capabilities.OperatingSystem
+        properties:
+          architecture: x86_64
+          type: linux
+          distribution: ubuntu
+          version: 20.04
+
+topology_template:
+  node_templates:
+    AppServer:
+      type: Custom.UbuntuCompute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    DatabaseServer:
+      type: Custom.UbuntuCompute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    JavaScriptApp:
+      type: Custom.JavaScriptApp
+      properties:
+        port: 8080
+      requirements:
+        - host: AppServer
+        - database:
+            node: DatabaseComponent
+            relationship:
+              type: tosca.relationships.ConnectsTo
+              properties:
+                connection_string: { concat: ["mongodb://", get_attribute: [DatabaseServer, ip_address], ":", get_property: [DatabaseComponent, port]] }
+
+    DatabaseComponent:
+      type: Custom.Database
+      properties:
+        port: 27017
+      requirements:
+        - host: DatabaseServer
+
+  outputs:
+    app_url:
+      description: URL to access the deployed JavaScript application
+      value: { concat: ["http://", get_attribute: [AppServer, ip_address], ":", get_property: [JavaScriptApp, port], "/app"] }

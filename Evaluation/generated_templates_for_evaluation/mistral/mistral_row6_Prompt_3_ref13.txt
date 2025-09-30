@@ -1,0 +1,85 @@
+
+definition_versions:
+  Alien4Cloud: 1.0.0
+
+topology_template:
+  description: Kubernetes cluster on Alien4Cloud
+  type: nodes
+
+  nodes:
+    Master:
+      type: linux_vm
+      properties:
+        operating_system: ubuntu
+        network_interface:
+          type: private_network
+        dependencies:
+          - Etcd
+        relationships:
+          - type: kubernetes_master
+          - type: kubernetes_networking
+        artifacts:
+          - type: docker_image
+            uri: docker.io/etcd:2.2.1
+            configuration:
+              name: etcd_container
+
+        kubernetes_master:
+          version: 1.2.1
+          kubectl_version: 1.5.3
+          container_runtime: docker
+          dns_domain: cluster.local
+
+        kubernetes_networking:
+          type: flannel
+          version: 0.5.5
+          ip_mask: <IP_MASK_VALUE>
+
+    Worker:
+      type: linux_vm
+      properties:
+        operating_system: ubuntu
+        min_instances: 1
+        max_instances: 5
+        dependencies:
+          - Etcd
+        relationships:
+          - type: kubernetes_node
+          - type: kubernetes_networking
+        container_runtime: docker
+
+    Etcd:
+      type: docker_container
+      properties:
+        host: Master
+        image: docker.io/etcd:2.2.1
+        port_mappings:
+          - name: etcd_port
+            container_port: 2379
+            host_port: 2379
+
+    KubernetesDashboard:
+      type: docker_container
+      properties:
+        host: Master
+        image: kubernetes/dashboard:1.5.3
+        port_mappings:
+          - name: kubernetes_dashboard_ui
+            container_port: 80
+            host_port: 80
+        namespace: kube-system
+
+    Kubernetes:
+      type: kubernetes
+      properties:
+        master: Master
+        worker: Worker
+        version: 1.2.1
+
+outputs:
+  kubernetes_dashboard_ui:
+    description: Kubernetes UI endpoint for the Dashboard
+    value: ${KubernetesDashboard.port_mappings.kubernetes_dashboard_ui.host_port}
+  kubernetes_master_api:
+    description: API endpoint for the Kubernetes master
+    value: ${Kubernetes.api_endpoint}

@@ -1,0 +1,75 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: apache-server-template
+  template_version: 1.0.0
+  template_author: user
+
+imports:
+  - tosca-normative-types:1.0.0
+  - apache-type:2.0.0
+
+topology_template:
+  node_templates:
+    Apache:
+      type: apache.nodes.Apache
+      properties:
+        version: 2.4
+        port: 80
+        document_root: /var/www
+      requirements:
+        - host: ComputeNode
+      capabilities:
+        data_endpoint:
+          properties:
+            protocol: tcp
+            network_name: PRIVATE
+            secure: false
+        admin_endpoint:
+          properties:
+            protocol: tcp
+            network_name: PRIVATE
+            secure: true
+
+    ComputeNode:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+
+  workflows:
+    stop_apache:
+      steps:
+        StopApache:
+          target: Apache
+          activity:
+            call_operation: standard.stop
+
+    start_apache:
+      steps:
+        StartApache:
+          target: Apache
+          activity:
+            call_operation: standard.start
+
+    restart_apache:
+      steps:
+        RestartApache:
+          target: Apache
+          activity:
+            call_operation: standard.restart
+
+    curl_welcome:
+      steps:
+        CurlWelcome:
+          target: Apache
+          activity:
+            inline: curl http://localhost:80
+
+  outputs:
+    apache_url:
+      description: URL of the Apache server
+      value: { get_attribute: [ Apache, data_endpoint, url ] }

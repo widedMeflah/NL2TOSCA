@@ -1,0 +1,74 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+metadata:
+  template_name: webapp-on-tomcat
+  template_version: 1.0.0
+
+description: >
+  TOSCA template to deploy a web application on a Tomcat server with configurable Java version, OS type, and architecture. Outputs application and Tomcat URLs.
+
+topology_template:
+  inputs:
+    os_type:
+      type: string
+      description: Operating system type (e.g., ubuntu, centos)
+      default: ubuntu
+    os_arch:
+      type: string
+      description: Operating system architecture (e.g., x86_64, arm64)
+      default: x86_64
+    java_version:
+      type: string
+      description: Java version to install (e.g., 11, 17)
+      default: "11"
+    webapp_war_url:
+      type: string
+      description: URL to the web application WAR package
+      default: "http://example.com/sample.war"
+    tomcat_version:
+      type: string
+      description: Tomcat version to install
+      default: "9.0.80"
+
+  node_templates:
+    server_host:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: { get_input: os_type }
+        os_arch: { get_input: os_arch }
+        disk_size: 20 GB
+        mem_size: 4 GB
+        num_cpus: 2
+
+    java_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: { get_input: java_version }
+      requirements:
+        - host: server_host
+
+    tomcat_server:
+      type: tosca.nodes.WebServer.Tomcat
+      properties:
+        version: { get_input: tomcat_version }
+      requirements:
+        - host: server_host
+        - dependency: java_runtime
+
+    web_application:
+      type: tosca.nodes.WebApplication
+      properties:
+        url: { get_input: webapp_war_url }
+        deployment_artifact:
+          file: { get_input: webapp_war_url }
+          type: tosca.artifacts.Deployment.Image
+      requirements:
+        - host: tomcat_server
+
+  outputs:
+    application_url:
+      description: URL for the deployed web application
+      value: { concat: [ "http://", { get_attribute: [ server_host, public_address ] }, ":", { get_attribute: [ tomcat_server, port ] }, "/", { get_artifact: [ web_application, deployment_artifact ] } ] }
+    tomcat_url:
+      description: URL for the Tomcat server
+      value: { concat: [ "http://", { get_attribute: [ server_host, public_address ] }, ":", { get_attribute: [ tomcat_server, port ] } ] }

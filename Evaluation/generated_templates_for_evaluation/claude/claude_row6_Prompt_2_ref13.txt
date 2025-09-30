@@ -1,0 +1,85 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: kubernetes-cluster
+  template_version: 1.0.0
+  template_author: auto-generated
+
+description: Kubernetes cluster deployment with scalable worker nodes
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+node_types:
+  kubernetes.nodes.Master:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: ubuntu
+      os_version:
+        type: string
+        default: "20.04"
+      ip_address:
+        type: string
+        required: true
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+        properties:
+          num_cpus: 2
+          mem_size: "4 GB"
+      network:
+        type: tosca.capabilities.Network
+        properties:
+          ip_address: { get_property: [SELF, ip_address] }
+
+  kubernetes.nodes.Worker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: ubuntu
+      os_version:
+        type: string
+        default: "20.04"
+
+topology_template:
+  node_templates:
+    k8s_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: "192.168.1.0/24"
+
+    master:
+      type: kubernetes.nodes.Master
+      properties:
+        ip_address: "192.168.1.10"
+      requirements:
+        - network: k8s_network
+
+    worker:
+      type: kubernetes.nodes.Worker
+      requirements:
+        - network: k8s_network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "4 GB"
+
+  policies:
+    - scaling_policy:
+        type: tosca.policies.Scaling
+        targets: [ worker ]
+        properties:
+          min_instances: 1
+          max_instances: 5
+          default_instances: 1
+
+  outputs:
+    dashboard_url:
+      description: Kubernetes dashboard URL
+      value: { concat: ['https://', get_property: [master, ip_address], ':8443/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/'] }

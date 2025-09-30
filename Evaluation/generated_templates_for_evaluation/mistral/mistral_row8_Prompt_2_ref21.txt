@@ -1,0 +1,61 @@
+topology_template_file: wine_cellar_orchestration.ttl
+
+service_templates:
+  wine_cellar_web_app:
+    service_id: wine_cellar_web_app
+    requirements:
+      - type: host
+        host_id: web_server
+    implementation:
+      type: yaml
+      yaml: |
+        artifact_type: container
+        artifact_file: docker/wine_cellar_app.docker
+        configuration:
+          environment:
+            - APP_PORT=8080
+            - SECRET_KEY=my_secret_key
+        connection_points:
+          - id: db_cp
+            interface_id: wine_cellar_db
+          - id: web_cp
+            interface_id: web_interface
+            interface_type: web
+
+interfaces:
+  web_interface:
+    type: web
+    protocols:
+      - http
+      - https
+    properties:
+      security:
+        authentication: basic_auth
+        authorization: token_auth
+
+capabilities:
+  - name: secure_storage
+    implementation:
+      type: yaml
+      yaml: |
+        if ${data_encryption_enabled} == 'true':
+          encrypt_data: true
+        else:
+          encrypt_data: false
+
+nodes:
+  web_server:
+    type: physical
+    properties:
+      os: linux
+      ram: "4GB"
+      cpu: 2
+    connections:
+      - id: db_conn
+        interface_id: wine_cellar_db
+
+relationships:
+  - id: wine_cellar_db
+    type: database
+    from: wine_cellar_web_app.web_cp
+    to: database_service.database_interface

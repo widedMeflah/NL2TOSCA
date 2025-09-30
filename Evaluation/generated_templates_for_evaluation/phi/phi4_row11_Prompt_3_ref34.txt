@@ -1,0 +1,62 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: Deployment of Galaxy platform with cluster support on CentOS 7 using SLURM for resource management.
+
+topology_template:
+  node_templates:
+
+    galaxy_cluster:
+      type: tosca.nodes.indigo.indigodatacloud.GalaxyCluster
+      properties:
+        number_of_worker_nodes: 2
+        front_end_instance_flavor: small
+        worker_node_instance_flavor: small
+        storage_size_gb: 50
+        hybrid_environment_enabled: false
+
+    admin_details:
+      type: tosca.nodes.indigo.indigodatacloud.AdminDetails
+      properties:
+        email: admin@admin.com
+        api_key: not_very_secret_api_key
+        galaxy_version: release_18.05
+        description: "ELIXIR-ITALY"
+        ssh_public_key: your_ssh_public_key
+        export_directory: /export
+
+    security_configuration:
+      type: tosca.nodes.indigo.indigodatacloud.SecurityConfiguration
+      properties:
+        enable_storage_encryption: false
+        vault_server_url: changeit
+        wrapping_token: not_a_wrapping_token
+        secret_path: subject/depuuid
+        secret_key_name: secret
+
+    galaxy_tools_and_reference_data:
+      type: tosca.nodes.indigo.indigodatacloud.GalaxyToolsReferenceData
+      properties:
+        galaxy_flavor: galaxy-no-tools
+        reference_data_installation_enabled: true
+        cvmfs_configuration: cvmfs_preconfigured
+        repository_name: elixir-italy.galaxy.refdata
+        server_url: 90.147.102.186
+        public_key_file: elixir-italy.galaxy.refdata.pub
+        proxy_url: DIRECT
+        proxy_port: 80
+        reference_data_directory: /cvmfs
+
+    confirmation_email:
+      type: tosca.nodes.indigo.indigodatacloud.EmailNotification
+      properties:
+        subject: "Galaxy Cluster Deployment Confirmation"
+        body: >
+          Dear User,
+
+          Your Galaxy platform cluster deployment is complete. Please follow the instructions below to start using your instance.
+
+          [Instructions for passphrase and login]
+
+          If you do not receive this email, please check your spam folder.
+
+          Thank you.

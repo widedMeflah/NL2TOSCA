@@ -1,0 +1,122 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: TOSCA template for Wine Cellar Application with Apache and MySQL
+
+topology_template:
+  node_templates:
+    web_server_compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 2 GB
+            disk_size: 50 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: Linux
+            distribution: Ubuntu
+            version: 20.04
+
+    apache_web_server:
+      type: tosca.nodes.WebServer
+      requirements:
+        - host: web_server_compute
+      capabilities:
+        http_endpoint:
+          properties:
+            port: 80
+            protocol: TCP
+            network_name: PUBLIC
+        https_endpoint:
+          properties:
+            port: 443
+            protocol: TCP
+            network_name: PUBLIC
+
+    php_runtime:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: web_server_compute
+        - dependency: apache_web_server
+
+    wine_cellar_application:
+      type: tosca.nodes.SoftwareComponent
+      artifacts:
+        wine_cellar_code:
+          file: https://github.com/winecellar/winecellar-php/archive/master.zip
+          type: tosca.artifacts.File
+      requirements:
+        - host: web_server_compute
+        - dependency: php_runtime
+        - database_endpoint:
+            node: wine_cellar_database_instance
+            relationship: app_db_connection
+
+    db_server_compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 1 GB
+            disk_size: 30 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: Linux
+            distribution: Ubuntu
+            version: 20.04
+
+    mysql_dbms:
+      type: tosca.nodes.DBMS.MySQL
+      properties:
+        root_password: { get_input: db_root_password }
+        port: 3306
+      requirements:
+        - host: db_server_compute
+
+    wine_cellar_database_instance:
+      type: tosca.nodes.Database.SQL
+      properties:
+        name: winecellar_db
+        user: winecellar_user
+        password: { get_input: db_user_password }
+      requirements:
+        - host: mysql_dbms
+
+  relationships:
+    app_db_connection:
+      type: tosca.relationships.ConnectsTo
+      source_interfaces:
+        Configure:
+          post_configure_source:
+            inputs:
+              db_host: { get_attribute: [ wine_cellar_database_instance, private_address ] }
+              db_port: { get_attribute: [ wine_cellar_database_instance, port ] }
+              db_name: { get_property: [ wine_cellar_database_instance, name ] }
+              db_user: { get_property: [ wine_cellar_database_instance, user ] }
+              db_password: { get_property: [ wine_cellar_database_instance, password ] }
+            # Assuming a script 'configure_winecellar_db.sh' exists within the application artifact
+            # or is provided by the orchestrator for this node type
+            operation: configure_winecellar_db.sh
+
+  inputs:
+    db_root_password:
+      type: string
+      description: MySQL root password for the database server
+      required: true
+      constraints:
+        - min_length: 8
+    db_user_password:
+      type: string
+      description: MySQL user password for the application database
+      required: true
+      constraints:
+        - min_length: 8
+
+  outputs:
+    application_url:
+      description: URL to access the Wine Cellar application
+      value: { get_attribute: [ apache_web_server, http_endpoint, url ] }

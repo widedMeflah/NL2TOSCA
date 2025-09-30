@@ -1,0 +1,58 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of Elasticsearch 7.4.1 on a virtual machine with specific CPU and memory requirements.
+
+topology_template:
+  node_templates:
+
+    ElasticsearchVM:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        num_cpus: 4
+        mem_size: 8 GB
+        disk_size: 50 GB
+        instance_type: virtual
+        nfv_virtual_link_connectivity:
+          - virtual_link_ref: NetworkLink
+        nfv_compute_flavor: medium
+      capabilities:
+        nfv_compute:
+          properties:
+            architecture: x86_64
+            hypervisor: kvm
+      interfaces:
+        nfv-soft-deploy:
+          install:
+            implementation: scripts/deploy_elasticsearch.sh
+            inputs:
+              elasticsearch_version: "7.4.1"
+              elasticsearch_user_password: { get_input: elasticsearch_user_password }
+              kibana_user_password: { get_input: kibana_user_password }
+
+    NetworkLink:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        network_name: PublicNetwork
+        network_type: public
+        address_range: 0.0.0.0/0
+
+  inputs:
+    elasticsearch_user_password:
+      description: Password for the Elasticsearch user
+      type: string
+      required: true
+    kibana_user_password:
+      description: Password for the Kibana system user
+      type: string
+      required: true
+
+  outputs:
+    vm_public_ip:
+      description: Public IP address of the virtual machine
+      value: { get_attribute: [ ElasticsearchVM, public_ip ] }
+    elasticsearch_url:
+      description: Elasticsearch access URL
+      value: "http://{ get_attribute: [ ElasticsearchVM, public_ip ] }:9200"
+    kibana_url:
+      description: Kibana access URL
+      value: "http://{ get_attribute: [ ElasticsearchVM, public_ip ] }:5601"

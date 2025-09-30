@@ -1,0 +1,64 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - https://indigodc.github.io/tosca-types/indigo_types.yaml
+
+topology_template:
+  node_templates:
+    deep_learning_app:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        image: deephdc/deep-oc-plant-classification-theano
+        cmd: deepaas-run --listen-ip 0.0.0.0
+        environment:
+          - HAPROXY_GROUP: external
+
+    docker_runtime:
+      type: tosca.nodes.Container.Runtime
+      properties:
+        cpu: 1
+        memory: 1024 MB
+        ports:
+          - 5000:5000
+
+    marathon_job:
+      type: tosca.nodes.Container.Orchestration.Marathon
+      properties:
+        cmd: deepaas-run --listen-ip 0.0.0.0
+        labels:
+          HAPROXY_GROUP: external
+        container:
+          type: tosca.nodes.Container
+          properties:
+            runtime: docker
+            image: deephdc/deep-oc-plant-classification-theano
+
+    load_balancer:
+      type: tosca.nodes.LoadBalancer
+      properties:
+        protocol: TCP
+        ports:
+          - 5000:5000
+
+  relationship_templates:
+    - type: tosca.relationships.DependsOn
+      target: docker_runtime
+      source: deep_learning_app
+
+    - type: tosca.relationships.DependsOn
+      target: marathon_job
+      source: deep_learning_app
+
+    - type: tosca.relationships.DependsOn
+      target: load_balancer
+      source: deep_learning_app
+
+    - type: tosca.relationships.ConnectsTo
+      target: load_balancer
+      source: docker_runtime
+
+  outputs:
+    app_endpoint:
+      value: { get_attribute: [load_balancer, endpoint] }
+      description: The endpoint of the deep learning application

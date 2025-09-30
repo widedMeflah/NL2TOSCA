@@ -1,0 +1,54 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: TOSCA template for deploying a web application on Tomcat server
+
+  node_templates:
+    Machine:
+      type: tosca.nodes.Compute
+      properties:
+        supported_operating_systems:
+          - Linux
+          - Windows
+          - Mac OS
+        supported_architectures:
+          - 32-bit
+          - 64-bit
+
+    Java:
+      type: alien4cloud.nodes.Java
+      properties:
+        java_package_url: { get_input: java_package_url }
+        java_install_dir: { get_input: java_install_dir }
+      dependencies:
+        - Machine
+
+    Tomcat:
+      type: alien4cloud.nodes.Tomcat
+      properties:
+        tomcat_package_url: { get_input: tomcat_package_url }
+        tomcat_install_dir: { get_input: tomcat_install_dir }
+      dependencies:
+        - Java
+
+    WAR_Deployment:
+      type: alien4cloud.nodes.WAR
+      properties:
+        war_file_url: { get_input: war_file_url }
+        war_file_name: { get_input: war_file_name }
+      dependencies:
+        - Tomcat
+
+  inputs:
+    - java_package_url
+    - java_install_dir
+    - tomcat_package_url
+    - tomcat_install_dir
+    - war_file_url
+    - war_file_name
+
+  outputs:
+    web_app_url:
+      value: {get_property: [Machine, private_address]}
+    tomcat_server_url:
+      value: {get_property: [Machine, private_address]}

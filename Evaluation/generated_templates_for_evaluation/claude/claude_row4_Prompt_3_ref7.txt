@@ -1,0 +1,63 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: mongodb_deployment
+  template_version: 1.0.0
+  template_author: system
+
+description: MongoDB deployment on Ubuntu compute
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+node_types:
+  org.mongodb.nodes.MongoDB:
+    derived_from: tosca.nodes.Database
+    properties:
+      port:
+        type: integer
+        required: true
+        default: 27017
+        constraints:
+          - greater_or_equal: 8000
+          - less_or_equal: 65535
+    attributes:
+      server_ip: { get_attribute: [HOST, ip_address] }
+      server_port: { get_property: [SELF, port] }
+    capabilities:
+      database_endpoint:
+        type: tosca.capabilities.Endpoint.Database
+        properties:
+          port: { get_property: [SELF, port] }
+          protocol: tcp
+          secure: false
+          network_name: PRIVATE
+
+topology_template:
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: 10 GB
+            mem_size: 2048 MB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            architecture: x86_64
+
+    MongoDB:
+      type: org.mongodb.nodes.MongoDB
+      properties:
+        port: 27017
+      requirements:
+        - host: Compute
+
+  outputs:
+    mongodb_url:
+      description: MongoDB connection URL
+      value: { concat: ["mongodb://", get_attribute: [MongoDB, server_ip], ":", get_attribute: [MongoDB, server_port]] }

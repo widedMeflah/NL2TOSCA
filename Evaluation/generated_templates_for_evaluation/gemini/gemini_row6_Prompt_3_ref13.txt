@@ -1,0 +1,126 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: Kubernetes cluster deployment using Alien4Cloud with specified versions and components.
+
+topology_template:
+  node_templates:
+    # 1. Private Network for the Kubernetes cluster
+    k8s_private_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4 # Assuming IPv4 for the private network
+
+    # 2. Kubernetes Master Node Definition
+    kubernetes_master_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: Linux
+        os_distribution: Ubuntu
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      requirements:
+        - network:
+            node: k8s_private_network
+            relationship: tosca.relationships.NetworkConnectsTo
+
+    docker_runtime_master:
+      type: alien4cloud.nodes.docker.Runtime
+      requirements:
+        - host:
+            node: kubernetes_master_compute
+            capability: tosca.capabilities.Container.Host
+            relationship: tosca.relationships.HostedOn
+
+    etcd_service:
+      type: alien4cloud.nodes.kubernetes.Etcd
+      properties:
+        etcd_version: "2.2.1"
+      requirements:
+        - host:
+            node: docker_runtime_master
+            capability: tosca.capabilities.Container.Host
+            relationship: tosca.relationships.HostedOn
+
+    kubernetes_master:
+      type: alien4cloud.nodes.kubernetes.Master
+      properties:
+        kubernetes_version: "1.2.1"
+        dns_domain: "cluster.local"
+      requirements:
+        - host:
+            node: docker_runtime_master
+            capability: tosca.capabilities.Container.Host
+            relationship: tosca.relationships.HostedOn
+        - etcd_endpoint:
+            node: etcd_service
+            relationship: alien4cloud.relationships.ConnectsToEtcd
+
+    flannel_network:
+      type: alien4cloud.nodes.kubernetes.network.Flannel
+      properties:
+        flannel_version: "0.5.5"
+        network_cidrs:
+          - "10.244.0.0/16" # Common IP mask for Flannel overlay network
+      requirements:
+        - master:
+            node: kubernetes_master
+            relationship: alien4cloud.relationships.ManagesClusterNetwork
+
+    kubernetes_dashboard:
+      type: alien4cloud.nodes.kubernetes.Dashboard
+      properties:
+        namespace: "kube-system"
+      requirements:
+        - master:
+            node: kubernetes_master
+            relationship: alien4cloud.relationships.KubernetesHostedOnMaster
+
+    # 3. Kubernetes Worker Nodes Definition
+    kubernetes_worker_compute_group:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: Linux
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+      requirements:
+        - network:
+            node: k8s_private_network
+            relationship: tosca.relationships.NetworkConnectsTo
+
+    docker_runtime_workers:
+      type: alien4cloud.nodes.docker.Runtime
+      requirements:
+        - host:
+            node: kubernetes_worker_compute_group
+            capability: tosca.capabilities.Container.Host
+            relationship: tosca.relationships.HostedOn
+
+    kubernetes_worker:
+      type: alien4cloud.nodes.kubernetes.Worker
+      properties:
+        kubernetes_version: "1.2.1"
+      requirements:
+        - host:
+            node: docker_runtime_workers
+            capability: tosca.capabilities.Container.Host
+            relationship: tosca.relationships.HostedOn
+        - master:
+            node: kubernetes_master
+            relationship: alien4cloud.relationships.ConnectsToKubernetesMaster
+
+  outputs:
+    kubernetes_ui_endpoint:
+      description: The URL endpoint for the Kubernetes Dashboard UI.
+      value: { get_attribute: [ kubernetes_dashboard, ui_endpoint ] }
+    kubernetes_api_endpoint:
+      description: The API endpoint for the Kubernetes Master.
+      value: { get_attribute: [ kubernetes_master, api_endpoint ] }

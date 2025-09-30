@@ -1,0 +1,135 @@
+
+definition_versions:
+  - version: 1.0
+    resources:
+      WineCellarWebServer:
+        type: os::UbuntuServer
+        properties:
+          os_version: trusty
+          architecture: x86_64
+
+      WineCellarDatabaseServer:
+        type: os::UbuntuServer
+        properties:
+          os_version: trusty
+          architecture: x86_64
+
+      ApacheWebServer:
+        type: toscacaf:Apache
+        properties:
+          version: 2.4
+          interfaces:
+            - name: web_interface
+              type: network.interface
+              properties:
+                address: ${ip_address}
+                netmask: 255.255.255.0
+                gateway: ${gateway}
+              references:
+                network_interface: network_interface
+
+      MySQLDatabase:
+        type: toscacaf:MySQLDatabase
+        properties:
+          password: root_password_here
+
+      PHPWineCellarApp:
+        type: filesystem:File
+        properties:
+          uri: specified_url_to_artifacts
+          content: |
+            # PHP Wine Cellar Web App
+            ...
+            // Application code here
+
+      WineCellarAppDeployment:
+        type: toscacaf:DeployableComposite
+        properties:
+          artifacts:
+            - ref: PHPWineCellarApp
+          deploy_script: |
+            # Install Apache dependencies
+            sudo apt-get install libapache2-mod-php php php-common php-mysql -y
+
+            # Download and deploy PHP Wine Cellar Web App
+            sudo wget -O /var/www/html/index.php ${PHPWineCellarApp}
+
+            # Configure Apache to run PHP script
+            sudo sed -i 's/DirectoryIndex index.html/DirectoryIndex index.php/g' /etc/apache2/apache2.conf
+            sudo sed -i 's/<Directory \/var\/www\/>/<Directory \/var\/www/>/g' /etc/apache2/apache2.conf
+            sudo sed -i '$ a \ \ \ \ \ \ php_flag engine off' /etc/apache2/apache2.conf
+            sudo sed -i '$ a \ \ \ \ \ \ php_value display_errors off' /etc/apache2/apache2.conf
+            sudo sed -i '$ a \ \ \ \ \ \ php_value log_errors on' /etc/apache2/apache2.conf
+            sudo sed -i '$ a \ \ \ \ \ \ php_value error_log /var/log/apache2/php_errors.log' /etc/apache2/apache2.conf
+            sudo service apache2 restart
+
+      WineCellarAppDBConnection:
+        type: toscacaf:DatabaseConnection
+        properties:
+          datasource:
+            type: toscacaf:Datasource
+            properties:
+              database: MySQLDatabase
+              username: root
+              password: ${root_password_here}
+
+    composites:
+      WineCellarAppComposite:
+        type: toscacaf:Composite
+        properties:
+          templates:
+            - ref: ApacheWebServer
+            - ref: MySQLDatabase
+            - ref: PHPWineCellarApp
+          interfaces:
+            - name: web_interface
+              type: network.interface
+              properties:
+                interface: web_interface
+              references:
+                network_interface: network_interface
+              composites:
+                - ref: WineCellarAppDeployment
+
+    node_templates:
+      network_interface:
+        type: network.Network
+        properties:
+          ip_address: ${ip_address}
+          gateway: ${gateway}
+          netmask: 255.255.255.0
+
+    policies:
+      WineCellarAppPolicy:
+        type: toscacaf:NodeGroupPolicy
+        properties:
+          node_group: ${WineCellarAppComposite}
+          policies:
+            - type: toscacaf:DeployPolicy
+              properties:
+                deploy_order: 1
+                on_deploy:
+                  - action: toscacaf:DeployableComposite
+                    parameters:
+                      deployable_composite: WineCellarAppDeployment
+            - type: toscacaf:ConnectPolicy
+              properties:
+                connect_dependencies: true
+                connection_point_refs:
+                  - name: web_interface
+                    interface: web_interface
+                constraints:
+                  - type: toscacaf:ConnectionConstraint
+                    properties:
+                      policy_name: WineCellarAppDBConnection
+                      connection_point_ref: web_interface
+                      destination_ref: MySQLDatabase
+                      interface: web_interface
+                      role_name: MySQLDatabase
+
+    interfaces:
+      network_interface:
+        type: network.Interface
+        properties:
+          name: web_interface
+          auto_configure: true

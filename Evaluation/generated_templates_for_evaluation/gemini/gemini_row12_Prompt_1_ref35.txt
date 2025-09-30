@@ -1,0 +1,164 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+metadata:
+  template_name: galaxy-deployment-template
+  template_author: YourName
+  template_version: 1.0.0
+  template_description: Deploys the Galaxy application on a virtual machine with configurable options.
+
+imports:
+  - tosca-profiles/indigo/1.0/profile.yaml # Assuming an INDIGO-specific TOSCA profile
+
+description: >
+  This template deploys a Galaxy application instance on a virtual machine.
+  It provides extensive configuration options for the VM, storage,
+  Galaxy application details, and security features like storage encryption.
+
+inputs:
+  vm_cpus:
+    type: integer
+    description: Number of CPUs for the virtual machine.
+    default: 2
+    constraints:
+      - greater_than: 0
+  vm_memory:
+    type: scalar-unit.size
+    description: Memory size for the virtual machine.
+    default: 4 GB
+    constraints:
+      - greater_than: 0 MB
+  vm_root_disk_size:
+    type: scalar-unit.size
+    description: Size of the root disk for the virtual machine (for OS).
+    default: 20 GB
+    constraints:
+      - greater_than: 0 MB
+  app_data_storage_size:
+    type: scalar-unit.size
+    description: Size of the dedicated storage volume for Galaxy application data.
+    default: 50 GB
+    constraints:
+      - greater_than: 0 MB
+  galaxy_admin_email:
+    type: string
+    description: Email address for the Galaxy admin user.
+  galaxy_admin_api_key:
+    type: string
+    description: API key for the Galaxy admin user.
+    # The 'secret' keyword is not standard in TOSCA 1.3 inputs,
+    # but could be handled by orchestrator's input processing or custom types.
+  galaxy_run_user:
+    type: string
+    description: Username under which the Galaxy application will run.
+    default: galaxy
+  galaxy_version:
+    type: string
+    description: Specific version of the Galaxy application to deploy (e.g., '23.0.1').
+    default: 'latest' # Or a specific stable version like '23.0.1'
+  instance_description:
+    type: string
+    description: A descriptive text for this Galaxy application instance.
+  ssh_public_key:
+    type: string
+    description: SSH public key for accessing the virtual machine instance.
+  galaxy_data_path:
+    type: string
+    description: The mount point path on the VM where Galaxy application data will be stored.
+    default: /var/lib/galaxy/data
+  enable_storage_encryption:
+    type: boolean
+    description: Enable encryption for the application data storage.
+    default: false
+  vault_url:
+    type: string
+    description: The URL of the Vault server for storing encryption secrets. Required if encryption is enabled.
+    required: { get_input: enable_storage_encryption }
+  vault_wrapping_token:
+    type: string
+    description: Vault wrapping token for authentication. Required if encryption is enabled.
+    required: { get_input: enable_storage_encryption }
+    # This input will likely be marked as sensitive in the orchestrator's UI/API.
+  vault_secret_path:
+    type: string
+    description: The path in Vault where the encryption secret is stored. Required if encryption is enabled.
+    required: { get_input: enable_storage_encryption }
+  vault_secret_key_name:
+    type: string
+    description: The name of the key within the Vault secret to retrieve. Required if encryption is enabled.
+    required: { get_input: enable_storage_encryption }
+  galaxy_tool_flavor:
+    type: string
+    description: Default flavor for tool installation within Galaxy.
+    default: default
+  install_reference_data:
+    type: boolean
+    description: Option to install common reference data with Galaxy.
+    default: false
+
+node_templates:
+  vm:
+    type: tosca.nodes.Compute
+    properties:
+      num_cpus: { get_input: vm_cpus }
+      mem_size: { get_input: vm_memory }
+      disk_size: { get_input: vm_root_disk_size }
+      os_type: linux # Assuming Linux for Galaxy
+      public_key: { get_input: ssh_public_key } # Using public_key as a direct property
+    capabilities:
+      host:
+        properties:
+          disk_size: { get_input: vm_root_disk_size }
+          num_cpus: { get_input: vm_cpus }
+          mem_size: { get_input: vm_memory }
+      endpoint:
+        properties:
+          ports:
+            ssh:
+              protocol: tcp
+              target: 22
+              target_range: [ 22, 22 ]
+            galaxy_web:
+              protocol: tcp
+              target: 80 # Default Galaxy web port
+              target_range: [ 80, 80 ]
+
+  galaxy_data_storage:
+    type: tosca.nodes.BlockStorage
+    properties:
+      size: { get_input: app_data_storage_size }
+      volume_id: galaxy_data_volume # A logical ID for the volume
+      # Custom properties for encryption handling specific to INDIGO/LUKS/Vault
+      enable_encryption: { get_input: enable_storage_encryption }
+      vault_url: { get_input: vault_url }
+      vault_wrapping_token: { get_input: vault_wrapping_token }
+      vault_secret_path: { get_input: vault_secret_path }
+      vault_secret_key_name: { get_input: vault_secret_key_name }
+    requirements:
+      - attach_to:
+          node: vm
+          capability: tosca.capabilities.Attachment
+          relationship: tosca.relationships.AttachesTo
+
+  galaxy_app:
+    type: tosca.nodes.SoftwareComponent # Or a more specific custom type if defined in INDIGO profile
+    properties:
+      component_version: { get_input: galaxy_version }
+      install_path: /opt/galaxy # Typical installation path
+      admin_email: { get_input: galaxy_admin_email }
+      admin_api_key: { get_input: galaxy_admin_api_key }
+      run_user: { get_input: galaxy_run_user }
+      tool_flavor: { get_input: galaxy_tool_flavor }
+      install_reference_data: { get_input: install_reference_data }
+      instance_description: { get_input: instance_description }
+      data_storage_path: { get_input: galaxy_data_path } # Path where the storage will be mounted
+    requirements:
+      - host: vm
+      - depends_on: galaxy_data_storage # Ensure storage is attached and mounted before app config
+
+outputs:
+  public_ip_address:
+    description: The public IP address of the virtual machine hosting Galaxy.
+    value: { get_attribute: [ vm, public_address ] }
+  galaxy_endpoint_url:
+    description: The URL endpoint for accessing the Galaxy web interface.
+    value: { concat: [ 'http://', { get_attribute: [ vm, public_address ] }, '/' ] } # Assuming default HTTP and no custom path

@@ -1,0 +1,69 @@
+tosca_definitions_version: tosca_simple_profile_1_3
+
+description: Deployment of the Wine Cellar Application with Apache and MySQL on INDIGO
+
+topology_template:
+  node_templates:
+    web_server:
+      type: tosca.nodes.Compute
+      properties:
+        description: Apache server hosting the Wine Cellar Application
+        ip_address: 192.168.1.10
+        endpoints:
+          HTTP:
+            protocol: HTTP
+            port: 80
+          HTTPS:
+            protocol: HTTPS
+            port: 443
+        resources:
+          cpu: 2
+          memory: 4096
+          disk: 50
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/setup_webserver.sh
+          configure:
+            implementation: scripts/configure_apache_php.sh
+          start:
+            implementation: scripts/start_apache.sh
+
+    database:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        description: MySQL database for the Wine Cellar Application
+        db_name: wine_cellar
+        db_user: wine_user
+        db_password: wine_password
+        root_password: root_password
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/setup_database.sh
+          configure:
+            implementation: scripts/configure_mysql.sh
+          start:
+            implementation: scripts/start_mysql.sh
+
+    application:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        description: Wine Cellar Application hosted on Apache server
+        application_url: https://winecellar.example.com
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_winecellar.sh
+          configure:
+            implementation: scripts/configure_app.sh
+          start:
+            implementation: scripts/start_app.sh
+      requirements:
+        - host: web_server
+        - database: database
+
+  outputs:
+    application_url:
+      description: URL to access the Wine Cellar Application
+      value: { get_property: [ application, application_url ] }

@@ -1,0 +1,71 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A system to run a JavaScript application with a separate data storage component, both accessible over the network and connected securely.
+
+topology_template:
+  node_templates:
+    jsApplicationServer:
+      type: tosca.nodes.Compute
+      properties:
+        endpoint:
+          port: 8080
+        os:
+          type: Linux
+          distribution: Ubuntu
+          version: "20.04"
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/start_js_app.sh
+          delete:
+            implementation: scripts/stop_js_app.sh
+
+    dataStorage:
+      type: tosca.nodes.Database
+      properties:
+        endpoint:
+          port: 27017
+        db_type: MongoDB
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/start_mongodb.sh
+          delete:
+            implementation: scripts/stop_mongodb.sh
+
+    applicationContainer:
+      type: tosca.nodes.Container.Application
+      properties:
+        name: jsApp
+        runtime: Node.js
+        version: "16.x"
+      requirements:
+        - host: jsApplicationServer
+        - database:
+            node: dataStorage
+            relationship: tosca.relationships.ConnectsTo
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_js_app.sh
+
+    networkAccess:
+      type: tosca.nodes.Network
+      properties:
+        name: AppNetwork
+        ip_range: 192.168.100.0/24
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/setup_network.sh
+          delete:
+            implementation: scripts/remove_network.sh
+
+  relationships:
+    - source: jsApplicationServer
+      target: networkAccess
+      type: tosca.relationships.ConnectsTo
+
+    - source: dataStorage
+      target: networkAccess
+      type: tosca.relationships.ConnectsTo

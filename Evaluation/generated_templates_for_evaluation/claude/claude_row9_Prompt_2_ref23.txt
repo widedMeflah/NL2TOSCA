@@ -1,0 +1,79 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying a Plant Classification Application
+
+topology_template:
+  inputs:
+    app_port:
+      type: integer
+      description: Port number for the application
+      default: 8080
+      required: true
+    
+    mem_size:
+      type: scalar-unit.size
+      description: Amount of memory for the container
+      default: 4 GB
+      required: true
+
+    num_cpus:
+      type: float
+      description: Number of CPUs for the container
+      default: 2.0
+      required: true
+
+  node_templates:
+    plant_classifier:
+      type: tosca.nodes.indigo.Container.Application.Docker
+      properties:
+        ports:
+          - protocol: tcp
+            source: { get_input: app_port }
+        environment_variables:
+          APP_PORT: { get_input: app_port }
+      artifacts:
+        image:
+          file: plant_classifier:latest
+          type: tosca.artifacts.Deployment.Image.Container.Docker
+      requirements:
+        - host:
+            node: docker_runtime
+        
+    docker_runtime:
+      type: tosca.nodes.indigo.Container.Runtime.Docker
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: num_cpus }
+            mem_size: { get_input: mem_size }
+            publish_ports: true
+      requirements:
+        - host:
+            node: compute
+
+    compute:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            ports:
+              app_port:
+                protocol: tcp
+                source: { get_input: app_port }
+        host:
+          properties:
+            num_cpus: { get_input: num_cpus }
+            mem_size: { get_input: mem_size }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+  outputs:
+    application_endpoint:
+      value: { concat: ['http://', get_attribute: [compute, public_address], ':', get_input: app_port] }

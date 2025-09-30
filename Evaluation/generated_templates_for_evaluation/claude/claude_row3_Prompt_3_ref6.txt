@@ -1,0 +1,70 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: nodecellar-topology
+  template_version: 1.0.0
+  template_author: admin
+
+description: Nodecellar application deployment with MongoDB
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - mongodb-type:2.0.0
+  - nodejs-type:2.0.0
+
+topology_template:
+  node_templates:
+    MongoHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            architecture: x86_64
+
+    NodejsHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            architecture: x86_64
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+
+    MongoDB:
+      type: org.mongodb.nodes.MongoDB
+      properties:
+        port: 27017
+      requirements:
+        - host: MongoHost
+
+    NodeJS:
+      type: org.nodejs.nodes.NodeJS
+      requirements:
+        - host: NodejsHost
+
+    Nodecellar:
+      type: org.nodejs.nodes.Application
+      properties:
+        port: 8088
+      requirements:
+        - host: NodeJS
+        - database: MongoDB
+      capabilities:
+        app_endpoint:
+          properties:
+            protocol: http
+            secure: false
+            network_name: Network
+            initiator: source
+
+  outputs:
+    nodecellar_url:
+      description: URL to access Nodecellar application
+      value: { get_attribute: [ Nodecellar, app_endpoint, url ] }

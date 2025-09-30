@@ -1,0 +1,65 @@
+
+node_templates:
+  Alien4cloud_WebApplicationServer:
+    type: compute
+    topology_template_ref: tosca_simple_templates.compute.LinuxServer
+    properties:
+      os:
+        type: string
+        description: Operating system type (e.g., Ubuntu, CentOS)
+      os_arch:
+        type: string
+        description: Operating system architecture (e.g., x86_64, arm64)
+      java_version:
+        type: string
+        description: Java version (e.g., 11.0.12)
+      tomcat_version:
+        type: string
+        description: Tomcat version (e.g., 9.0.54)
+
+  tosca_simple_templates.compute.LinuxServer:
+    type: compute
+    properties:
+      arch:
+        type: string
+        description: Server architecture (e.g., x86_64, arm64)
+      distro:
+        type: string
+        description: Server operating system (e.g., Ubuntu, CentOS)
+      java:
+        type: package
+        description: Java package to be installed
+        properties:
+          version:
+            type: string
+            description: Java version (e.g., 11.0.12)
+      tomcat:
+        type: package
+        description: Tomcat package to be installed
+        properties:
+          version:
+            type: string
+            description: Tomcat version (e.g., 9.0.54)
+      web_application:
+        type: file
+        description: Web application package to be deployed
+
+relationships:
+  deploy_web_application:
+    type: deploy_artifact
+    source: Alien4cloud_WebApplicationServer
+    target: Alien4cloud_WebApplicationServer.web_application
+
+capabilities:
+  Alien4cloud_GetWebApplicationURL:
+    type: service
+    implementation: Alien4cloud_WebApplicationServer
+    operations:
+      get_web_application_url:
+        type: operation
+        input_parameters: []
+        output_parameters:
+          - name: web_application_url
+            type: string
+          - name: tomcat_server_url
+            type: string

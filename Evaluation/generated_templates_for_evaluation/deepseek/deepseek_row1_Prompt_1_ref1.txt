@@ -1,0 +1,42 @@
+
+tosca_definitions_version: alien4cloud-1.3
+
+topology_template:
+  description: Java Application with Search Engine Connectivity
+  node_templates:
+    java_application:
+      type: tosca.nodes.Compute
+      properties:
+        name: Java Application Server
+        runtime: java
+        runtime_version: 8
+        application: my_java_app.jar
+        ports:
+          - 8080
+      requirements:
+        - network:
+            node: network
+            relationship: tosca.relationships.Network
+        - search_engine:
+            node: search_engine
+            relationship: tosca.relationships.ConnectsTo
+
+    search_engine:
+      type: tosca.nodes.Compute
+      properties:
+        name: Search Engine Server
+        runtime: java
+        runtime_version: 8
+        application: search_engine.jar
+        ports:
+          - 8081
+      requirements:
+        - network:
+            node: network
+            relationship: tosca.relationships.Network
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        name: Application Network
+        cidr: 10.0.0.0/24

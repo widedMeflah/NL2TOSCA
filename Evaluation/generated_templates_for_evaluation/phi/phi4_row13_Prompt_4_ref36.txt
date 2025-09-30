@@ -1,0 +1,95 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+description: >
+  A TOSCA template for setting up an elastic virtual cluster with a front-end node,
+  workload management via Slurm, and a Galaxy bioinformatics portal.
+
+imports:
+  - cloudify/types/hosts
+
+node_types:
+  tosca.nodes.indigo.cluster.frontend:
+    derived_from: cloudify.nodes.Compute
+    properties:
+      image_id: { type: string, default: "ubuntu-20.04" }
+      flavor: { type: string, default: "m4.large" }
+
+  tosca.nodes.indigo.cluster.worker:
+    derived_from: cloudify.nodes.Compute
+    properties:
+      image_id: { type: string, default: "ubuntu-20.04" }
+      flavor: { type: string, default: "t2.medium" }
+
+  tosca.nodes.indigo.nginx_proxy:
+    derived_from: cloudify.nodes.Compute
+    properties:
+      image_id: { type: string, default: "nginx" }
+      flavor: { type: string, default: "m4.small" }
+
+  tosca.nodes.indigo.galaxy_portal:
+    derived_from: cloudify.nodes.WebServer
+    properties:
+      image_id: { type: string, default: "galaxy-galaxy-central" }
+      flavor: { type: string, default: "t2.medium" }
+
+relationships:
+  - type: tosca.relationships.network.connected_to
+
+workflows:
+  setup_cluster:
+    mapping:
+      inputs:
+        worker_count: {default: 3}
+        hybrid_environment: {default: false}
+
+      pre:
+        - set_front_end_properties:
+            implementation: scripts/set_front_end.py
+            inputs:
+              elasticity_manager: slurm
+              workload_manager: slurm
+
+        - create_worker_nodes:
+            implementation: scripts/create_workers.py
+            inputs:
+              worker_count: { get_input: worker_count }
+
+        - install_galaxy_portal:
+            implementation: scripts/install_galaxy.sh
+
+      tasks:
+        - configure_slurm:
+            implementation: scripts/configure_slurm.py
+
+        - deploy_galaxy:
+            implementation: scripts/deploy_galaxy.sh
+
+node_templates:
+
+  front_end_node:
+    type: tosca.nodes.indigo.cluster.frontend
+    properties:
+      image_id: { get_input: frontend_image }
+      flavor: m4.large
+
+  worker_nodes:
+    type: cloudify.nodes.NodeList
+    relationships:
+      - type: tosca.relationships.network.connected_to
+        target: front_end_node
+
+  galaxy_portal:
+    type: tosca.nodes.indigo.galaxy_portal
+    properties:
+      image_id: galaxy-galaxy-central
+      flavor: t2.medium
+
+  nginx_proxy:
+    type: tosca.nodes.indigo.nginx_proxy
+    relationships:
+      - type: tosca.relationships.network.connected_to
+        target: front_end_node
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: scripts/setup_nginx.sh

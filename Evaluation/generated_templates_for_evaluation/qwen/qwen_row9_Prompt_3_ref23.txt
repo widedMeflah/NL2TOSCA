@@ -1,0 +1,38 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: |
+  Deployment of a deep learning application using Docker and Marathon on a Mesos cluster.
+
+topology_template:
+  node_templates:
+    deep_learning_app:
+      type: indigo.nodes.MarathonJob
+      properties:
+        image: deephdc/deep-oc-plant-classification-theano
+        cmd: deepaas-run --listen-ip 0.0.0.0
+        labels:
+          HAPROXY_GROUP: external
+        resources:
+          cpus: 1
+          mem: 1024
+        ports:
+          - port: 5000
+            protocol: tcp
+      requirements:
+        - host:
+            node: mesos_cluster
+            relationship: tosca.relationships.HostedOn
+
+    mesos_cluster:
+      type: indigo.nodes.MesosCluster
+      properties:
+        docker_runtime: true
+
+    load_balancer:
+      type: tosca.nodes.network.LoadBalancer
+      properties:
+        virtual_ip: true
+      requirements:
+        - target:
+            node: deep_learning_app
+            relationship: tosca.relationships.ConnectsTo

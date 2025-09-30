@@ -1,0 +1,93 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Wine Cellar Application
+  node_templates:
+    web_server:
+      type: tosca.nodes.WebServer
+      properties:
+        name: Apache Web Server
+        protocol: http
+        port: 80
+        protocol_secure: https
+        port_secure: 443
+        application: Wine Cellar Application
+        application_type: PHP
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            network_name: public
+            protocol: http
+            port: 80
+            protocol_secure: https
+            port_secure: 443
+      requirements:
+        - host: database_server
+        - network: public_network
+
+    database_server:
+      type: tosca.nodes.DBMS
+      properties:
+        name: MySQL Database
+        database_name: wine_cellar_db
+        database_user: wine_cellar_user
+        database_password: wine_cellar_password
+        root_password: root_password
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            network_name: private
+            protocol: tcp
+            port: 3306
+      requirements:
+        - network: private_network
+
+    public_network:
+      type: tosca.nodes.Network
+      properties:
+        name: public
+
+    private_network:
+      type: tosca.nodes.Network
+      properties:
+        name: private
+
+  relationship_templates:
+    - connect_web_to_db:
+        type: ConnectsTo
+        properties:
+          protocol: tcp
+          port: 3306
+        source: web_server
+        target: database_server
+
+    - connect_web_to_public:
+        type: ConnectsTo
+        properties:
+          protocol: http
+          port: 80
+        source: web_server
+        target: public_network
+
+    - connect_db_to_private:
+        type: ConnectsTo
+        properties:
+          protocol: tcp
+          port: 3306
+        source: database_server
+        target: private_network
+
+  outputs:
+    web_server_url:
+      value: { get_attribute: [ web_server, endpoint, url ] }

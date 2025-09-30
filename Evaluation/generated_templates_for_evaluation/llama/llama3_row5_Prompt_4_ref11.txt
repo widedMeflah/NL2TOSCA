@@ -1,0 +1,111 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    ElasticSearch_Master:
+      type: tosca.nodes.ElasticSearch
+      properties:
+        node_type: master
+        num_nodes: 1
+        replicas: 1
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports:
+              default: 9200
+
+    ElasticSearch_Slave:
+      type: tosca.nodes.ElasticSearch
+      properties:
+        node_type: slave
+        num_nodes: 2
+        replicas: 1
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports:
+              default: 9200
+      requirements:
+        - host: ElasticSearch_Master
+
+    Java_Runtime:
+      type: tosca.nodes.Java
+      properties:
+        version: 11
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports:
+              default: 8080
+
+    Application:
+      type: tosca.nodes.WebApplication
+      properties:
+        application_name: my_app
+        war_file: my_app.war
+      requirements:
+        - host: Java_Runtime
+        - database: ElasticSearch_Master
+        - database: ElasticSearch_Slave
+
+    Testing_Component:
+      type: tosca.nodes.TestComponent
+      properties:
+        test_type: integration
+      requirements:
+        - test_target: Application
+        - test_database: ElasticSearch_Master
+        - test_database: ElasticSearch_Slave
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: my_network
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              default: 80
+      requirements:
+        - network: Application
+        - network: ElasticSearch_Master
+        - network: ElasticSearch_Slave
+        - network: Testing_Component
+
+  relationship_templates:
+    ConnectsTo:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        ports:
+          default: 9200
+      interfaces:
+        Establish:
+          inputs:
+            protocol: http
+            ports:
+              default: 9200
+
+  capability_types:
+    endpoint:
+      properties:
+        protocol:
+          type: string
+        ports:
+          type: map
+          entry_schema:
+            type: integer
+
+  relationship_types:
+    ConnectsTo:
+      properties:
+        protocol:
+          type: string
+        ports:
+          type: map
+          entry_schema:
+            type: integer

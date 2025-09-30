@@ -1,0 +1,104 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Virtual Elastic Cluster with Galaxy Portal
+  node_templates:
+    front_end:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4096 MB
+        disk_size: 40 GB
+        operating_system: Ubuntu 20.04
+      capabilities:
+        scalability:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            protocol: tcp
+            ports: 22
+
+    galaxy_portal:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 80
+        website: galaxy
+      dependencies:
+        - front_end
+
+    workload_management_system:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component: slurm
+      dependencies:
+        - front_end
+
+    worker_nodes:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 4
+        mem_size: 8192 MB
+        disk_size: 80 GB
+        operating_system: Ubuntu 20.04
+      capabilities:
+        scalability:
+          properties:
+            min_instances: 0
+            max_instances: 10
+            default_instances: 2
+        endpoint:
+          properties:
+            protocol: tcp
+            ports: 22
+      dependencies:
+        - front_end
+
+    hybrid_environment:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: hybrid
+      dependencies:
+        - front_end
+        - worker_nodes
+
+  relationship_templates:
+    - connect_front_end_to_galaxy:
+        type: tosca.relationships.ConnectsTo
+        properties:
+          protocol: tcp
+          ports: 80
+        target: galaxy_portal
+        source: front_end
+
+    - connect_front_end_to_workload_management_system:
+        type: tosca.relationships.ConnectsTo
+        properties:
+          protocol: tcp
+          ports: 6817
+        target: workload_management_system
+        source: front_end
+
+    - connect_front_end_to_worker_nodes:
+        type: tosca.relationships.ConnectsTo
+        properties:
+          protocol: tcp
+          ports: 22
+        target: worker_nodes
+        source: front_end
+
+    - connect_galaxy_to_front_end:
+        type: tosca.relationships.ConnectsTo
+        properties:
+          protocol: tcp
+          ports: 22
+        target: front_end
+        source: galaxy_portal
+
+  output_templates:
+    galaxy_portal_url:
+      value: { get_attribute: [ galaxy_portal, endpoint, url ] }
+    cluster_ip:
+      value: { get_attribute: [ front_end, endpoint, ip_address ] }

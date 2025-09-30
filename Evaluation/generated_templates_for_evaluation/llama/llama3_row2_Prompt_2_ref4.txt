@@ -1,0 +1,57 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Web Server Setup
+  node_templates:
+    WebServer:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 80
+        protocol: http
+        network_name: private
+      attributes:
+        start_command: service httpd start
+        stop_command: service httpd stop
+        restart_command: service httpd restart
+      requirements:
+        - website_directory:
+            node: WebsiteFiles
+            relationship: tosca.relationships.NetworkBundle
+        - network:
+            node: PrivateNetwork
+            relationship: tosca.relationships.Network
+        - security_group:
+            node: SecurityGroup
+            relationship: tosca.relationships.SecurityGroup
+
+    WebsiteFiles:
+      type: tosca.nodes.Files
+      properties:
+        path: /var/www/html
+        content: index.html
+
+    PrivateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        name: private
+        cidr: 10.0.0.0/24
+
+    SecurityGroup:
+      type: tosca.nodes.SecurityGroup
+      properties:
+        name: web_server_security
+        rules:
+          - protocol: tcp
+            port_range: 80
+            remote_ip_prefix: 10.0.0.0/24
+
+    HealthCheck:
+      type: tosca.nodes.HealthCheck
+      properties:
+        url: http://localhost
+        expected_response: 200
+      requirements:
+        - web_server:
+            node: WebServer
+            relationship: tosca.relationships.ConnectsTo

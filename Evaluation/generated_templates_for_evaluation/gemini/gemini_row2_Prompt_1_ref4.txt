@@ -1,0 +1,69 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: >
+  TOSCA-compliant description for deploying an Apache web server
+  to host a website, with defined network and operational requirements
+  for Alien4cloud orchestrator.
+
+imports:
+  - tosca-normative-types:1.0.0
+  - alien-base-types:3.0.0
+  - org.alien4cloud.management.apache:3.0.0-SNAPSHOT
+
+topology_template:
+  node_templates:
+    Compute:
+      type: alien.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      requirements:
+        - host_network:
+            node: PrivateNetwork
+            relationship: tosca.relationships.network.BindsTo
+        - public_network_interface:
+            node: PublicNetwork
+            relationship: tosca.relationships.network.BindsTo
+
+    PrivateNetwork:
+      type: tosca.nodes.network.Network
+      properties:
+        is_external_resource: false
+
+    PublicNetwork:
+      type: tosca.nodes.network.Network
+      properties:
+        is_external_resource: true
+
+    ApacheWebServer:
+      type: alien.nodes.apache.ApacheWebServer
+      properties:
+        component_version: "2.4"
+        port: 80
+        document_root: "/var/www"
+      requirements:
+        - host:
+            node: Compute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - network:
+            node: PublicNetwork
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.network.BindsTo
+      interfaces:
+        Standard:
+          configure:
+            description: Configure Apache and perform welcome page accessibility check.
+            implementation:
+              primary: scripts/check_welcome_page.sh
+              artifact_type: tosca.artifacts.Implementation.Bash
+            inputs:
+              WEB_SERVER_URL: { get_attribute: [ ApacheWebServer, public_url ] }
+
+  outputs:
+    web_server_url:
+      description: The accessible URL of the deployed web server.
+      value: { get_attribute: [ ApacheWebServer, public_url ] }

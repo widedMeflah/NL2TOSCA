@@ -1,0 +1,65 @@
+node_templates:
+  WebServerNode:
+    type: tosca.nodes.Compute
+    properties:
+      image: "web-server-image-2.4" # Assume an image that supports version 2.4 exists
+      flavor: 
+        id: "small"
+      network_interfaces:
+        - port:
+            get_input: private_admin_network_port
+
+  WebServerSoftware:
+    type: tosca.nodes.SoftwareComponent
+    properties:
+      version: "2.4"
+      file_path: "/var/www"
+
+  WebServerService:
+    type: tosca.nodes.WebApplication
+    requirements:
+      - host:
+          node: WebServerNode
+      - software: 
+          node: WebServerSoftware
+    capabilities:
+      http_endpoint:
+        properties:
+          protocol: "http"
+          port: 80
+
+  AdminNetworkInterface:
+    type: tosca.relationships.ConnectsToNetwork
+    target: 
+      node: PrivateAdminNetwork
+
+  DataNetworkInterface:
+    type: tosca.relationships.ConnectsToNetwork
+    target: 
+      node: PublicDataNetwork
+
+relationships:
+  - type: tosca.relationships.HostedOn
+    source: WebServerSoftware
+    target: WebServerNode
+  - type: AdminNetworkInterface
+    source: WebServerNode
+    target: PrivateAdminNetwork
+  - type: DataNetworkInterface
+    source: WebServerNode
+    target: PublicDataNetwork
+
+policies:
+  - type: tosca.policies.ManagedOperation
+    targets: 
+      - node: WebServerService
+    properties:
+      operations: ["start", "stop", "restart", "check_accessibility"]
+
+inputs:
+  private_admin_network_port:
+    description: Network port for secure administrative access
+
+outputs:
+  web_server_url:
+    value: "{ concat: [ 'http://', WebServerNode.network_interfaces[0].ip_address, ':80', ] }"

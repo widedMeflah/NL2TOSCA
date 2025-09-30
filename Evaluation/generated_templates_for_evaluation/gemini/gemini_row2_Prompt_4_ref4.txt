@@ -1,0 +1,53 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: A basic Apache server deployment topology for Alien4cloud.
+
+node_templates:
+  compute_host:
+    type: alien.nodes.Compute
+    capabilities:
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 1
+
+  apache_server:
+    type: alien.nodes.apache.Apache
+    requirements:
+      - host: compute_host
+
+workflows:
+  start_apache:
+    description: Workflow to start the Apache server.
+    steps:
+      start_apache_step:
+        target: apache_server
+        operation: Standard.start
+
+  stop_apache:
+    description: Workflow to stop the Apache server.
+    steps:
+      stop_apache_step:
+        target: apache_server
+        operation: Standard.stop
+
+  restart_apache:
+    description: Workflow to restart the Apache server.
+    steps:
+      restart_apache_stop_step:
+        target: apache_server
+        operation: Standard.stop
+      restart_apache_start_step:
+        target: apache_server
+        operation: Standard.start
+        depends_on: restart_apache_stop_step
+
+  access_welcome_page:
+    description: Workflow to access the Apache welcome page using curl.
+    steps:
+      curl_command_execution:
+        target: compute_host
+        operation: tosca.interfaces.node.lifecycle.Standard.exec
+        inputs:
+          command: >
+            curl http://{get_attribute: [compute_host, public_address]}:80

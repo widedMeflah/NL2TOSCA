@@ -1,0 +1,118 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: TOSCA-compliant description for an elastic Slurm cluster with a Galaxy portal.
+
+imports:
+  - tosca_normal_standard_types
+
+topology_template:
+  node_templates:
+    main_network:
+      type: tosca.nodes.network.Network
+      properties:
+        ip_version: 4
+        cidr: 10.0.0.0/24
+
+    front_end_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        image: ubuntu-20.04-lts
+        num_cpus: 4
+        mem_size: 8 GB
+        disk_size: 100 GB
+      requirements:
+        - network_connection:
+            node: main_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            port: 22
+
+    slurm_master_software:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: front_end_compute
+            capability: tosca.capabilities.OperatingSystem
+            relationship: tosca.relationships.HostedOn
+      artifacts:
+        install:
+          file: scripts/install_slurm_master.sh
+          type: tosca.artifacts.Application.Bash
+
+    galaxy_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        image: ubuntu-20.04-lts
+        num_cpus: 4
+        mem_size: 8 GB
+        disk_size: 100 GB
+      requirements:
+        - network_connection:
+            node: main_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            port: 80
+            url_path: /
+
+    galaxy_application_software:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: galaxy_compute
+            capability: tosca.capabilities.OperatingSystem
+            relationship: tosca.relationships.HostedOn
+      artifacts:
+        install:
+          file: scripts/install_galaxy.sh
+          type: tosca.artifacts.Application.Bash
+
+    worker_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        image: ubuntu-20.04-lts
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 50 GB
+      requirements:
+        - network_connection:
+            node: main_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 10
+            default_instances: 2
+
+    slurm_worker_software:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        slurm_master_ip: { get_attribute: [ front_end_compute, private_address ] }
+      requirements:
+        - host:
+            node: worker_compute
+            capability: tosca.capabilities.OperatingSystem
+            relationship: tosca.relationships.HostedOn
+      artifacts:
+        install:
+          file: scripts/install_slurm_worker.sh
+          type: tosca.artifacts.Application.Bash
+
+  outputs:
+    cluster_public_ip:
+      description: The public IP address of the Slurm front-end node.
+      value: { get_attribute: [ front_end_compute, public_address ] }
+    galaxy_portal_url:
+      description: The URL to access the Galaxy bioinformatics portal.
+      value: { concat: [ 'http://', get_attribute: [ galaxy_compute, public_address ], '/', get_property: [ galaxy_compute, endpoint, url_path ] ] }

@@ -1,0 +1,164 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a single-node Elasticsearch service on a virtual machine.
+
+imports:
+  - tosca_simple_profile_for_compute_1_0
+  - tosca_simple_profile_for_software_1_0
+  - tosca_simple_profile_for_network_1_0
+
+node_types:
+  indigo.nodes.Elasticsearch:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        description: The version of Elasticsearch to deploy.
+        default: 7.4.1
+      bind_address:
+        type: string
+        description: The IP address Elasticsearch should bind to.
+        default: 0.0.0.0
+      elastic_password:
+        type: string
+        description: Password for the 'elastic' user.
+        required: true
+        sensitive: true
+      kibana_password:
+        type: string
+        description: Password for the 'kibana' system user.
+        required: true
+        sensitive: true
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: tosca.nodes.Compute
+          relationship: tosca.relationships.HostedOn
+    interfaces:
+      Standard:
+        create:
+          description: Install and configure Elasticsearch.
+          implementation:
+            primary: scripts/install_elasticsearch.sh
+          inputs:
+            ES_VERSION: { get_property: [SELF, version] }
+            ES_BIND_ADDRESS: { get_property: [SELF, bind_address] }
+            ELASTIC_PASSWORD: { get_property: [SELF, elastic_password] }
+            KIBANA_PASSWORD: { get_property: [SELF, kibana_password] }
+        start:
+          description: Start Elasticsearch service.
+          implementation: scripts/start_elasticsearch.sh
+        stop:
+          description: Stop Elasticsearch service.
+          implementation: scripts/stop_elasticsearch.sh
+
+topology_template:
+  inputs:
+    vm_cpus:
+      type: integer
+      description: Number of virtual CPUs for the VM.
+      default: 2
+      constraints:
+        - valid_values: [2, 4]
+    vm_memory:
+      type: scalar-unit.size
+      description: Amount of memory for the VM.
+      default: 4 GB
+      constraints:
+        - valid_values: [4 GB, 8 GB]
+    es_version_input:
+      type: string
+      description: Specific Elasticsearch version to deploy.
+      default: 7.4.1
+    elastic_password_input:
+      type: string
+      description: Password for the 'elastic' user.
+      required: true
+      sensitive: true
+    kibana_password_input:
+      type: string
+      description: Password for the 'kibana' system user.
+      required: true
+      sensitive: true
+    ssh_key_name:
+      type: string
+      description: Name of the SSH key pair to use for the VM.
+      required: true
+    ssh_user:
+      type: string
+      description: User for SSH access to the VM.
+      default: ubuntu
+
+  node_templates:
+    compute_node:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu-16.04
+        os_arch: x86_64
+        key_name: { get_input: ssh_key_name }
+        user: { get_input: ssh_user }
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: vm_cpus }
+            mem_size: { get_input: vm_memory }
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 16.04
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+      requirements:
+        - network:
+            node: public_network
+            capability: tosca.capabilities.network.NetworkConnection
+            relationship: tosca.relationships.network.NetworkConnectsTo
+
+    elasticsearch_service:
+      type: indigo.nodes.Elasticsearch
+      properties:
+        version: { get_input: es_version_input }
+        bind_address: 0.0.0.0
+        elastic_password: { get_input: elastic_password_input }
+        kibana_password: { get_input: kibana_password_input }
+      requirements:
+        - host: compute_node
+
+    public_network:
+      type: tosca.nodes.network.PublicNetwork
+
+    elastic_access_security_group_rule:
+      type: tosca.nodes.network.Rule
+      properties:
+        protocol: tcp
+        port_range: 9200-9200
+        direction: ingress
+      requirements:
+        - target:
+            node: compute_node
+            capability: tosca.capabilities.network.NetworkConnection
+            relationship: tosca.relationships.network.AppliesTo
+
+  outputs:
+    elasticsearch_endpoint:
+      description: The URL to access the Elasticsearch service.
+      value:
+        concat:
+          - "http://"
+          - { get_attribute: [compute_node, public_address] }
+          - ":9200"
+    public_ip_address:
+      description: The public IP address of the Elasticsearch node.
+      value: { get_attribute: [compute_node, public_address] }
+    node_access_username:
+      description: Username for SSH access to the node.
+      value: { get_input: ssh_user }
+    ssh_key_name:
+      description: Name of the SSH key used for the node.
+      value: { get_input: ssh_key_name }

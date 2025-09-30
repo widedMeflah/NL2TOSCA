@@ -1,0 +1,63 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+metadata:
+  template_name: apache-server-topology
+  template_version: 1.0.0
+  template_author: admin
+
+description: Apache server deployment topology
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - apache-type:3.0.0
+
+topology_template:
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2 GB
+    Apache:
+      type: tosca.nodes.WebServer.Apache
+      requirements:
+        - host: Compute
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/start_apache.sh
+          stop:
+            implementation: scripts/stop_apache.sh
+          restart:
+            implementation: scripts/restart_apache.sh
+
+  workflows:
+    start_apache:
+      steps:
+        start_server:
+          target: Apache
+          activity:
+            call_operation: Standard.start
+    
+    stop_apache:
+      steps:
+        stop_server:
+          target: Apache
+          activity:
+            call_operation: Standard.stop
+
+    restart_apache:
+      steps:
+        restart_server:
+          target: Apache
+          activity:
+            call_operation: Standard.restart
+
+    check_webpage:
+      steps:
+        curl_check:
+          target: Apache
+          activity:
+            inline: curl http://localhost

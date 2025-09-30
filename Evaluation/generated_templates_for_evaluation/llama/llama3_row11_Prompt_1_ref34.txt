@@ -1,0 +1,118 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Galaxy Cluster Deployment
+
+topology_template:
+  node_templates:
+    galaxy_cluster:
+      type: tosca.nodes.INDIGO.GalaxyCluster
+      properties:
+        os: CentOS 7
+        slurm: true
+        galaxy_version: { get_input: galaxy_version }
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        description: { get_input: description }
+        ssh_public_key: { get_input: ssh_public_key }
+        worker_nodes:
+          type: integer
+          default: 1
+          description: Number of worker nodes in the cluster
+        front_end_spec:
+          type: string
+          default: small
+          description: Specifications for the front-end node (small, medium, large)
+        worker_spec:
+          type: string
+          default: small
+          description: Specifications for the worker nodes (small, medium, large)
+        storage_size:
+          type: integer
+          default: 10
+          unit: GB
+          description: Amount of storage needed
+        hybrid_environment: false
+        storage_encryption: false
+        galaxy_tools:
+          type: list
+          default: []
+          description: List of Galaxy tools to install
+        reference_data:
+          type: list
+          default: []
+          description: List of reference data to install
+        cernvm_fs:
+          type: boolean
+          default: false
+          description: Enable CernVM-FS for reference data
+
+      inputs:
+        admin_email:
+          type: string
+          description: Admin email for the Galaxy instance
+        api_key:
+          type: string
+          description: API key for the Galaxy instance
+        description:
+          type: string
+          description: Description for the Galaxy instance
+        galaxy_version:
+          type: string
+          description: Version of Galaxy to deploy
+        ssh_public_key:
+          type: string
+          description: SSH public key for the Galaxy instance
+
+      outputs:
+        login_instructions:
+          type: string
+          description: Login instructions for the Galaxy instance
+          value: { concat: [ 'Galaxy instance deployed at ', { get_attribute: [ galaxy_cluster, public_address ] }, '. Login with admin email ', { get_input: admin_email }, ' and API key ', { get_input: api_key }, '.' ] }
+        confirmation_email:
+          type: string
+          description: Confirmation email with login instructions
+          value: { concat: [ 'Subject: Galaxy Instance Deployment Confirmation', '\n\nDear ', { get_input: admin_email }, ',\n\nYour Galaxy instance has been deployed at ', { get_attribute: [ galaxy_cluster, public_address ] }, '.\n\nLogin with admin email ', { get_input: admin_email }, ' and API key ', { get_input: api_key }, '.\n\nBest regards,\nINDIGO' ] }
+
+  relationship_templates:
+    deploy_galaxy:
+      type: tosca.relationships.Deploys
+      target: galaxy_cluster
+      properties:
+        ssh_public_key: { get_input: ssh_public_key }
+
+  capability_types:
+    INDIGO::GalaxyCluster:
+      properties:
+        os:
+          type: string
+          description: Operating system to use (e.g. CentOS 7)
+        slurm:
+          type: boolean
+          description: Whether to include SLURM
+        galaxy_version:
+          type: string
+          description: Version of Galaxy to deploy
+        admin_email:
+          type: string
+          description: Admin email for the Galaxy instance
+        api_key:
+          type: string
+          description: API key for the Galaxy instance
+        description:
+          type: string
+          description: Description for the Galaxy instance
+        ssh_public_key:
+          type: string
+          description: SSH public key for the Galaxy instance
+      attributes:
+        public_address:
+          type: string
+          description: Public address of the Galaxy instance
+
+  relationship_types:
+    Deploys:
+      properties:
+        ssh_public_key:
+          type: string
+          description: SSH public key for the deployment

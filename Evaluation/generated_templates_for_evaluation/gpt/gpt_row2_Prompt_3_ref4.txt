@@ -1,0 +1,96 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA-compliant description for deploying Apache 2.4 on a scalable compute node with network configuration, custom workflows, and outputs for Alien4cloud.
+
+imports:
+  - tosca-normative-types:1.0.0
+  - tosca-normative-apache-types:1.0.0
+
+topology_template:
+  node_templates:
+
+    my_compute:
+      type: tosca.nodes.Compute
+      properties:
+        disk_size: 10 GB
+        mem_size: 2048 MB
+        num_cpus: 2
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+
+    my_private_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_id: PRIVATE
+        ip_version: 4
+        cidr: 192.168.0.0/24
+
+    my_admin_endpoint:
+      type: tosca.nodes.network.Endpoint.Admin
+      properties:
+        protocol: tcp
+        secure: true
+        port: 22
+      requirements:
+        - network_link: my_private_network
+
+    my_data_endpoint:
+      type: tosca.nodes.network.Endpoint
+      properties:
+        protocol: tcp
+        port: 80
+      requirements:
+        - network_link: my_private_network
+
+    my_apache:
+      type: tosca.nodes.WebServer.Apache
+      properties:
+        version: 2.4
+        port: 80
+        document_root: /var/www
+      requirements:
+        - host: my_compute
+        - network: my_data_endpoint
+
+  workflows:
+    start_apache:
+      steps:
+        start_server:
+          target: my_apache
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.start
+
+    stop_apache:
+      steps:
+        stop_server:
+          target: my_apache
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.stop
+
+    restart_apache:
+      steps:
+        stop_server:
+          target: my_apache
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.stop
+        start_server:
+          target: my_apache
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.start
+
+    curl_welcome_page:
+      steps:
+        curl_homepage:
+          target: my_apache
+          activities:
+            - call_operation: custom.interfaces.apache.curl_welcome
+
+  outputs:
+    apache_url:
+      description: URL of the deployed Apache server
+      value: { concat: [ "http://", { get_attribute: [ my_compute, public_address ] }, ":", { get_property: [ my_apache, port ] } ] }

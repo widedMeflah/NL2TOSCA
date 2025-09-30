@@ -1,0 +1,75 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA-compliant description for deploying a plant classification application 
+  in a containerized environment using INDIGO orchestrator.
+
+metadata:
+  template_name: PlantClassificationAppDeployment
+  version: '1.0'
+  description: Deployment of a plant classification application with resource allocation and load balancing.
+
+imports:
+  - indigo-orchestrator-types: https://indigo-dc.org/tosca_types.yaml
+
+topology_template:
+
+  node_templates:
+
+    # Node for the Container Orchestrator
+    orchestrator:
+      type: tosca.nodes.indigo.Orchestrator
+      properties:
+        version: 'latest'
+
+    # Node Template for the Application Container
+    plant_classification_app:
+      type: indigo.nodes.Container.Application
+      properties:
+        image: "plant-classification-app:latest"
+        ports:
+          - 8080
+        resources:
+          cpu: 2
+          memory: 4Gi
+
+    # Node Template for Load Balancer
+    load_balancer:
+      type: tosca.nodes.indigo.LoadBalancer
+      properties:
+        port: 80
+        protocol: HTTP
+      requirements:
+        - balance:
+            node: plant_classification_app
+            relationship: indigo.relationships.balanced_by
+
+  policies:
+
+    # Policy for scaling and resource balancing
+    scaling_policy:
+      type: tosca.policies.indigo.scaling
+      targets: [plant_classification_app]
+      properties:
+        min_instances: 1
+        max_instances: 3
+        cpu_threshold: 80
+
+    # Policy for load balancing across instances
+    load_balancing_policy:
+      type: tosca.policies.indigo.loadbalancer
+      targets: [load_balancer]
+
+  capabilities:
+
+    # Capability for external access via Load Balancer
+    external_access:
+      type: tosca.capabilities.Endpoint
+      properties:
+        protocol: HTTP
+        port: 80
+
+outputs:
+
+  url:
+    value: { get_attribute: [ load_balancer, access_url ] }

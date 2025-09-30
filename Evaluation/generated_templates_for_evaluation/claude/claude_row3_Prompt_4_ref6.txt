@@ -1,0 +1,67 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: nodejs-mongodb-app
+  template_version: 1.0.0
+  template_author: admin
+
+description: Node.js application with MongoDB database
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:3.0.0
+
+topology_template:
+  node_templates:
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: "192.168.1.0/24"
+
+    MongoDB:
+      type: tosca.nodes.Database.MongoDB
+      properties:
+        port: 27017
+      requirements:
+        - host: MongoHost
+        - network: Network
+
+    MongoHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 2 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+
+    NodeJSApp:
+      type: tosca.nodes.WebApplication
+      properties:
+        port: 3000
+        context_root: "/"
+      requirements:
+        - host: NodeJSHost
+        - database: MongoDB
+        - network: Network
+
+    NodeJSHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 2 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+
+  outputs:
+    application_url:
+      description: URL of the deployed application
+      value: { concat: ['http://', get_attribute: [NodeJSHost, public_ip_address], ':', get_property: [NodeJSApp, port]] }

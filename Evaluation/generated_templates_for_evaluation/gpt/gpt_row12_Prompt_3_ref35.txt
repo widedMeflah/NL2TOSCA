@@ -1,0 +1,167 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  INDIGO TOSCA template to deploy the Galaxy Docker image on a single virtual machine
+  with Docker, Ubuntu 16.04, Vault, LUKS, block storage, network, and Galaxy configuration.
+
+topology_template:
+  inputs:
+    galaxy_admin_email:
+      type: string
+      description: Galaxy admin email
+    galaxy_api_key:
+      type: string
+      description: Galaxy admin user API key
+    galaxy_version:
+      type: string
+      description: Galaxy version
+      default: "latest"
+    galaxy_instance_desc:
+      type: string
+      description: Description of the Galaxy instance
+      default: "INDIGO Galaxy Instance"
+    virtual_machine_flavor:
+      type: string
+      description: Flavor for the virtual machine (CPU, RAM, disk)
+      default: "m1.medium"
+    block_storage_size:
+      type: integer
+      description: Size of the block storage in GB
+      default: 50
+    reference_data_install:
+      type: boolean
+      description: Install reference data during setup
+      default: false
+    public_network_name:
+      type: string
+      description: Name of the public network
+      default: "public"
+    http_port:
+      type: integer
+      description: HTTP port for Galaxy
+      default: 8080
+    ftp_port:
+      type: integer
+      description: FTP port for Galaxy
+      default: 21
+    luks_api_port:
+      type: integer
+      description: LUKS/Vault API port
+      default: 8200
+
+  node_templates:
+
+    galaxy_vm:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: { get_input: public_network_name }
+            ports:
+              http: { get_input: http_port }
+              ftp: { get_input: ftp_port }
+              luks: { get_input: luks_api_port }
+            secure: true
+        host:
+          properties:
+            num_cpus: { get_property: [SELF, flavor, num_cpus] }
+            mem_size: { get_property: [SELF, flavor, mem_size] }
+            disk_size: { get_property: [SELF, flavor, disk_size] }
+      properties:
+        image: "Ubuntu 16.04"
+        flavor: { get_input: virtual_machine_flavor }
+        admin_user: "ubuntu"
+
+    attach_storage:
+      type: tosca.nodes.BlockStorage.Attachment
+      requirements:
+        - host: galaxy_vm
+        - storage: galaxy_storage
+
+    galaxy_storage:
+      type: tosca.nodes.indigo.BlockStorage
+      properties:
+        size: { get_input: block_storage_size }
+
+    install_docker:
+      type: tosca.nodes.SoftwareComponent
+      artifacts:
+        install_script:
+          file: https://get.docker.com/
+          type: tosca.artifacts.File
+      interfaces:
+        Standard:
+          configure:
+            implementation: https://get.docker.com/
+      requirements:
+        - host: galaxy_vm
+
+    hashi_vault:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        enable_luks: true
+      interfaces:
+        Standard:
+          configure:
+            implementation: vault
+      requirements:
+        - host: galaxy_vm
+
+    configure_luks:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        enable_encryption: true
+        storage_id: { get_attribute: [galaxy_storage, volume_id] }
+        vault_host: { get_attribute: [hashi_vault, private_address] }
+      requirements:
+        - host: galaxy_vm
+
+    galaxy_docker:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        image: "bgruening/galaxy-stable:{ get_input: galaxy_version }"
+        ports:
+          - { get_input: http_port }
+          - { get_input: ftp_port }
+        env:
+          GALAXY_CONFIG_ADMIN_USERS: { get_input: galaxy_admin_email }
+          GALAXY_API_KEY: { get_input: galaxy_api_key }
+          GALAXY_INSTANCE_DESCRIPTION: { get_input: galaxy_instance_desc }
+        volumes:  { get_attribute: [galaxy_storage, device] }
+        reference_data_install: { get_input: reference_data_install }
+      requirements:
+        - host: galaxy_vm
+        - dependency: install_docker
+
+    configure_galaxy_networking:
+      type: tosca.nodes.Network
+      properties:
+        network_name: { get_input: public_network_name }
+        assign_public_ip: true
+        ports:
+          - { get_input: http_port }
+          - { get_input: ftp_port }
+          - { get_input: luks_api_port }
+      requirements:
+        - host: galaxy_vm
+
+    ssh_access:
+      type: tosca.nodes.SecurityGroupRule
+      properties:
+        port_range: 22
+        protocol: tcp
+        direction: ingress
+      requirements:
+        - target: galaxy_vm
+
+  outputs:
+    galaxy_url:
+      description: URL of the deployed Galaxy instance
+      value: { concat: ["http://", get_attribute: [galaxy_vm, public_address], ":", get_input: http_port] }
+    galaxy_ssh_access:
+      description: SSH access details for management
+      value: { concat: ["ssh ubuntu@", get_attribute: [galaxy_vm, public_address]] }
+    vault_api_endpoint:
+      description: Vault/LUKS API public endpoint
+      value: { concat: ["http://", get_attribute: [galaxy_vm, public_address], ":", get_input: luks_api_port] }

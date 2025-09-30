@@ -1,0 +1,177 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+metadata:
+  template_name: Alien4Cloud-ElasticSearch-Deployment
+  template_version: 1.0.0
+  template_author: Anonymous
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  custom.types.Alien4Cloud:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      context_root:
+        type: string
+        default: "/"
+      profiles:
+        type: list
+        entry_schema:
+          type: string
+        default: ["security-demo", "noApiDoc"]
+
+  custom.types.ElasticSearch:
+    derived_from: tosca.nodes.Database
+    properties:
+      replication_mode:
+        type: string
+        default: "remote"
+
+  custom.types.OracleJDK:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      download_url:
+        type: string
+        default: "https://www.oracle.com/java/technologies/javase-downloads.html"
+      install_path:
+        type: string
+        default: "/usr/local/java"
+
+  custom.types.ITTesting:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      branch:
+        type: string
+        default: "develop"
+      version:
+        type: string
+        default: "1.3.0-RC5"
+      test_suite:
+        type: string
+        default: "RunCloudify3AmazonLongRunIT"
+
+topology_template:
+  node_templates:
+    ComputeNode1:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    ComputeNode2:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+
+    OracleJDK:
+      type: custom.types.OracleJDK
+      requirements:
+        - host:
+            node: ComputeNode1
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - host:
+            node: ComputeNode2
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    Alien4CloudApp:
+      type: custom.types.Alien4Cloud
+      requirements:
+        - host:
+            node: ComputeNode1
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - depends_on:
+            node: OracleJDK
+            capability: tosca.capabilities.Dependency
+            relationship: tosca.relationships.DependsOn
+        - connect_to:
+            node: Network
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+
+    ElasticSearch1:
+      type: custom.types.ElasticSearch
+      requirements:
+        - host:
+            node: ComputeNode1
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - depends_on:
+            node: OracleJDK
+            capability: tosca.capabilities.Dependency
+            relationship: tosca.relationships.DependsOn
+        - connect_to:
+            node: Network
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+
+    ElasticSearch2:
+      type: custom.types.ElasticSearch
+      requirements:
+        - host:
+            node: ComputeNode2
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - depends_on:
+            node: OracleJDK
+            capability: tosca.capabilities.Dependency
+            relationship: tosca.relationships.DependsOn
+        - connect_to:
+            node: Network
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+
+    ITTestingComponent:
+      type: custom.types.ITTesting
+      requirements:
+        - host:
+            node: ComputeNode1
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - connect_to:
+            node: Network
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+        - depends_on:
+            node: Alien4CloudApp
+            capability: tosca.capabilities.Dependency
+            relationship: tosca.relationships.DependsOn
+
+  relationships:
+    ElasticSearchReplication:
+      type: tosca.relationships.ConnectsTo
+      source: ElasticSearch1
+      target: ElasticSearch2
+
+  outputs:
+    alien4cloud_endpoint:
+      value: { get_attribute: [Alien4CloudApp, endpoint] }
+    elasticsearch1_endpoint:
+      value: { get_attribute: [ElasticSearch1, endpoint] }
+    elasticsearch2_endpoint:
+      value: { get_attribute: [ElasticSearch2, endpoint] }

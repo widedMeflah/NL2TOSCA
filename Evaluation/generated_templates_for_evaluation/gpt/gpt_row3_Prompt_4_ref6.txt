@@ -1,0 +1,84 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  Sample deployment template for a Node.js application with a MongoDB backend on Linux, including network configuration and application URL output.
+
+metadata:
+  template_name: nodejs-mongodb-sample
+  template_version: 1.0.0
+
+topology_template:
+  inputs:
+    nodejs_port:
+      type: integer
+      description: Port on which the Node.js application will run
+      default: 3000
+    mongodb_port:
+      type: integer
+      description: Port on which MongoDB will be accessible
+      default: 27017
+
+  node_templates:
+    app_network:
+      type: tosca.nodes.network.Network
+      properties:
+        ip_version: 4
+
+    mongo_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2048 MB
+            disk_size: 10 GB
+      requirements:
+        - network:
+            node: app_network
+
+    mongodb:
+      type: tosca.nodes.DBMS.MongoDB
+      properties:
+        port: { get_input: mongodb_port }
+        root_password: examplepass
+      requirements:
+        - host: mongo_server
+
+    nodejs_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2048 MB
+            disk_size: 10 GB
+      requirements:
+        - network:
+            node: app_network
+
+    nodejs_app:
+      type: tosca.nodes.WebApplication.Nodejs
+      properties:
+        app_port: { get_input: nodejs_port }
+        environment_variables:
+          MONGODB_URI: { concat: [ 'mongodb://root:examplepass@', { get_attribute: [ mongo_server, public_address ] }, ':', { get_input: mongodb_port }, '/admin' ] }
+      requirements:
+        - host: nodejs_server
+        - dependency:
+            node: mongodb
+
+  outputs:
+    nodejs_url:
+      description: URL to access the Node.js application
+      value: { concat: [ 'http://', { get_attribute: [ nodejs_server, public_address ] }, ':', { get_input: nodejs_port } ] }

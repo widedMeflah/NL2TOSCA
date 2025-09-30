@@ -1,0 +1,94 @@
+tosca_definitions_version: alien4cloud-1.3
+
+topology_template:
+  description: JavaScript Application System
+  node_templates:
+    application_server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        networks:
+          - network: app_network
+      capabilities:
+        endpoint:
+          properties:
+            ports:
+              app_port: 3000
+          type: tosca.capabilities.Endpoint
+        bind:
+          properties:
+            ports:
+              app_port: 3000
+          type: tosca.capabilities.Bind
+      artifacts:
+        my_js_app:
+          type: tosca.artifacts.Software
+          file: my_js_app.zip
+          deploy_path: /opt/my_js_app
+      dependencies:
+        - database_server
+
+    database_server:
+      type: tosca.nodes.Database
+      properties:
+        db_type: postgresql
+        os: ubuntu
+        networks:
+          - network: db_network
+      capabilities:
+        endpoint:
+          properties:
+            ports:
+              db_port: 5432
+          type: tosca.capabilities.Endpoint
+        bind:
+          properties:
+            ports:
+              db_port: 5432
+          type: tosca.capabilities.Bind
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: app_network
+
+    security_group:
+      type: tosca.nodes.SecurityGroup
+      properties:
+        name: app_security
+        rules:
+          - protocol: tcp
+            ports: 3000
+            remote: 0.0.0.0/0
+          - protocol: tcp
+            ports: 5432
+            remote: 10.0.0.0/24
+
+    database_endpoint:
+      type: tosca.nodes.Endpoint
+      properties:
+        url: http://database_server:5432
+        ports:
+          db_port: 5432
+
+    application_endpoint:
+      type: tosca.nodes.Endpoint
+      properties:
+        url: http://application_server:3000
+        ports:
+          app_port: 3000
+
+  relationship_templates:
+    connects_to_database:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        ports:
+          app_port: 3000
+          db_port: 5432
+      interfaces:
+        - type: tosca.interfaces.relationship.Configure
+          operations:
+            pre_configure: |
+              echo "Configuring application server to connect to database on port 5432"
+            post_configure: |
+              echo "Application server configured to connect to database"

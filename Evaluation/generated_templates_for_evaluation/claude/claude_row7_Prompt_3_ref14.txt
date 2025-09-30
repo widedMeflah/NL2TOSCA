@@ -1,0 +1,82 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: web-application-template
+  template_version: 1.0.0
+  template_author: admin
+
+description: Web application deployment template
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+node_types:
+  org.alien4cloud.nodes.JDK:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        required: true
+        default: "8"
+      java_url:
+        type: string
+        required: true
+        default: "https://download.oracle.com/otn-pub/java/jdk/"
+    capabilities:
+      java:
+        type: tosca.capabilities.Root
+
+  org.alien4cloud.nodes.Tomcat:
+    derived_from: tosca.nodes.WebServer
+    properties:
+      component_version:
+        type: string
+        required: true
+        default: "9.0.54"
+      tomcat_home:
+        type: string
+        required: true
+        default: "/opt/tomcat"
+      tomcat_port:
+        type: integer
+        required: true
+        default: 8080
+    requirements:
+      - java:
+          capability: tosca.capabilities.Root
+          relationship: tosca.relationships.DependsOn
+          node: org.alien4cloud.nodes.JDK
+
+topology_template:
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        os_arch: x86_64
+        os_distribution: ubuntu
+
+    JDK:
+      type: org.alien4cloud.nodes.JDK
+      requirements:
+        - host: Compute
+
+    Tomcat:
+      type: org.alien4cloud.nodes.Tomcat
+      requirements:
+        - host: Compute
+        - java: JDK
+
+    WebApplication:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: Tomcat
+
+  outputs:
+    application_url:
+      description: URL of the deployed application
+      value: { concat: ['http://', get_attribute: [Compute, public_ip_address], ':', get_property: [Tomcat, tomcat_port], '/webapp'] }
+    tomcat_url:
+      description: URL of the Tomcat server
+      value: { concat: ['http://', get_attribute: [Compute, public_ip_address], ':', get_property: [Tomcat, tomcat_port]] }

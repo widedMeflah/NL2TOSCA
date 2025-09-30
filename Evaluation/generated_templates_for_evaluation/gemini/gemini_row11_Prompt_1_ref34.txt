@@ -1,0 +1,248 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: TOSCA-compliant description for a scalable Galaxy instance with SLURM.
+
+metadata:
+  target_orchestrator: INDIGO-Cloud
+
+imports:
+  - tosca_profiles/tosca_simple_yaml_1_3/data_types.yaml
+  - tosca_profiles/tosca_simple_yaml_1_3/groups.yaml
+  - tosca_profiles/tosca_simple_yaml_1_3/interfaces.yaml
+  - tosca_profiles/tosca_simple_yaml_1_3/nodes.yaml
+  - tosca_profiles/tosca_simple_yaml_1_3/relationships.yaml
+
+topology_template:
+  inputs:
+    instance_description:
+      type: string
+      description: A brief description for the Galaxy instance.
+    admin_email:
+      type: string
+      description: The administrator's email address for Galaxy.
+      constraints:
+        - pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    galaxy_api_key:
+      type: string
+      description: The API key to be configured for Galaxy administration.
+      sensitive: true
+    ssh_public_key:
+      type: string
+      description: SSH public key for accessing the deployed instances.
+      constraints:
+        - min_length: 1
+    galaxy_version:
+      type: string
+      description: The specific version of Galaxy to deploy (e.g., '21.09', '22.01').
+      default: "22.01"
+    frontend_cpu_cores:
+      type: integer
+      description: Number of CPU cores for the Galaxy front-end node.
+      default: 4
+      constraints:
+        - in_range: [ 1, 32 ]
+    frontend_memory_gb:
+      type: integer
+      description: Amount of RAM in GB for the Galaxy front-end node.
+      default: 16
+      constraints:
+        - in_range: [ 2, 128 ]
+    frontend_disk_gb:
+      type: integer
+      description: Disk size in GB for the Galaxy front-end node.
+      default: 100
+      constraints:
+        - in_range: [ 50, 2000 ]
+    num_worker_nodes:
+      type: integer
+      description: Number of worker nodes in the Galaxy cluster.
+      default: 2
+      constraints:
+        - in_range: [ 0, 100 ]
+    worker_cpu_cores:
+      type: integer
+      description: Number of CPU cores for each worker node.
+      default: 2
+      constraints:
+        - in_range: [ 1, 32 ]
+    worker_memory_gb:
+      type: integer
+      description: Amount of RAM in GB for each worker node.
+      default: 8
+      constraints:
+        - in_range: [ 2, 128 ]
+    worker_disk_gb:
+      type: integer
+      description: Disk size in GB for each worker node.
+      default: 50
+      constraints:
+        - in_range: [ 20, 1000 ]
+    total_data_storage_gb:
+      type: integer
+      description: Total amount of shared storage in GB for Galaxy data.
+      default: 500
+      constraints:
+        - in_range: [ 100, 10000 ]
+    storage_encryption_enabled:
+      type: boolean
+      description: Enable encryption for the data storage volume.
+      default: false
+    galaxy_tools_list:
+      type: list_of_strings
+      description: A list of specific Galaxy tools to install (e.g., 'tool_id_1', 'tool_id_2').
+      default: []
+    galaxy_reference_data_list:
+      type: list_of_strings
+      description: A list of specific Galaxy reference data to install.
+      default: []
+    enable_cvmfs_for_reference_data:
+      type: boolean
+      description: Configure CernVM-FS for reference data access.
+      default: false
+    hybrid_environment_support:
+      type: boolean
+      description: Enable configurations for hybrid cloud/on-premise environments.
+      default: false
+
+  node_templates:
+    galaxy_frontend_server:
+      type: tosca.nodes.Compute
+      properties:
+        image: centos-7-x64
+        public_address: true # Request a public IP address
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: frontend_cpu_cores }
+            mem_size: { get_input: frontend_memory_gb } 
+            disk_size: { get_input: frontend_disk_gb } 
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: CentOS
+            version: "7"
+      artifacts:
+        - install_script:
+            file: scripts/install_galaxy_frontend.sh
+            type: tosca.artifacts.File
+        - configure_slurm_manager_script:
+            file: scripts/configure_slurm_manager.sh
+            type: tosca.artifacts.File
+
+    galaxy_worker_servers:
+      type: tosca.nodes.Compute
+      properties:
+        image: centos-7-x64
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: worker_cpu_cores }
+            mem_size: { get_input: worker_memory_gb } 
+            disk_size: { get_input: worker_disk_gb } 
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: CentOS
+            version: "7"
+        scalable:
+          properties:
+            min_instances: { get_input: num_worker_nodes }
+            max_instances: { get_input: num_worker_nodes }
+            default_instances: { get_input: num_worker_nodes }
+      artifacts:
+        - install_script:
+            file: scripts/install_galaxy_worker.sh
+            type: tosca.artifacts.File
+        - configure_slurm_worker_script:
+            file: scripts/configure_slurm_worker.sh
+            type: tosca.artifacts.File
+
+    galaxy_data_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: total_data_storage_gb } 
+        volume_type: standard # Could be 'ssd', 'high_iops', etc. based on provider
+        encryption: { get_input: storage_encryption_enabled }
+      requirements:
+        - attachment:
+            node: galaxy_frontend_server
+            relationship: tosca.relationships.AttachesTo
+
+    galaxy_application:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        galaxy_version: { get_input: galaxy_version }
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: galaxy_api_key }
+        instance_description: { get_input: instance_description }
+        ssh_public_key: { get_input: ssh_public_key }
+        tools_to_install: { get_input: galaxy_tools_list }
+        reference_data_to_install: { get_input: galaxy_reference_data_list }
+        enable_cvmfs: { get_input: enable_cvmfs_for_reference_data }
+        hybrid_support: { get_input: hybrid_environment_support } # Passed to installation scripts
+      requirements:
+        - host: galaxy_frontend_server
+        - depends_on: galaxy_data_storage # Ensure storage is attached before Galaxy setup
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              GALAXY_VERSION: { get_property: [ SELF, galaxy_version ] }
+              ADMIN_EMAIL: { get_property: [ SELF, admin_email ] }
+              API_KEY: { get_property: [ SELF, api_key ] }
+              SSH_KEY: { get_property: [ SELF, ssh_public_key ] }
+              TOOLS: { get_property: [ SELF, tools_to_install ] }
+              REF_DATA: { get_property: [ SELF, reference_data_to_install ] }
+              ENABLE_CVMFS: { get_property: [ SELF, enable_cvmfs ] }
+              HYBRID_ENV: { get_property: [ SELF, hybrid_support ] }
+            implementation: scripts/install_galaxy_application.sh
+          configure:
+            implementation: scripts/configure_galaxy_application.sh
+          start:
+            implementation: scripts/start_galaxy_application.sh
+
+    slurm_controller:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: galaxy_frontend_server
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_slurm_controller.sh
+          configure:
+            inputs:
+              WORKER_NODES_IPS: { get_attribute: [ galaxy_worker_servers, private_addresses ] }
+            implementation: scripts/configure_slurm_controller.sh
+          start:
+            implementation: scripts/start_slurm_controller.sh
+
+    slurm_worker:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: galaxy_worker_servers
+        - depends_on: slurm_controller
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_slurm_worker.sh
+          configure:
+            inputs:
+              SLURM_CONTROLLER_IP: { get_attribute: [ slurm_controller, host, private_address ] }
+            implementation: scripts/configure_slurm_worker.sh
+          start:
+            implementation: scripts/start_slurm_worker.sh
+
+  outputs:
+    galaxy_frontend_ip:
+      description: The public IP address of the Galaxy front-end server.
+      value: { get_attribute: [ galaxy_frontend_server, public_address ] }
+    galaxy_url:
+      description: The URL to access the Galaxy instance.
+      value: { concat: [ 'http://', get_attribute: [ galaxy_frontend_server, public_address ] ] }
+    admin_email_for_login_info:
+      description: The admin email where login instructions will be sent.
+      value: { get_input: admin_email }
+    ssh_connection_command:
+      description: Example SSH command to connect to the frontend server.
+      value: { concat: [ 'ssh -i <your_private_key.pem> centos@', get_attribute: [ galaxy_frontend_server, public_address ] ] }

@@ -1,0 +1,98 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A flexible computing environment managed by the INDIGO orchestrator, supporting dynamic resource adjustment and multiple workload management systems.
+
+topology_template:
+
+  node_templates:
+
+    ControlUnit:
+      type: tosca.nodes.Compute
+      properties:
+        number_of_workers: { get_input: max_workers }
+        control_unit_power: { get_input: control_unit_power }
+        control_unit_memory: { get_input: control_unit_memory }
+        supported_workload_managers:
+          - Torque
+          - SGE
+          - Slurm
+          - Condor
+        hybrid_environment: { get_input: hybrid_environment }
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        ssh_public_key: { get_input: ssh_public_key }
+        web_interface_version: { get_input: web_interface_version }
+        web_interface_description: { get_input: web_interface_description }
+
+    WorkerUnits:
+      type: tosca.nodes.Compute
+      properties:
+        min_instances: 1
+        max_instances: { get_input: max_workers }
+        instance_power: { get_input: worker_unit_power }
+        instance_memory: { get_input: worker_unit_memory }
+
+    DataStorage:
+      type: tosca.nodes.Storage.DataStorage
+      properties:
+        storage_location: { get_input: data_storage_location }
+
+    WebInterface:
+      type: tosca.nodes.WebApplication
+      properties:
+        access_url: { get_output: [ ControlUnit, outputs, public_url ] }
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        ssh_public_key: { get_input: ssh_public_key }
+        version: { get_input: web_interface_version }
+        description: { get_input: web_interface_description }
+
+  inputs:
+    max_workers:
+      type: integer
+      description: Maximum number of worker units that can be added.
+    control_unit_power:
+      type: integer
+      description: Computing power for the main control unit (in CPU cores).
+    control_unit_memory:
+      type: integer
+      description: Memory for the main control unit (in GB).
+    worker_unit_power:
+      type: integer
+      description: Computing power for each worker unit (in CPU cores).
+    worker_unit_memory:
+      type: integer
+      description: Memory for each worker unit (in GB).
+    hybrid_environment:
+      type: boolean
+      description: Enable or disable hybrid environment support.
+    admin_email:
+      type: string
+      description: Admin email for web interface access.
+    api_key:
+      type: string
+      description: API key for authentication.
+    ssh_public_key:
+      type: string
+      description: SSH public key for secure access.
+    web_interface_version:
+      type: string
+      description: Version of the web interface.
+    web_interface_description:
+      type: string
+      description: Description of the web interface.
+    data_storage_location:
+      type: string
+      description: Path or identifier for the data storage location.
+
+  outputs:
+    public_url:
+      description: Public URL to access the system's web interface.
+      value: { get_attribute: [ WebInterface, endpoints, public ] }
+
+    credentials:
+      description: Credentials and access information for the system.
+      value:
+        admin_email: { get_input: admin_email }
+        ssh_public_key: { get_input: ssh_public_key }

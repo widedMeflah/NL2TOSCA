@@ -1,0 +1,57 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: >
+  A TOSCA template for deploying Elasticsearch on a Ubuntu-based virtual machine with specified CPU, memory, and password configuration for Elasticsearch and Kibana.
+
+topology_template:
+
+  node_templates:
+
+    elasticsearch_vm:
+      type: tosca.nodes.nfv.vdu.VM
+      properties:
+        num_cpus: 4
+        mem_size: 8 GB
+        disk_size: 50 GB
+        image:
+          type: tosca.artifacts.ContainerImage
+          name: ubuntu
+          version: '20.04'
+        mgmt_driver: cloud-init
+        key_name: ssh_key
+        port:
+          protocol: TCP
+          port: 9200
+
+    elasticsearch_container:
+      type: tosca.nodes.nfv.VduContainer
+      properties:
+        name: elasticsearch
+        image:
+          name: elasticsearch
+          version: '8.10.3'
+        env:
+          - name: ES_JAVA_OPTS
+            value: "-Xms2g -Xmx2g"
+          - name: ELASTIC_PASSWORD
+            value: "elasticsearch_password"
+          - name: KIBANA_PASSWORD
+            value: "kibana_password"
+      requirements:
+        - host: elasticsearch_vm
+
+    kibana_container:
+      type: tosca.nodes.nfv.VduContainer
+      properties:
+        name: kibana
+        image:
+          name: kibana
+          version: '8.10.3'
+        env:
+          - name: ELASTICSEARCH_HOSTS
+            value: "http://elasticsearch:9200"
+        port:
+          protocol: TCP
+          port: 5601
+      requirements:
+        - host: elasticsearch_vm

@@ -1,0 +1,111 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - tosca-normative-types:1.0.0-SNAPSHOT
+  - alien4cloud-types:1.4.0
+  - apache-types:1.0.0
+
+topology_template:
+  description: Apache Server Deployment
+  node_templates:
+    apache_server:
+      type: Apache::Server
+      properties:
+        version: 2.4
+        listen_port: 80
+        document_root: /var/www
+
+    compute_node:
+      type: tosca.nodes.ScalableCompute
+      properties:
+        min_instances: 1
+        max_instances: 1
+        default_instances: 1
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: PRIVATE
+
+    data_endpoint:
+      type: tosca.nodes.NetworkEndpoint
+      properties:
+        protocol: tcp
+        network: PRIVATE
+        secure: false
+      requirements:
+        - bind:
+            node: network
+            relationship: tosca.relationships.Network
+
+    admin_endpoint:
+      type: tosca.nodes.NetworkEndpoint
+      properties:
+        protocol: tcp
+        network: PRIVATE
+        secure: true
+      requirements:
+        - bind:
+            node: network
+            relationship: tosca.relationships.Network
+
+  relationship_templates:
+    apache_compute_relationship:
+      type: tosca.relationships.HostedOn
+      properties:
+        ports:
+          - 80
+      interfaces:
+        - configure: scripts/configure.sh
+
+  workflows:
+    deploy:
+      description: Deploy Apache server
+      steps:
+        - install_and_configure:
+            target: apache_server
+            scripts:
+              install: scripts/install.sh
+              configure: scripts/configure.sh
+        - start_server:
+            target: apache_server
+            scripts:
+              start: scripts/start.sh
+
+    stop_server:
+      description: Stop Apache server
+      steps:
+        - stop:
+            target: apache_server
+            scripts:
+              stop: scripts/stop.sh
+
+    start_server:
+      description: Start Apache server
+      steps:
+        - start:
+            target: apache_server
+            scripts:
+              start: scripts/start.sh
+
+    restart_server:
+      description: Restart Apache server
+      steps:
+        - restart:
+            target: apache_server
+            scripts:
+              restart: scripts/restart.sh
+
+    curl_welcome_page:
+      description: Curl Apache welcome page
+      steps:
+        - curl:
+            target: apache_server
+            scripts:
+              curl: scripts/curl.sh
+
+  outputs:
+    apache_url:
+      description: URL of the Apache server
+      value: { get_attribute: [apache_server, endpoint, data_endpoint, url] }

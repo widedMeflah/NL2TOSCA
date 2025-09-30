@@ -1,0 +1,128 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: webapp-deployment
+  template_version: 1.0.0
+  template_author: user
+
+description: Web application deployment on Tomcat server
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  org.webapp.nodes.JavaRuntime:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      component_version:
+        type: string
+        required: true
+      download_url:
+        type: string
+        required: true
+      install_dir:
+        type: string
+        required: true
+    interfaces:
+      Standard:
+        create:
+          implementation: scripts/install_java.sh
+
+  org.webapp.nodes.Tomcat:
+    derived_from: tosca.nodes.WebServer
+    properties:
+      component_version:
+        type: string
+        required: true
+      download_url:
+        type: string
+        required: true
+      install_dir:
+        type: string
+        required: true
+      port:
+        type: integer
+        default: 8080
+    attributes:
+      server_url: { concat: ["http://", get_attribute: [HOST, public_ip_address], ":", get_property: [SELF, port]] }
+    requirements:
+      - host: tosca.nodes.Compute
+      - java: org.webapp.nodes.JavaRuntime
+    interfaces:
+      Standard:
+        create:
+          implementation: scripts/install_tomcat.sh
+
+  org.webapp.nodes.WebApplication:
+    derived_from: tosca.nodes.WebApplication
+    properties:
+      context_path:
+        type: string
+        required: true
+      war_file_url:
+        type: string
+        required: true
+    attributes:
+      application_url: { concat: [get_attribute: [HOST, server_url], get_property: [SELF, context_path]] }
+    requirements:
+      - host: org.webapp.nodes.Tomcat
+    interfaces:
+      Standard:
+        create:
+          implementation: scripts/deploy_war.sh
+
+topology_template:
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 10 GB
+            mem_size: 4096 MB
+
+    Java:
+      type: org.webapp.nodes.JavaRuntime
+      properties:
+        component_version: "11"
+        download_url: { get_input: java_url }
+        install_dir: "/opt/java"
+      requirements:
+        - host: Compute
+
+    TomcatServer:
+      type: org.webapp.nodes.Tomcat
+      properties:
+        component_version: "9.0"
+        download_url: { get_input: tomcat_url }
+        install_dir: "/opt/tomcat"
+        port: 8080
+      requirements:
+        - host: Compute
+        - java: Java
+
+    WebApp:
+      type: org.webapp.nodes.WebApplication
+      properties:
+        context_path: "/myapp"
+        war_file_url: { get_input: war_url }
+      requirements:
+        - host: TomcatServer
+
+  inputs:
+    java_url:
+      type: string
+      required: true
+    tomcat_url:
+      type: string
+      required: true
+    war_url:
+      type: string
+      required: true
+
+  outputs:
+    application_url:
+      value: { get_attribute: [WebApp, application_url] }
+    tomcat_url:
+      value: { get_attribute: [TomcatServer, server_url] }

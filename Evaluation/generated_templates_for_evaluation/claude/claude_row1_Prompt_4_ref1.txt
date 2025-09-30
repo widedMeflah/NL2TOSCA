@@ -1,0 +1,80 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: alien4cloud_basic_setup
+  template_version: 1.0.0
+  template_author: auto-generated
+
+description: Basic Alien4Cloud topology with JDK and Elasticsearch
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien4cloud-extended-types:3.0.0
+
+topology_template:
+  node_templates:
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: "192.168.1.0/24"
+
+    AppServer:
+      type: tosca.nodes.Compute
+      requirements:
+        - network: Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "4 GB"
+            disk_size: "50 GB"
+
+    DBServer:
+      type: tosca.nodes.Compute
+      requirements:
+        - network: Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "4 GB"
+            disk_size: "100 GB"
+
+    JDK_App:
+      type: tosca.nodes.SoftwareComponent.JDK
+      properties:
+        version: "11"
+      requirements:
+        - host: AppServer
+
+    JDK_DB:
+      type: tosca.nodes.SoftwareComponent.JDK
+      properties:
+        version: "11"
+      requirements:
+        - host: DBServer
+
+    Alien4Cloud:
+      type: org.alien4cloud.nodes.Application
+      requirements:
+        - host: AppServer
+        - dependency: JDK_App
+        - elasticsearch: Elasticsearch
+
+    Elasticsearch:
+      type: org.alien4cloud.nodes.Elasticsearch
+      properties:
+        cluster_name: "alien4cloud-cluster"
+        version: "7.17.0"
+      requirements:
+        - host: DBServer
+        - dependency: JDK_DB
+
+  outputs:
+    alien4cloud_url:
+      description: URL to access Alien4Cloud
+      value: { get_attribute: [ Alien4Cloud, url ] }
+    elasticsearch_endpoint:
+      description: Elasticsearch endpoint
+      value: { get_attribute: [ Elasticsearch, endpoint ] }

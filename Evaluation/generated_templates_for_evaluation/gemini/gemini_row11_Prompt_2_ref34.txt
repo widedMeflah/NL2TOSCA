@@ -1,0 +1,240 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: A scalable Galaxy instance with SLURM integration on CentOS 7, encrypted storage, and access notification.
+
+metadata:
+  orchestrator: INDIGO
+
+inputs:
+  admin_email:
+    type: string
+    description: Email address for sending setup notifications and access instructions.
+    required: true
+  galaxy_admin_password:
+    type: string
+    description: Password for the Galaxy administrator account.
+    required: true
+    hidden: true
+  data_volume_size:
+    type: integer
+    description: Size of the encrypted data volume in GB.
+    default: 100
+    constraints:
+      - greater_than: 0
+  worker_nodes_initial_count:
+    type: integer
+    description: Initial number of SLURM worker nodes.
+    default: 1
+    constraints:
+      - greater_than_or_equal: 0
+  worker_nodes_max_count:
+    type: integer
+    description: Maximum number of SLURM worker nodes for scaling.
+    default: 5
+    constraints:
+      - greater_than_or_equal: { get_input: worker_nodes_initial_count }
+
+node_templates:
+  galaxy_slurm_head_compute:
+    type: tosca.nodes.Compute
+    properties:
+      os:
+        architecture: x86_64
+        type: Linux
+        distribution: CentOS
+        version: "7"
+      capabilities:
+        host:
+          disk_size: 50 GB
+          num_cpus: 4
+          mem_size: 8 GB
+        scalable:
+          min_instances: 1
+          max_instances: 1
+        endpoint:
+          ports:
+            galaxy_web_port:
+              protocol: tcp
+              source: 80
+              target: 8080
+
+  galaxy_data_storage:
+    type: tosca.nodes.BlockStorage
+    properties:
+      size: { get_input: data_volume_size }
+      encryption: true
+    requirements:
+      - attachment:
+          node: galaxy_slurm_head_compute
+          relationship: tosca.relationships.AttachesTo
+
+  galaxy_data_mount_point:
+    type: tosca.nodes.SoftwareComponent
+    properties:
+      install_script: |
+        #!/bin/bash
+        sudo mkfs.ext4 /dev/sdb
+        sudo mkdir -p /mnt/galaxy_data
+        sudo mount /dev/sdb /mnt/galaxy_data
+        echo "/dev/sdb /mnt/galaxy_data ext4 defaults 0 0" | sudo tee -a /etc/fstab
+    requirements:
+      - host:
+          node: galaxy_slurm_head_compute
+          relationship: tosca.relationships.HostedOn
+      - depends_on:
+          node: galaxy_data_storage
+          relationship: tosca.relationships.DependsOn
+
+  slurm_controller:
+    type: tosca.nodes.SoftwareComponent
+    properties:
+      install_script: |
+        #!/bin/bash
+        sudo yum install -y epel-release
+        sudo yum install -y munge slurm slurm-slurmctld slurm-libs
+        sudo systemctl enable --now munge
+        sudo systemctl start munge
+        if [ ! -f /etc/munge/munge.key ]; then
+            sudo /usr/sbin/create-munge-key
+        fi
+        echo "
+        ClusterName=galaxy_slurm
+        ControlMachine=$(hostname -I | awk '{print $1}')
+        AuthType=auth/munge
+        CommunicationParameters=NoInfiniband,NoPortSwap
+        SlurmctldPort=6817
+        SlurmdPort=6818
+        NodeName=$(hostname -s) State=UNKNOWN CPUs=4 RealMemory=8000
+        PartitionName=default Nodes=$(hostname -s) Default=YES MaxTime=INFINITE State=UP
+        " | sudo tee /etc/slurm/slurm.conf
+        sudo systemctl enable --now slurmctld
+        sudo systemctl start slurmctld
+    requirements:
+      - host:
+          node: galaxy_slurm_head_compute
+          relationship: tosca.relationships.HostedOn
+
+  galaxy_app:
+    type: tosca.nodes.SoftwareComponent
+    properties:
+      install_script: |
+        #!/bin/bash
+        sudo yum install -y python-devel gcc libxml2-devel libxslt-devel ncurses-devel bzip2-devel xz-devel readline-devel sqlite-devel openssl-devel
+        sudo yum install -y python-pip
+        sudo pip install virtualenv
+        sudo useradd -m -U -s /bin/bash galaxy
+        sudo mkdir -p /opt/galaxy
+        sudo chown -R galaxy:galaxy /opt/galaxy
+        sudo mkdir -p /mnt/galaxy_data/galaxy_config
+        sudo chown -R galaxy:galaxy /mnt/galaxy_data
+
+        su - galaxy -c "
+            cd /opt/galaxy
+            git clone -b release_21.09 https://github.com/galaxyproject/galaxy.git .
+            sh scripts/common_startup.sh
+            cp config/galaxy.yml.sample config/galaxy.yml
+            sed -i 's|database_connection: postgresql:///galaxy|database_connection: sqlite:////mnt/galaxy_data/galaxy.sqlite|' config/galaxy.yml
+            sed -i '/^admin_users:$/a\  - admin@example.com' config/galaxy.yml
+            sed -i '/^admin_users:$/a\  bootstrap_admin_users:\n    admin@example.com: { get_input: galaxy_admin_password }' config/galaxy.yml
+            sed -i 's|file_path: database/files|file_path: /mnt/galaxy_data/files|' config/galaxy.yml
+            sed -i 's|data_dir: database|data_dir: /mnt/galaxy_data|' config/galaxy.yml
+            sed -i 's|tool_data_path: tool-data|tool_data_path: /mnt/galaxy_data/tool-data|' config/galaxy.yml
+            sed -i 's|job_working_directory: database/jobs|job_working_directory: /mnt/galaxy_data/jobs|' config/galaxy.yml
+
+            cp config/job_conf.xml.sample config/job_conf.xml
+            sed -i 's|<tool id=\"default\" runner=\"local\" />|<tool id=\"default\" runner=\"slurm\" />|' config/job_conf.xml
+            sed -i 's|<destination id=\"local\" runner=\"local\" />|<destination id=\"slurm\" runner=\"slurm\" />\n<plugins>\n<plugin id=\"slurm\" type=\"runner\" load=\"galaxy.jobs.runners.slurm:SlurmJobRunner\" />\n</plugins>|' config/job_conf.xml
+            sed -i '/<destination id=\"slurm\"/a\          <param id=\"partition\">default</param>' config/job_conf.xml
+
+            . .venv/bin/activate
+            pip install psycopg2-binary
+        "
+        su - galaxy -c "cd /opt/galaxy; sh run.sh --daemon"
+    requirements:
+      - host:
+          node: galaxy_slurm_head_compute
+          relationship: tosca.relationships.HostedOn
+      - depends_on:
+          node: slurm_controller
+          relationship: tosca.relationships.DependsOn
+      - depends_on:
+          node: galaxy_data_mount_point
+          relationship: tosca.relationships.DependsOn
+
+  slurm_worker_compute:
+    type: tosca.nodes.Compute
+    properties:
+      os:
+        architecture: x86_64
+        type: Linux
+        distribution: CentOS
+        version: "7"
+      capabilities:
+        host:
+          disk_size: 30 GB
+          num_cpus: 2
+          mem_size: 4 GB
+        scalable:
+          min_instances: { get_input: worker_nodes_initial_count }
+          max_instances: { get_input: worker_nodes_max_count }
+          default_instances: { get_input: worker_nodes_initial_count }
+
+  slurm_worker:
+    type: tosca.nodes.SoftwareComponent
+    properties:
+      install_script: |
+        #!/bin/bash
+        sudo yum install -y epel-release
+        sudo yum install -y munge slurm slurm-slurmd slurm-libs
+        sudo systemctl enable --now munge
+        sudo systemctl start munge
+        # The munge key needs to be synchronized from the controller (e.g., via shared storage or orchestrator capability)
+        # For this example, assuming the orchestrator handles munge.key distribution.
+        SLURM_CONTROLLER_IP="{ get_attribute: [ galaxy_slurm_head_compute, private_address ] }" # Using private_address for internal communication
+        if [ "$SLURM_CONTROLLER_IP" == "" ]; then
+            SLURM_CONTROLLER_IP=$(getent hosts galaxy_slurm_head_compute | awk '{ print $1 ; exit }')
+        fi
+
+        echo "
+        ClusterName=galaxy_slurm
+        ControlMachine=$SLURM_CONTROLLER_IP
+        AuthType=auth/munge
+        CommunicationParameters=NoInfiniband,NoPortSwap
+        SlurmctldPort=6817
+        SlurmdPort=6818
+        NodeName=$(hostname -s) State=UNKNOWN CPUs=2 RealMemory=4000
+        " | sudo tee /etc/slurm/slurm.conf
+        sudo systemctl enable --now slurmd
+        sudo systemctl start slurmd
+        # After worker starts, it should register with controller.
+        # For new nodes, controller's slurm.conf or scontrol update would be needed typically.
+    requirements:
+      - host:
+          node: slurm_worker_compute
+          relationship: tosca.relationships.HostedOn
+      - depends_on:
+          node: slurm_controller
+          relationship: tosca.relationships.DependsOn
+
+groups:
+  slurm_worker_scaling_group:
+    type: tosca.groups.Scaling
+    members: [slurm_worker_compute]
+    properties:
+      min_instances: { get_input: worker_nodes_initial_count }
+      max_instances: { get_input: worker_nodes_max_count }
+      default_instances: { get_input: worker_nodes_initial_count }
+
+outputs:
+  galaxy_access_url:
+    description: URL to access the Galaxy instance.
+    value: { get_attribute: [ galaxy_slurm_head_compute, public_address, galaxy_web_port ] }
+  galaxy_admin_username:
+    description: Galaxy administrator username.
+    value: "admin@example.com"
+  setup_complete_notification_recipient:
+    description: The email address to which access instructions will be sent.
+    value: { get_input: admin_email }
+  galaxy_admin_password_info:
+    description: "Galaxy administrator password. Please keep it secure."
+    value: { get_input: galaxy_admin_password }

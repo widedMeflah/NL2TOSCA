@@ -1,0 +1,90 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  Sample system running a JavaScript (Node.js) application with network-accessible, structured persistent storage, configurable ports, on Linux.
+
+topology_template:
+  inputs:
+    app_port:
+      type: integer
+      description: Port to expose the Node.js application
+      default: 3000
+    db_port:
+      type: integer
+      description: Port to expose the database service
+      default: 5432
+
+  node_templates:
+    linux_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    nodejs_runtime:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: linux_host
+      properties:
+        component_version: 18.x
+        description: Node.js Runtime
+
+    sample_app:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: linux_host
+        - dependency: nodejs_runtime
+        - database: db_server
+      properties:
+        component_version: 1.0.0
+        url_path: /
+        admin_user: admin
+        admin_password: changeme
+        port: { get_input: app_port }
+
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_sample_app.sh
+          configure:
+            implementation: scripts/configure_port.sh
+            inputs:
+              port: { get_input: app_port }
+          start:
+            implementation: scripts/start_sample_app.sh
+
+    db_server:
+      type: tosca.nodes.Database
+      requirements:
+        - host: linux_host
+      properties:
+        port: { get_input: db_port }
+        name: sampledb
+        user: dbuser
+        password: dbpassword
+        structured: true
+        network_accessible: true
+        type: postgresql
+
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_db.sh
+          configure:
+            implementation: scripts/configure_db_port.sh
+            inputs:
+              port: { get_input: db_port }
+          start:
+            implementation: scripts/start_db.sh
+
+  outputs:
+    app_url:
+      description: URL to access the Node.js application
+      value: { concat: [ 'http://', { get_attribute: [ linux_host, public_address ] }, ':', { get_input: app_port } ] }
+
+    db_url:
+      description: Network address to access the database
+      value: { concat: [ 'postgresql://dbuser:dbpassword@', { get_attribute: [ linux_host, public_address ] }, ':', { get_input: db_port }, '/sampledb' ] }

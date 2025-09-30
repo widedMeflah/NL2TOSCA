@@ -1,0 +1,118 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Galaxy Instance for Data Analysis
+
+  inputs:
+    galaxys_version:
+      type: string
+      default: '22.05'
+    slurm_version:
+      type: string
+      default: '20.11.8'
+    email:
+      type: string
+      required: true
+    instance_type:
+      type: string
+      default: 'm5.large'
+    worker_count:
+      type: integer
+      default: 2
+
+  node_templates:
+    galaxy_server:
+      type: tosca.nodes.Compute
+      properties:
+        os: 'centos'
+        os_version: '7'
+        network_name: private
+        instance_type: { get_input: instance_type }
+        components:
+          - galaxys
+          - encrypted_storage
+        relationships:
+          - connects_to: database
+          - connects_to: slurm_controller
+          - connects_to: encrypted_storage
+
+    database:
+      type: tosca.nodes.Database
+      properties:
+        database_name: galaxy_db
+        database_user: galaxy
+        database_password: { get_secret: galaxy_db_password }
+        endpoint:
+          protocol: tcp
+          ports:
+            default: 5432
+      components:
+        - postgresql
+
+    slurm_controller:
+      type: tosca.nodes.Compute
+      properties:
+        os: 'centos'
+        os_version: '7'
+        network_name: private
+        instance_type: { get_input: instance_type }
+        components:
+          - slurm
+      relationships:
+        - connects_to: encrypted_storage
+
+    worker_nodes:
+      type: tosca.nodes.Compute
+      properties:
+        os: 'centos'
+        os_version: '7'
+        network_name: private
+        instance_type: { get_input: instance_type }
+        count: { get_input: worker_count }
+        components:
+          - slurm
+        relationships:
+          - connects_to: slurm_controller
+          - connects_to: encrypted_storage
+
+    encrypted_storage:
+      type: tosca.nodes.Storage
+      properties:
+        size: 100 GB
+        encrypted: true
+        volume_type: encrypted_volume
+        location: /data
+
+  relationships:
+    - type: tosca.relationships.Network
+      properties:
+        network_name: private
+
+  outputs:
+    galaxy_access:
+      description: URL to access Galaxy
+      value: { concat: ['http://', { get_attribute: [galaxy_server, public_address] }, ':8080'] }
+    notification_email:
+      description: Email sent upon deployment completion
+      value: { get_input: email }
+
+  groups:
+    worker_cluster:
+      type: tosca.groups.Scalable
+      properties:
+        min_instances: 2
+        max_instances: 10
+        default_instances: 2
+        scaling_policies:
+          - policy_type: cpu_threshold
+            target: worker_nodes
+            metric: cpu_utilization
+            threshold: 80%
+            scaling_increment: 1
+
+  post_deploy:
+    send_notification:
+      type: tosca.interfaces.Notification
+      inputs:
+        email: { get_input: email }
+        message: 'Galaxy deployment completed successfully.'

@@ -1,0 +1,50 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: MongoDB service hosted on a Linux-based compute instance
+  node_templates:
+    MongoDB:
+      type: tosca.nodes.DBMS.MongoDB
+      properties:
+        port:
+          type: integer
+          description: The port to use for the MongoDB service
+          constraints:
+            - greater_or_equal: 1024
+            - less_or_equal: 65535
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              mongodb: { get_property: [ SELF, port ] }
+      requirements:
+        - host:
+            node: Compute
+            relationship: tosca.relationships.HostedOn
+            properties:
+              port_range: [ 1024, 65535 ]
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        os: linux
+        network_name: private
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            network_name: private
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+  relationship_templates:
+    HostedOn:
+      type: tosca.relationships.HostedOn
+  output_templates:
+    mongodb_port:
+      description: The port used to access the MongoDB service
+      value: { get_attribute: [ MongoDB, port ] }
+    host_ip:
+      description: The IP address of the host machine
+      value: { get_attribute: [ Compute, public_address ] }

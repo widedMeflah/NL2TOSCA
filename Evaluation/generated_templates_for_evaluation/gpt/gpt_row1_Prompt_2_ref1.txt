@@ -1,0 +1,95 @@
+tosca_definitions_version: alien_dsl_1_4_0
+
+description: >
+  TOSCA template for a system including a Java web application platform (Tomcat) 
+  and a search engine (Elasticsearch), both connected to a network.
+
+topology_template:
+  node_templates:
+    web_server_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            protocol: tcp
+
+    search_engine_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            protocol: tcp
+
+    network:
+      type: tosca.nodes.network.Network
+
+    web_application:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: web_server_host
+        - dependency:
+            node: java_runtime
+        - connectivity:
+            node: search_engine
+      properties:
+        context_path: /myapp
+
+    java_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: 11
+        component_name: openjdk-11-jre-headless
+      requirements:
+        - host: web_server_host
+
+    web_platform:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 8080
+        install_dir: /opt/tomcat
+        server_version: "9.0"
+      requirements:
+        - host: web_server_host
+        - dependency:
+            node: java_runtime
+        - hosted_on:
+            node: network
+
+    search_engine:
+      type: tosca.nodes.SearchEngine.Elasticsearch
+      properties:
+        version: 7.10.0
+        port: 9200
+        data_dir: /var/lib/elasticsearch
+      requirements:
+        - host: search_engine_host
+        - hosted_on:
+            node: network
+
+  outputs:
+    web_app_url:
+      description: URL for accessing the web application
+      value: "http://{ get_attribute: [ web_server_host, public_address ] }:8080/myapp"
+    elasticsearch_url:
+      description: URL for accessing the Elasticsearch service
+      value: "http://{ get_attribute: [ search_engine_host, public_address ] }:9200"

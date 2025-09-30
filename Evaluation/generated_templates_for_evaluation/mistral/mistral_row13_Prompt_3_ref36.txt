@@ -1,0 +1,125 @@
+definition_versions:
+  - uri: http://docs.oasis-open.org/tosca/TOSCA-Simple-Profile-YAML/20160415/
+    profile_name: tosca_simple_profile_yaml_1_0
+
+node_templates:
+  ElasticClusterFrontEnd:
+    type: compute
+    topology_template:
+      policy:
+        node_group:
+          - name: elastic_frontend_group
+            node_ref: ElasticClusterFrontEnd
+            properties:
+              workload_manager: ['Torque', 'SGE', 'Slurm', 'Condor']
+              environment_type: hybrid
+    properties:
+      os: ubuntu_14.04
+      cpu: "*"
+      memory: "*"
+
+  GalaxyPortal:
+    type: compute
+    topology_template:
+      policy:
+        node_group:
+          - name: galaxy_portal_group
+            node_ref: GalaxyPortal
+            properties:
+              admin_email: "*"
+              api_key: "*"
+    properties:
+      os: ubuntu_14.04
+      cpu: "*"
+      memory: "*"
+      application: Galaxy
+
+  SlurmLRMSFrontEnd:
+    type: compute
+    topology_template:
+      policy:
+        node_group:
+          - name: slurm_frontend_group
+            node_ref: SlurmLRMSFrontEnd
+            properties:
+              cpu: 4
+              memory: '16GB'
+    properties:
+      os: ubuntu_14.04
+      application: Slurm
+
+  ComputeNode:
+    type: compute
+    topology_template:
+      policy:
+        node_group:
+          - name: compute_nodes_group
+            node_template_ref: ComputeNode
+    properties:
+      os: ubuntu_14.04
+      cpu: "*"
+      memory: "*"
+
+  WorkerNode:
+    type: compute
+    topology_template:
+      policy:
+        node_group:
+          - name: worker_nodes_group
+            node_template_ref: WorkerNode
+    properties:
+      os: ubuntu_14.04
+      cpu: "*"
+      memory: "*"
+      workload_manager: Slurm
+
+  GalaxyWorkerNode:
+    type: compute
+    topology_template:
+      policy:
+        node_group:
+          - name: galaxy_worker_nodes_group
+            node_template_ref: GalaxyWorkerNode
+    properties:
+      os: ubuntu_14.04
+      cpu: "*"
+      memory: "*"
+      workload_manager: Slurm
+      export_directory: "*"
+
+links:
+  GalaxyPortal-SlurmLRMSFrontEnd:
+    source: GalaxyPortal
+    target: SlurmLRMSFrontEnd
+
+  SlurmLRMSFrontEnd-ComputeNode:
+    source: SlurmLRMSFrontEnd
+    target: ComputeNode
+    properties:
+      role: frontend
+
+  SlurmLRMSFrontEnd-WorkerNode:
+    source: SlurmLRMSFrontEnd
+    target: WorkerNode
+    properties:
+      role: worker
+
+  SlurmLRMSFrontEnd-GalaxyWorkerNode:
+    source: SlurmLRMSFrontEnd
+    target: GalaxyWorkerNode
+    properties:
+      role: galaxy_worker
+
+outputs:
+  galaxy_url: GalaxyPortal.url
+  cluster_ip: SlurmLRMSFrontEnd.ip
+  cluster_credentials: SlurmLRMSFrontEnd.credentials
+
+service_templates:
+  ElasticCluster:
+    type: service
+    topology_template:
+      policy:
+        node_group:
+          - name: cluster_nodes_group
+            node_group_ref: [elastic_frontend_group, compute_nodes_group, worker_nodes_group, galaxy_worker_nodes_group]

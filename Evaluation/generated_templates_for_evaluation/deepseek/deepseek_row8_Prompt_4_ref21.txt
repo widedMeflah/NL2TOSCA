@@ -1,0 +1,128 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Two-tier application with Web Server and Database Server
+  node_templates:
+    WebServer:
+      type: tosca.nodes.Ubuntu
+      properties:
+        strategy: create
+        packages:
+          - apache2
+          - php7.0
+          - php7.0-mysql
+          - libapache2-mod-php7.0
+        config:
+          apache2:
+            ports:
+              80: Listen
+              443: Listen
+            document_root: /var/www/html
+            ssl: true
+        services:
+          apache2:
+            enabled: true
+            running: true
+            start: true
+        files:
+          /var/www/html/index.php:
+            content: <?php echo "Wine Cellar Application"; ?>
+        ports:
+          80: exposed
+          443: exposed
+        relationships:
+          - type: tosca.relationships.Networks.Peer
+            target: DatabaseServer
+            properties:
+              network_name: private
+      interfaces:
+        Standard:
+          inputs:
+            - port: 80
+            - port: 443
+            - url: { get_property: [ SELF, url ] }
+          create: |
+            apt-get update
+            apt-get install -y apache2 php7.0 php7.0-mysql libapache2-mod-php7.0
+            systemctl start apache2
+            systemctl enable apache2
+          configure: |
+            sed -i "s/Listen 80/Listen 0.0.0.0:80/g" /etc/apache2/ports.conf
+            sed -i "s/Listen 443/Listen 0.0.0.0:443/g" /etc/apache2/ports.conf
+            a2enmod ssl
+            a2ensite default-ssl
+            systemctl reload apache2
+          start: |
+            systemctl start apache2
+          stop: |
+            systemctl stop apache2
+          delete: |
+            systemctl stop apache2
+            apt-get purge -y apache2 php7.0 php7.0-mysql libapache2-mod-php7.0
+            rm -rf /var/www/html
+
+    DatabaseServer:
+      type: tosca.nodes.Ubuntu
+      properties:
+        strategy: create
+        packages:
+          - mysql-server
+        config:
+          mysql:
+            bind-address: 0.0.0.0
+        services:
+          mysql:
+            enabled: true
+            running: true
+            start: true
+        ports:
+          3306: exposed
+        relationships:
+          - type: tosca.relationships.Networks.Peer
+            target: WebServer
+            properties:
+              network_name: private
+      interfaces:
+        Standard:
+          inputs:
+            - port: 3306
+          create: |
+            apt-get update
+            apt-get install -y mysql-server
+            systemctl start mysql
+            systemctl enable mysql
+          configure: |
+            sed -i "s/bind-address.*127.0.0.1/bind-address = 0.0.0.0/" /etc/mysql/my.cnf
+            mysql -uroot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY 'password'; FLUSH PRIVILEGES;"
+            systemctl reload mysql
+          start: |
+            systemctl start mysql
+          stop: |
+            systemctl stop mysql
+          delete: |
+            systemctl stop mysql
+            apt-get purge -y mysql-server
+            rm -rf /var/lib/mysql
+
+  parameters:
+    app_url:
+      type: string
+      required: true
+    db_root_password:
+      type: string
+      required: true
+    db_name:
+      type: string
+      default: winecellar
+    db_user:
+      type: string
+      default: wineuser
+    db_password:
+      type: string
+      default: winepass
+
+  deployment_artifacts:
+    app_artifact:
+      type: tosca.artifacts.DeploymentArtifact
+      url: { get_input: app_url }
+      target: /var/www/html

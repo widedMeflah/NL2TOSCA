@@ -1,0 +1,135 @@
+tosca_definitions_version: cloudify_dsl_1_4
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/5.0.8/types.yaml
+
+inputs:
+  admin_email:
+    description: Admin email address for notifications and logging in.
+    type: string
+  api_key:
+    description: API key for accessing the Galaxy instance.
+    type: string
+  galaxy_version:
+    description: Specific version of Galaxy to be deployed.
+    type from: [1.5, 2.0, 20.01] # Example versions
+  ssh_public_key:
+    description: SSH public key for secure access.
+    type: string
+  cluster_worker_count:
+    default: 3
+    description: Number of worker nodes in the cluster.
+    type: integer
+  front_end_spec:
+    description: Hardware specifications for the front-end node.
+    type: json
+  worker_node_spec:
+    description: Hardware specifications for each worker node.
+    type: json
+  storage_size_gb:
+    default: 100
+    description: Total amount of storage needed in GB.
+    type: integer
+  hybrid_support:
+    default: false
+    description: Enable or disable support for a hybrid environment.
+    type: boolean
+  encryption_enabled:
+    default: false
+    description: Enable or disable storage encryption.
+    type: boolean
+  instance_description:
+    description: Description of the Galaxy instance to be deployed.
+    type: string
+  specific_galaxy_tools:
+    description: List of specific Galaxy tools to install.
+    type: list
+  reference_data_sets:
+    description: Reference data sets to include in the deployment.
+    type: list
+  cern_vm_fs_config:
+    default: {}
+    description: Configuration for CernVM-FS integration.
+    type: json
+
+node_templates:
+
+  galaxy_cluster:
+    type: cloudify.nodes.WebServerGroup
+    properties:
+      image: CentOS7_WebServerImage # Hypothetical image name
+      count: { get_input: cluster_worker_count }
+      flavor: 
+        ram_gb: { get_input: front_end_spec.ram_gb }
+        vcpus: { get_input: front_end_spec.vcpus }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: cluster_manager
+
+  worker_nodes:
+    type: cloudify.nodes.Compute
+    properties: 
+      image: CentOS7_WorkerImage # Hypothetical image name
+      flavor: 
+        ram_gb: { get_input: worker_node_spec.ram_gb }
+        vcpus: { get_input: worker_node_spec.vcpus }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: cluster_manager
+
+  slurm_scheduler:
+    type: cloudify.nodes.Scheduler
+    properties:
+      scheduler_type: SLURM
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: galaxy_cluster
+
+  storage:
+    type: cloudify.nodes.RootVolume
+    properties:
+      size: { get_input: storage_size_gb }
+      encryption_enabled: { get_input: encryption_enabled }
+
+  cluster_manager:
+    type: cloudify.nodes.Compute
+    properties:
+      image: CentOS7_ManagerImage # Hypothetical image name
+      flavor: 
+        ram_gb: { get_input: front_end_spec.ram_gb + 2 } # Extra RAM for management
+        vcpus: { get_input: front_end_spec.vcpus }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: slurm_scheduler
+
+workflows:
+
+  deploy_galaxy_cluster:
+    mapping: 
+      inputs:
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        galaxy_version: { get_input: galaxy_version }
+        ssh_public_key: { get_input: ssh_public_key }
+        specific_galaxy_tools: { get_input: specific_galaxy_tools }
+        reference_data_sets: { get_input: reference_data_sets }
+        cern_vm_fs_config: { get_input: cern_vm_fs_config }
+      tasks:
+        - install_galaxy:
+            implementation: scripts/install_galaxy.py
+            inputs:
+              galaxy_version: { get_input: galaxy_version }
+              specific_tools: { get_input: specific_galaxy_tools }
+              reference_data_sets: { get_input: reference_data_sets }
+              cern_vm_fs_config: { get_input: cern_vm_fs_config }
+
+  send_confirmation_email:
+    mapping: 
+      inputs:
+        admin_email: { get_input: admin_email }
+      tasks:
+        - notify_admin:
+            implementation: scripts/send_email.py
+            inputs:
+              email_address: { get_input: admin_email }
+              message: "Galaxy instance deployed successfully. Please use the following API key for access: {get_input: api_key}"

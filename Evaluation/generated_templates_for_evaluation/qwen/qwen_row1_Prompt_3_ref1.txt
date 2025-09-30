@@ -1,0 +1,105 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment topology for Alien4Cloud with remote Elasticsearch
+
+topology_template:
+
+  node_templates:
+
+    Compute_Node_Alien4cloud:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        number_of_instances: 1
+        vm_flavor:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+        image: Ubuntu 20.04
+      capabilities:
+        nfv_compute:
+          properties:
+            availability_zone: us-east-1a
+            hypervisor_type: kvm
+            root_disk_size: 50 GB
+
+    Compute_Node_Elasticsearch:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        number_of_instances: 1
+        vm_flavor:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+            disk_size: 100 GB
+        image: Ubuntu 20.04
+      capabilities:
+        nfv_compute:
+          properties:
+            availability_zone: us-east-1a
+            hypervisor_type: kvm
+            root_disk_size: 100 GB
+
+    JDK_Alien4cloud:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: OpenJDK 11
+        version: 11.0.15
+      requirements:
+        - host:
+            node: Compute_Node_Alien4cloud
+            relationship: tosca.relationships.HostedOn
+
+    JDK_Elasticsearch:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: OpenJDK 11
+        version: 11.0.15
+      requirements:
+        - host:
+            node: Compute_Node_Elasticsearch
+            relationship: tosca.relationships.HostedOn
+
+    Alien4Cloud_Application:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: Alien4Cloud
+        version: 4.6.0
+      requirements:
+        - host:
+            node: JDK_Alien4cloud
+            relationship: tosca.relationships.HostedOn
+        - connects_to:
+            node: Elasticsearch_Service
+            relationship: tosca.relationships.ConnectsTo
+
+    Elasticsearch_Service:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: Elasticsearch
+        version: 7.17.3
+      requirements:
+        - host:
+            node: JDK_Elasticsearch
+            relationship: tosca.relationships.HostedOn
+
+    Network_Connection:
+      type: tosca.nodes.Network
+      properties:
+        name: Internal_Network
+        subnets:
+          - 192.168.100.0/24
+      capabilities:
+        network_endpoint:
+          properties:
+            ip_address: 192.168.100.10
+      requirements:
+        - connects:
+            node: Compute_Node_Alien4cloud
+            capability: nfv_compute
+            relationship: tosca.relationships.ConnectsTo
+        - connects:
+            node: Compute_Node_Elasticsearch
+            capability: nfv_compute
+            relationship: tosca.relationships.ConnectsTo

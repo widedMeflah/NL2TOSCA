@@ -1,0 +1,80 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: Basic Elasticsearch and Kibana deployment on an Ubuntu virtual machine.
+
+inputs:
+  elastic_password:
+    type: string
+    description: Secure password for the Elasticsearch 'elastic' user.
+    required: true
+    secret: true
+  kibana_system_password:
+    type: string
+    description: Secure password for the Elasticsearch 'kibana_system' user (used by Kibana for enrollment).
+    required: true
+    secret: true
+
+node_templates:
+  vm:
+    type: tosca.nodes.Compute
+    properties:
+      num_cpus: 2
+      mem_size: 4 GB # Reasonable amount of memory for Elasticsearch and Kibana
+    capabilities:
+      os:
+        properties:
+          architecture: x86_64
+          type: linux
+          distribution: ubuntu
+          version: 20.04 # Using a recent LTS version of Ubuntu
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 1
+      endpoint:
+        properties:
+          network_name: public # Assumes a 'public' network is available for external access
+
+  elasticsearch_server:
+    type: tosca.nodes.SoftwareComponent # Assumes orchestrator has logic for common software deployments
+    requirements:
+      - host: vm
+    properties:
+      version: "8.11.1" # Specified Elasticsearch version
+      http_port: 9200
+      transport_port: 9300
+      elastic_user_password: { get_input: elastic_password }
+      kibana_system_user_password: { get_input: kibana_system_password }
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint.Public
+        properties:
+          protocol: tcp
+          port: 9200
+          network_name: public # Expose Elasticsearch on the public network
+
+  kibana_server:
+    type: tosca.nodes.SoftwareComponent # Assumes orchestrator has logic for common software deployments
+    requirements:
+      - host: vm
+      - depends_on: elasticsearch_server # Kibana depends on Elasticsearch being deployed and running
+    properties:
+      version: "8.11.1" # Matching Elasticsearch version for compatibility
+      port: 5601
+      elasticsearch_url: { concat: ["http://", get_attribute: [vm, private_address], ":", 9200] } # Connect to Elasticsearch on the VM's private IP
+      elastic_user_password: { get_input: elastic_password }
+      kibana_system_user_password: { get_input: kibana_system_password }
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint.Public
+        properties:
+          protocol: tcp
+          port: 5601
+          network_name: public # Expose Kibana on the public network
+
+outputs:
+  elasticsearch_public_endpoint:
+    description: Public endpoint for accessing Elasticsearch.
+    value: { concat: ["http://", get_attribute: [elasticsearch_server, endpoint, public_address], ":", get_attribute: [elasticsearch_server, endpoint, port]] }
+  kibana_public_endpoint:
+    description: Public endpoint for accessing Kibana.
+    value: { concat: ["http://", get_attribute: [kibana_server, endpoint, public_address], ":", get_attribute: [kibana_server, endpoint, port]] }

@@ -1,0 +1,75 @@
+
+
+description: Alien4cloud deployment of web server for hosting website
+
+topology_template:
+  node_templates:
+    WebServer:
+      type: web_server
+      properties:
+        software_version: 2.4
+        port: 80
+        website_files_directory: /var/www
+        start_command: start_web_server
+        stop_command: stop_web_server
+        restart_command: restart_web_server
+        check_command: check_welcome_page
+        admin_secure_communication: true
+        data_endpoint_secure_communication: false
+
+    MonitoringNode:
+      type: monitoring_node
+      properties:
+        check_command: check_web_server_url
+
+    NodeTemplateRef:
+      type: compute_resource
+      properties:
+        instantiations: 1
+        min_instances: 1
+        max_instances: 1
+
+relationships:
+  WebServer_to_MonitoringNode:
+    type: monitors
+
+node_types:
+  web_server:
+    description: A web server to host a website
+    provider: Alien4cloud
+    requirements:
+      - type: compute_resource
+
+  monitoring_node:
+    description: A monitoring node to check the status of the web server
+    provider: Alien4cloud
+
+  compute_resource:
+    description: A computing resource to host the web server
+    provider: Alien4cloud
+
+operations:
+  start_web_server:
+    implementation: web_server_start_script
+
+  stop_web_server:
+    implementation: web_server_stop_script
+
+  restart_web_server:
+    implementation: web_server_restart_script
+
+  check_welcome_page:
+    implementation: check_welcome_page_script
+
+  check_web_server_url:
+    implementation: check_web_server_url_script
+
+interfaces:
+  web_server:
+    - name: admin_interface
+      protocol: ssh
+      security_mechanisms:
+        - password
+    - name: data_interface
+      protocol: http
+

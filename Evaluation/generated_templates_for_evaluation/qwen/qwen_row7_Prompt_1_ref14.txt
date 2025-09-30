@@ -1,0 +1,151 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: System to host and run a web application packaged as a WAR file on a Tomcat server, with Java installed and configurable OS and architecture.
+capability_types:
+  - name: os.Capability
+    derived_from: tosca.capabilities.Node
+    properties:
+      os_type:
+        type: string
+        description: The operating system type (e.g., Linux, Windows, Mac OS).
+      architecture:
+        type: string
+        description: The architecture type (e.g., 32-bit, 64-bit).
+
+  - name: java.Capability
+    derived_from: tosca.capabilities.Node
+    properties:
+      java_version:
+        type: string
+        description: The version of Java installed.
+      java_install_dir:
+        type: string
+        description: The directory where Java is installed.
+      java_download_url:
+        type: string
+        description: The URL to download the Java package.
+
+  - name: tomcat.Capability
+    derived_from: tosca.capabilities.Node
+    properties:
+      tomcat_version:
+        type: string
+        description: The version of Tomcat installed.
+      tomcat_install_dir:
+        type: string
+        description: The directory where Tomcat is installed.
+      tomcat_download_url:
+        type: string
+        description: The URL to download the Tomcat package.
+
+  - name: webapp.Capability
+    derived_from: tosca.capabilities.Node
+    properties:
+      war_file:
+        type: string
+        description: The WAR file to deploy.
+      webapp_url:
+        type: string
+        description: The URL to access the deployed web application.
+      server_url:
+        type: string
+        description: The URL to access the Tomcat server.
+
+node_types:
+  - name: os.Node
+    derived_from: tosca.nodes.Compute
+    capabilities:
+      host:
+        type: os.Capability
+    properties:
+      os_type:
+        type: string
+        description: The operating system type (e.g., Linux, Windows, Mac OS).
+      architecture:
+        type: string
+        description: The architecture type (e.g., 32-bit, 64-bit).
+
+  - name: java.Node
+    derived_from: tosca.nodes.SoftwareComponent
+    capabilities:
+      host:
+        type: os.Capability
+    properties:
+      java_version:
+        type: string
+        description: The version of Java installed.
+      java_install_dir:
+        type: string
+        description: The directory where Java is installed.
+      java_download_url:
+        type: string
+        description: The URL to download the Java package.
+
+  - name: tomcat.Node
+    derived_from: tosca.nodes.SoftwareComponent
+    capabilities:
+      host:
+        type: java.Capability
+    properties:
+      tomcat_version:
+        type: string
+        description: The version of Tomcat installed.
+      tomcat_install_dir:
+        type: string
+        description: The directory where Tomcat is installed.
+      tomcat_download_url:
+        type: string
+        description: The URL to download the Tomcat package.
+
+  - name: webapp.Node
+    derived_from: tosca.nodes.SoftwareComponent
+    capabilities:
+      host:
+        type: tomcat.Capability
+    properties:
+      war_file:
+        type: string
+        description: The WAR file to deploy.
+      webapp_url:
+        type: string
+        description: The URL to access the deployed web application.
+      server_url:
+        type: string
+        description: The URL to access the Tomcat server.
+
+topology_template:
+  node_templates:
+    os_node:
+      type: os.Node
+      properties:
+        os_type: Linux
+        architecture: 64-bit
+
+    java_node:
+      type: java.Node
+      properties:
+        java_version: 11
+        java_install_dir: /opt/java
+        java_download_url: https://example.com/java-11.tar.gz
+      requirements:
+        - host:
+            node: os_node
+
+    tomcat_node:
+      type: tomcat.Node
+      properties:
+        tomcat_version: 9.0.64
+        tomcat_install_dir: /opt/tomcat
+        tomcat_download_url: https://example.com/tomcat-9.0.64.tar.gz
+      requirements:
+        - host:
+            node: java_node
+
+    webapp_node:
+      type: webapp.Node
+      properties:
+        war_file: myapp.war
+        webapp_url: http://localhost:8080/myapp
+        server_url: http://localhost:8080
+      requirements:
+        - host:
+            node: tomcat_node

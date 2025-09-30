@@ -1,0 +1,59 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Sample JavaScript application with Node.js and persistent data storage
+  node_templates:
+    nodejs_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        application logic: Node.js
+        port: { get_input: app_port }
+      requirements:
+        - host: linux_container
+        - database: mysql_db
+
+    linux_container:
+      type: tosca.nodes.Compute
+      properties:
+        os: linux
+      capabilities:
+        host:
+          type: tosca.capabilities.Container
+
+    mysql_db:
+      type: tosca.nodes.Database
+      properties:
+        db_type: mysql
+        port: { get_input: db_port }
+      requirements:
+        - host: linux_container
+
+    web_interface:
+      type: tosca.nodes.WebServer
+      properties:
+        port: { get_input: app_port }
+      requirements:
+        - host: linux_container
+        - application: nodejs_app
+
+  relationship_templates:
+    - connect_nodejs_to_mysql:
+        type: ConnectsTo
+        properties:
+          protocol: tcp
+        source: nodejs_app
+        target: mysql_db
+
+    - connect_web_to_nodejs:
+        type: ConnectsTo
+        properties:
+          protocol: http
+        source: web_interface
+        target: nodejs_app
+
+  input_templates:
+    app_port:
+      type: integer
+    db_port:
+      type: integer

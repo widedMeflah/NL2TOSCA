@@ -1,0 +1,142 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: Kubernetes_Cluster_Topology
+  template_version: 1.0.0
+  template_author: User
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:2.0.0
+  - kubernetes-types:2.0.0
+
+node_types:
+  Custom.KubernetesMaster:
+    derived_from: tosca.nodes.Compute
+    properties:
+      role:
+        type: string
+        default: master
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+      endpoint:
+        type: tosca.capabilities.Endpoint.Admin
+    requirements:
+      - network:
+          capability: tosca.capabilities.Network
+          relationship: tosca.relationships.Network
+
+  Custom.KubernetesWorker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      role:
+        type: string
+        default: worker
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+    requirements:
+      - network:
+          capability: tosca.capabilities.Network
+          relationship: tosca.relationships.Network
+      - master:
+          capability: tosca.capabilities.Endpoint.Admin
+          relationship: tosca.relationships.ConnectsTo
+
+  Custom.Etcd:
+    derived_from: tosca.nodes.Database
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint.Database
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.Flannel:
+    derived_from: tosca.nodes.Network
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.KubernetesDashboard:
+    derived_from: tosca.nodes.WebApplication
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint.Public
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+topology_template:
+  node_templates:
+    MasterNode:
+      type: Custom.KubernetesMaster
+      properties:
+        role: master
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        endpoint:
+          properties:
+            protocol: https
+            port: 6443
+      requirements:
+        - network: OverlayNetwork
+
+    WorkerNode1:
+      type: Custom.KubernetesWorker
+      properties:
+        role: worker
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2 GB
+      requirements:
+        - network: OverlayNetwork
+        - master: MasterNode
+
+    WorkerNode2:
+      type: Custom.KubernetesWorker
+      properties:
+        role: worker
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2 GB
+      requirements:
+        - network: OverlayNetwork
+        - master: MasterNode
+
+    EtcdInstance:
+      type: Custom.Etcd
+      requirements:
+        - host: MasterNode
+
+    OverlayNetwork:
+      type: Custom.Flannel
+      requirements:
+        - host: MasterNode
+
+    Dashboard:
+      type: Custom.KubernetesDashboard
+      capabilities:
+        endpoint:
+          properties:
+            protocol: https
+            port: 443
+      requirements:
+        - host: MasterNode
+
+  outputs:
+    kubernetes_api_endpoint:
+      value: { get_attribute: [MasterNode, endpoint, url] }
+    dashboard_ui_endpoint:
+      value: { get_attribute: [Dashboard, endpoint, url] }

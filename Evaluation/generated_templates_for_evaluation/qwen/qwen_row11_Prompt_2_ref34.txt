@@ -1,0 +1,150 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of a Galaxy instance on CentOS 7 with SLURM support, encryption, and scalability.
+
+topology_template:
+  node_templates:
+    GalaxyServer:
+      type: tosca.nodes.Compute
+      properties:
+        host:
+          type: tosca.nodes.Compute
+          properties:
+            os:
+              architecture: x86_64
+              type: Linux
+              distribution: CentOS
+              version: "7"
+        networks:
+          default:
+            network_name: "galaxy_network"
+            ip: "192.168.1.10"
+        capabilities:
+          host:
+            properties:
+              disk_size: 50 GB
+              num_cpus: 4
+              memory: 8 GB
+        admin_user: galaxy
+        ssh_key: galaxy_key.pem
+        installation:
+          - name: Install CentOS 7
+            type: install
+            properties:
+              os: CentOS 7
+          - name: Install Galaxy
+            type: install
+            properties:
+              package: galaxy
+              version: latest
+              dependencies:
+                - Python 3.6+
+                - PostgreSQL
+                - Nginx
+          - name: Configure Galaxy with SLURM
+            type: configure
+            properties:
+              backend: SLURM
+              slurm_version: "20.11"
+              config:
+                - slurmctld
+                - slurmd
+                - munge
+          - name: Install Reference Data
+            type: install
+            properties:
+              package: galaxy-reference-data
+              version: latest
+          - name: Enable Data Encryption
+            type: configure
+            properties:
+              encryption: LUKS
+              target: /data
+          - name: Configure Email Notification
+            type: configure
+            properties:
+              email:
+                to: user@example.com
+                subject: Galaxy Instance Setup Complete
+                body: Galaxy instance is ready. Access at http://192.168.1.10
+      requirements:
+        - host
+        - connection
+
+    GalaxyWorkerNode:
+      type: tosca.nodes.Compute
+      properties:
+        host:
+          type: tosca.nodes.Compute
+          properties:
+            os:
+              architecture: x86_64
+              type: Linux
+              distribution: CentOS
+              version: "7"
+        networks:
+          default:
+            network_name: "galaxy_network"
+            ip: "192.168.1.11"
+        capabilities:
+          host:
+            properties:
+              disk_size: 50 GB
+              num_cpus: 4
+              memory: 8 GB
+        admin_user: galaxy
+        ssh_key: galaxy_key.pem
+        installation:
+          - name: Install CentOS 7
+            type: install
+            properties:
+              os: CentOS 7
+          - name: Configure as SLURM Worker Node
+            type: configure
+            properties:
+              backend: SLURM
+              config:
+                - slurmd
+                - munge
+      requirements:
+        - host
+        - connection
+
+    GalaxyNetwork:
+      type: tosca.nodes.Network
+      properties:
+        name: galaxy_network
+        subnets:
+          - cidr: 192.168.1.0/24
+        gateway_ip: 192.168.1.1
+        dhcp: true
+
+  relationships:
+    host:
+      type: tosca.relationships.HostedOn
+    connection:
+      type: tosca.relationships.ConnectsTo
+
+  policies:
+    - type: tosca.policies.Scaling
+      description: Scale out Galaxy worker nodes based on demand.
+      triggers:
+        - name: high-load
+          metric: CPUUtilization
+          threshold: 80
+          cooldown: 300
+      actions:
+        - name: add-worker-node
+          type: tosca.policies.Scaling.ScaleOut
+          properties:
+            count: 1
+            node_template: GalaxyWorkerNode
+
+    - type: tosca.policies.Monitoring
+      description: Monitor Galaxy server and worker nodes for performance and availability.
+      monitors:
+        - name: galaxy-health-check
+          type: HTTP
+          url: http://192.168.1.10
+          interval: 60
+          threshold: 3

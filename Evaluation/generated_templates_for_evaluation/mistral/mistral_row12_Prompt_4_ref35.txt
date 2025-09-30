@@ -1,0 +1,74 @@
+
+definition:
+  $uniquename: galaxy_deployment
+  type: cloudforms
+  azure:
+    service_type: Virtual Machine
+
+  properties:
+    name: Galaxy Application Deployment
+    admin_email: ${admin_email}
+    api_key: ${api_key}
+
+  blueprint_artifacts:
+    - artifact_type: docker_image
+      name: galaxy_docker_image
+      artifact_id: galaxy:latest
+
+    - artifact_type: docker_image
+      name: mysql_docker_image
+      artifact_id: mysql:latest
+
+    - artifact_type: node_templates
+      name: galaxy_node_template
+      artifact_id: galaxy_node_template.yaml
+
+    - artifact_type: scripts
+      name: reference_data_script
+      artifact_id: reference_data_script.sh
+
+  node_templates:
+    - name: galaxy_node_template
+      type: node
+      properties:
+        name: Galaxy Application Node
+        deployment_advisor:
+          resource_groups:
+          - name: ${resource_group_name}
+        flavor: ${instance_flavor}
+        size: ${storage_size}
+        os: linux
+        lifecycle_state: deploy_creating
+        domain: ${domain}
+        user_data_file: user_data.sh
+        network:
+          subnet: ${subnet}
+          public_ip: true
+        resources:
+          - type: files
+            primitive_name: reference_data_file
+            artifact_ref: reference_data_script
+            input_parameters:
+              - reference_data_location
+            properties:
+              file_name: reference_data.json
+              file_content: $(cat $(interpolate reference_data_location))
+          - type: docker
+            primitive_name: galaxy_container
+            docker_image_ref: galaxy_docker_image
+            properties:
+              encrypted_storage: true
+              environment_variables:
+                ADMIN_EMAIL: $(interpolate admin_email)
+                API_KEY: $(interpolate api_key)
+          - type: docker
+            primitive_name: mysql_container
+            docker_image_ref: mysql_docker_image
+            properties:
+              environment_variables:
+                MYSQL_ROOT_PASSWORD: $(interpolate mysql_root_password)
+              port_mappings:
+                - original_port: 3306
+                  host_port: 3306
+              depends_on: galaxy_container
+

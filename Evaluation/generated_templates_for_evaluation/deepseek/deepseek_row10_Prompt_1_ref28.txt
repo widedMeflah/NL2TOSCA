@@ -1,0 +1,57 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - indigo-security-types:1.0.0
+  - indigo-compute-types:1.0.0
+  - indigo-network-types:1.0.0
+
+topology_template:
+  description: Search Engine Service Topology
+
+  node_templates:
+    VM:
+      type: tosca.nodes.Compute:VirtualMachine
+      properties:
+        num_cpus: { constraints: [ { min: 2, max: 4 } ] }
+        memory: { constraints: [ { min: 4, max: 8 } ] }
+        image: Ubuntu 16.04
+        networks:
+          - network: net
+
+    SearchEngine:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 7.4.1
+        configuration:
+          admin_password: { get_input: admin_password }
+          system_user_password: { get_input: system_user_password }
+      requirements:
+        - host: VM
+        - network: net
+
+    net:
+      type: tosca.network.Network
+      properties:
+        network_name: { get_input: network_name }
+        floating_ip: 0.0.0.0/0
+
+  inputs:
+    admin_password:
+      type: string
+      sensitive: true
+    system_user_password:
+      type: string
+      sensitive: true
+    network_name:
+      type: string
+
+  outputs:
+    search_engine_address:
+      value: { get_attribute: [SearchEngine, network_address] }
+    credentials:
+      admin:
+        password: { get_input: admin_password }
+      system_user:
+        password: { get_input: system_user_password }

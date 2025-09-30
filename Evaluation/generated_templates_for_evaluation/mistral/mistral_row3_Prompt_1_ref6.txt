@@ -1,0 +1,75 @@
+
+tosca_definitions_version: yaml_2_0
+
+nodes:
+  - type: alien4cloud.Container
+    id: application_container
+    properties:
+      image: node:js
+      ports:
+        - name: application_port
+          exposed: true
+          publishing: true
+          protocol: tcp
+          port: 8080
+
+  - type: alien4cloud.Container
+    id: database_container
+    properties:
+      image: mongodb
+      ports:
+        - name: database_port
+          exposed: true
+          publishing: true
+          protocol: tcp
+          port: 27017
+
+connections:
+  - source: application_container
+    target: database_container
+    type: network
+
+relationships:
+  - type: mongodb_connection
+    source.container_instance_id: application_container
+    target.container_instance_id: database_container
+
+interfaces:
+  - name: application_interface
+    ports:
+      - name: application_port
+
+  - name: database_interface
+    ports:
+      - name: database_port
+
+policy_groups:
+  - name: security_policy
+    policies:
+      - name: os_security
+        policy_ref: CIS_Linux_Level_1_benchmark
+
+node_templates:
+  - id: node_template_application
+    type: alien4cloud.Container
+    properties:
+      image: node:js
+      interfaces:
+        - name: application_interface
+
+  - id: node_template_database
+    type: alien4cloud.Container
+    properties:
+      image: mongodb
+      interfaces:
+        - name: database_interface
+
+  - id: node_template_secure_os
+    type: alien4cloud.Container
+    properties:
+      os:
+        type: linux
+        distribution: ubuntu
+        version: 18.04
+    policy_group_refs:
+      - security_policy

@@ -1,0 +1,57 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    MongoDB:
+      type: tosca.nodes.DBMS.MongoDB
+      properties:
+        port:
+          type: integer
+          default: 27017
+          constraints:
+            - greater_than: 7999
+            - less_than: 65536
+      requirements:
+        - host:
+            node: Compute
+            relationship: tosca.relationships.Network
+            properties:
+              network_name: private
+              network_type: private
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: string
+          value: ubuntu
+        architecture:
+          type: string
+          value: x86_64
+      capabilities:
+        network:
+          type: tosca.capabilities.Network
+          properties:
+            network_name: private
+            network_type: private
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              - os
+              - architecture
+          configure:
+            inputs:
+              - network_name
+              - network_type
+  relationship_templates:
+    Network:
+      type: tosca.relationships.Network
+      properties:
+        network_name: private
+        network_type: private
+  output_templates:
+    MongoDB_Host_IP:
+      value: { get_attribute: [ Compute, private_address ] }
+    MongoDB_Port:
+      value: { get_attribute: [ MongoDB, port ] }

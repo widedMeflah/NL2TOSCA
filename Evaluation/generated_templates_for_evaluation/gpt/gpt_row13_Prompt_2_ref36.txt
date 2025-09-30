@@ -1,0 +1,138 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template for setting up a flexible computing environment with dynamic resource management,
+  workload system support (Torque, SGE, Slurm, Condor), hybrid capability, web-based management interface,
+  and secure storage access.
+
+imports:
+  - indigo_types: indigo_types.yaml
+
+topology_template:
+  inputs:
+    main_control_compute_power:
+      type: integer
+      description: Number of CPU cores for the control unit
+      default: 4
+    main_control_memory:
+      type: string
+      description: Amount of RAM for the control unit (e.g., 8GB)
+      default: 8GB
+    worker_compute_power:
+      type: integer
+      description: Number of CPU cores for each worker unit
+      default: 2
+    worker_memory:
+      type: string
+      description: Amount of RAM for each worker unit (e.g., 4GB)
+      default: 4GB
+    max_workers:
+      type: integer
+      description: Maximum number of worker units
+      default: 10
+    workload_manager:
+      type: string
+      description: Workload management system to use (Torque, SGE, Slurm, Condor)
+      default: Slurm
+      constraints:
+        - valid_values: [Torque, SGE, Slurm, Condor]
+    enable_hybrid:
+      type: boolean
+      description: Enable hybrid (cloud/on-premises) environment
+      default: false
+    web_interface_version:
+      type: string
+      description: Version of the web management interface
+      default: "1.0"
+    web_interface_description:
+      type: string
+      description: Description for the web interface
+      default: "Flexible computing environment manager"
+    admin_email:
+      type: string
+      description: Admin email for web interface login
+    admin_api_key:
+      type: string
+      description: API key for admin login
+    ssh_public_key:
+      type: string
+      description: SSH public key for system access
+    storage_location:
+      type: string
+      description: Data storage location URI/path
+
+  node_templates:
+    main_control_unit:
+      type: indigo.nodes.Compute.Control
+      properties:
+        num_cpus: { get_input: main_control_compute_power }
+        mem_size: { get_input: main_control_memory }
+        enable_hybrid: { get_input: enable_hybrid }
+      requirements:
+        - host: main_control_host
+
+    main_control_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: main_control_compute_power }
+            mem_size: { get_input: main_control_memory }
+        os:
+          properties:
+            type: linux
+
+    resource_manager:
+      type: indigo.nodes.ResourceManager
+      properties:
+        type: { get_input: workload_manager }
+        max_workers: { get_input: max_workers }
+      requirements:
+        - host: main_control_unit
+
+    worker_unit_group:
+      type: tosca.nodes.indigo.Group.WorkerAutoScaling
+      properties:
+        min_instances: 0
+        max_instances: { get_input: max_workers }
+        instance_type:
+          num_cpus: { get_input: worker_compute_power }
+          mem_size: { get_input: worker_memory }
+      requirements:
+        - hosted_on: main_control_unit
+        - managed_by: resource_manager
+
+    web_interface:
+      type: indigo.nodes.WebInterface
+      properties:
+        version: { get_input: web_interface_version }
+        description: { get_input: web_interface_description }
+        admin_email: { get_input: admin_email }
+        admin_api_key: { get_input: admin_api_key }
+        ssh_public_key: { get_input: ssh_public_key }
+      requirements:
+        - host: main_control_unit
+
+    data_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        location: { get_input: storage_location }
+      requirements:
+        - attachment: main_control_unit
+
+  outputs:
+    web_interface_url:
+      description: Public URL to access the web management interface
+      value: { get_attribute: [ web_interface, public_url ] }
+    admin_credentials:
+      description: Credentials for admin access in the web interface
+      value:
+        email: { get_input: admin_email }
+        api_key: { get_input: admin_api_key }
+    ssh_access:
+      description: SSH public key for secure system access
+      value: { get_input: ssh_public_key }
+    storage_location:
+      description: Data storage location URI/path
+      value: { get_input: storage_location }

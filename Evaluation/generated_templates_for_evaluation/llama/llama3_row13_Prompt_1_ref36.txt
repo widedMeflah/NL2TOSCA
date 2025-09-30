@@ -1,0 +1,90 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Scalable Virtual Computing Environment
+
+  node_templates:
+    management_node:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 4
+        mem_size: 16384 MB
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    worker_node:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 8192 MB
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 10
+
+    web_interface:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: '1.0'
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        url: { get_attribute: [ management_node, public_address ] }
+      requirements:
+        - host: management_node
+
+    data_storage:
+      type: tosca.nodes.Storage
+      properties:
+        size: 100 GB
+        location: /data
+
+  relationship_templates:
+    management_node_to_worker_node:
+      type: tosca.relationships.Network
+      properties:
+        network_name: private_network
+
+    web_interface_to_management_node:
+      type: tosca.relationships(Network)
+      properties:
+        network_name: public_network
+
+  input_templates:
+    admin_email:
+      type: string
+      description: Administrator email
+
+    api_key:
+      type: string
+      description: API key for secure access
+      sensitive: true
+
+    ssh_public_key:
+      type: string
+      description: SSH public key for instance access
+      sensitive: true
+
+    description:
+      type: string
+      description: Environment description
+
+  output_templates:
+    web_interface_url:
+      value: { get_attribute: [ web_interface, url ] }
+      description: URL to access the web interface
+
+    cluster_ip:
+      value: { get_attribute: [ management_node, public_address ] }
+      description: IP address of the cluster
+
+    credentials:
+      value:
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        ssh_public_key: { get_input: ssh_public_key }
+      description: Credentials to manage the environment

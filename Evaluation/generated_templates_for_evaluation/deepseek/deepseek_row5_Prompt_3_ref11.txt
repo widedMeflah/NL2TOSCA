@@ -1,0 +1,81 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Deployment environment for Alien4Cloud with specific configurations and components
+
+  node_templates:
+    compute_node_alien4cloud:
+      type: tosca.nodes.Compute
+      properties:
+        network_name: IPv4
+        networks:
+          - network: ipv4_network
+
+    compute_node_elasticsearch:
+      type: tosca.nodes.Compute
+      properties:
+        network_name: IPv4
+        networks:
+          - network: ipv4_network
+
+    jdk:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: Oracle JDK
+        download_url: https://www.oracle.com/java/technologies/javase-jdk11-downloads.html
+        install_path: /usr/lib/jvm/java-11-oracle
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute_node_alien4cloud
+        - type: tosca.relationships.HostedOn
+          target: compute_node_elasticsearch
+
+    alien4cloud:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /
+        profiles: [security-demo, noApiDoc]
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute_node_alien4cloud
+        - type: tosca.relationships.RunsOn
+          target: jdk
+
+    elasticsearch_cluster:
+      type: tosca.nodes.Database
+      properties:
+        name: ElasticSearch Cluster
+        instances: 2
+        remote_replication: true
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute_node_elasticsearch
+        - type: tosca.relationships.RunsOn
+          target: jdk
+
+    it_testing:
+      type: tosca.nodes.QualityAssurance
+      properties:
+        plugin_name: IT Testing Plugin
+        plugin_version: 1.3.0-RC5
+        branch: develop
+        test_suite: RunCloudify3AmazonLongRunIT
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute_node_alien4cloud
+        - type: tosca.relationships.RunsOn
+          target: alien4cloud
+
+    ipv4_network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: IPv4
+        protocol: ipv4
+
+  relationship_templates:
+    - type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+      targets:
+        - compute_node_alien4cloud
+        - compute_node_elasticsearch

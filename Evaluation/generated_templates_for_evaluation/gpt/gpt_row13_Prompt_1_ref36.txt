@@ -1,0 +1,135 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA template for a scalable virtual computing environment with management and worker nodes,
+  supporting hybrid clouds and a web-based management interface with credential and metadata options.
+
+metadata:
+  template_name: scalable-computing-environment
+  template_version: 1.0.0
+
+topology_template:
+  inputs:
+    mgmt_node_cpu:
+      type: integer
+      description: Number of CPUs for the management node
+      default: 4
+    mgmt_node_mem:
+      type: string
+      description: Amount of memory for the management node (e.g., 8GB)
+      default: 8GB
+    worker_node_cpu:
+      type: integer
+      description: Number of CPUs for each worker node
+      default: 2
+    worker_node_mem:
+      type: string
+      description: Amount of memory for each worker node (e.g., 4GB)
+      default: 4GB
+    max_worker_count:
+      type: integer
+      description: Maximum number of worker nodes allowed
+      default: 10
+    admin_email:
+      type: string
+      description: Administrator email for web management interface
+    api_key:
+      type: string
+      description: API key for secure access
+    interface_software_version:
+      type: string
+      description: Version of the management interface software
+      default: 1.0
+    environment_description:
+      type: string
+      description: Text description for this environment
+      default: Scalable hybrid virtual computing environment
+    ssh_public_key:
+      type: string
+      description: SSH public key for accessing nodes
+    storage_directory:
+      type: string
+      description: Directory where system data will be stored
+      default: /data/environment
+
+  node_templates:
+    management_node:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: PUBLIC
+        host:
+          properties:
+            num_cpus: { get_input: mgmt_node_cpu }
+            mem_size: { get_input: mgmt_node_mem }
+      requirements:
+        - local_storage:
+            node: data_storage
+        - scalable_management
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create_management_node.sh
+    worker_nodes:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: worker_node_cpu }
+            mem_size: { get_input: worker_node_mem }
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: { get_input: max_worker_count }
+            default_instances: 2
+      requirements:
+        - cluster:
+            node: management_node
+        - local_storage:
+            node: data_storage
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create_worker_node.sh
+    data_storage:
+      type: tosca.nodes.indigo.BlockStorage
+      properties:
+        size: 50 GB
+        path: { get_input: storage_directory }
+
+    web_management_interface:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 443
+        secure: true
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        software_version: { get_input: interface_software_version }
+        description: { get_input: environment_description }
+        ssh_public_key: { get_input: ssh_public_key }
+      requirements:
+        - host: management_node
+
+    hybrid_cloud_connector:
+      type: tosca.nodes.indigo.HybridCloud
+      properties:
+        enabled: true
+
+  outputs:
+    management_interface_url:
+      description: URL to access the web-based management interface
+      value: { concat: ["https://", get_attribute: [web_management_interface, endpoint, ip_address], ":443/"] }
+    cluster_ip_address:
+      description: Public IP address of the management node
+      value: { get_attribute: [management_node, endpoint, ip_address] }
+    admin_api_key:
+      description: API key for the management interface
+      value: { get_input: api_key }
+    admin_email:
+      description: Administrator email address
+      value: { get_input: admin_email }
+    ssh_public_key:
+      description: SSH public key associated with this environment
+      value: { get_input: ssh_public_key }

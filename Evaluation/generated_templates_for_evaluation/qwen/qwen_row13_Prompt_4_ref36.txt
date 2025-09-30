@@ -1,0 +1,168 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: |
+  This TOSCA template defines a virtual elastic cluster with a front-end node for workload management using Slurm, a Galaxy portal for bioinformatics, and hybrid scalability capabilities. The cluster includes a mechanism to access the Galaxy portal and retrieve the cluster's IP address.
+
+topology_template:
+  node_templates:
+    FrontEndNode:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: FrontEndNode
+        description: Front-end node for Slurm workload management and Galaxy portal access.
+        image: ubuntu-20.04
+        flavor: m1.large
+        networks:
+          management_network:
+            network: management
+            addresses:
+              - 192.168.1.10
+        capabilities:
+          nfv_compute:
+            properties:
+              num_cpus: 4
+              mem_size: 8 GB
+              disk_size: 50 GB
+        requirements:
+          - host: ComputeHost
+        interfaces:
+          Standard:
+            create:
+              implementation: scripts/create_frontend.sh
+              inputs:
+                - galaxy_url: "http://192.168.1.10/galaxy"
+                - slurm_config: "default"
+                - access_ip: "192.168.1.10"
+
+    WorkerNode:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: WorkerNode
+        description: Worker node for Slurm-based workload processing.
+        image: ubuntu-20.04
+        flavor: m1.medium
+        networks:
+          management_network:
+            network: management
+        capabilities:
+          nfv_compute:
+            properties:
+              num_cpus: 2
+              mem_size: 4 GB
+              disk_size: 20 GB
+        requirements:
+          - host: ComputeHost
+        interfaces:
+          Standard:
+            create:
+              implementation: scripts/create_worker.sh
+              inputs:
+                - slurm_config: "default"
+
+    ComputeHost:
+      type: tosca.nodes.nfv.Compute
+      properties:
+        name: ComputeHost
+        description: Host for running the FrontEndNode and WorkerNodes.
+        capabilities:
+          nfv_compute:
+            properties:
+              num_cpus: 16
+              mem_size: 64 GB
+              disk_size: 200 GB
+
+    GalaxyPortal:
+      type: tosca.nodes.WebApplication
+      properties:
+        name: GalaxyPortal
+        description: Galaxy portal for bioinformatics applications.
+        port: 80
+        url: http://192.168.1.10/galaxy
+      requirements:
+        - host: FrontEndNode
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_galaxy.sh
+            inputs:
+              - port: 80
+              - url: "http://192.168.1.10/galaxy"
+
+    SlurmCluster:
+      type: tosca.nodes.Cluster
+      properties:
+        name: SlurmCluster
+        description: Slurm-based elastic cluster with hybrid scalability.
+        min_nodes: 1
+        max_nodes: 10
+        initial_nodes: 2
+        hybrid_enabled: true
+        worker_node_type: WorkerNode
+        frontend_node_type: FrontEndNode
+        scaling_policy:
+          type: dynamic
+          min: 1
+          max: 10
+          cooldown_period: 60
+          metrics:
+            - cpu_utilization
+            - memory_usage
+        interfaces:
+          Standard:
+            create:
+              implementation: scripts/deploy_slurm_cluster.sh
+              inputs:
+                - frontend_ip: "192.168.1.10"
+                - initial_nodes: 2
+                - max_nodes: 10
+                - hybrid_enabled: true
+
+    ClusterIPService:
+      type: tosca.nodes.Network.Service
+      properties:
+        name: ClusterIPService
+        description: Provides access to the cluster's IP address and Galaxy portal.
+        ip_address: 192.168.1.10
+        services:
+          - GalaxyPortal
+          - FrontEndNode
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_cluster_ip.sh
+            inputs:
+              - ip_address: "192.168.1.10"
+              - galaxy_url: "http://192.168.1.10/galaxy"
+
+  groups:
+    ElasticCluster:
+      type: tosca.groups.nfv.Cluster
+      members:
+        - FrontEndNode
+        - WorkerNode
+      properties:
+        name: ElasticCluster
+        description: Elastic cluster with Slurm and Galaxy.
+        cluster_type: SlurmCluster
+        scaling_group:
+          type: tosca.groups.nfv.ScalingGroup
+          members:
+            - WorkerNode
+          properties:
+            min_entities: 1
+            max_entities: 10
+            cooldown: 60
+            scaling_policy:
+              type: dynamic
+              metrics:
+                - cpu_utilization
+                - memory_usage
+
+  outputs:
+    GalaxyPortalURL:
+      description: URL to access the Galaxy portal.
+      value: { get_property: [GalaxyPortal, url] }
+    ClusterIPAddress:
+      description: IP address of the cluster front-end.
+      value: { get_property: [FrontEndNode, networks, management_network, addresses, 0] }

@@ -1,0 +1,87 @@
+topology_template_content:
+  topology_template_name: basic_alien4cloud_topology
+  topology_template_description: >
+    A basic topology template for setting up an application using Alien4Cloud, including JDK, Alien4Cloud instance, and Elasticsearch node.
+
+  node_templates:
+    - name: jdk
+      type: custom.Alien4Cloud.Generic
+      properties:
+        image: openjdk:8
+        jdk_version: 8
+        install_jdk: true
+
+    - name: application_server
+      type: custom.Alien4Cloud.Compute
+      properties:
+        image: openjdk:8
+        jdk_version: 8
+        dependencies: [jdk]
+
+    - name: database_server
+      type: custom.Alien4Cloud.Compute
+      properties:
+        image: openjdk:8
+        jdk_version: 8
+        dependencies: [jdk]
+
+    - name: alien4cloud_instance
+      type: custom.Alien4Cloud.Alien4Cloud
+      properties:
+        alien4cloud_url: ${cloud_provider_url}
+        alien4cloud_username: ${cloud_provider_username}
+        alien4cloud_password: ${cloud_provider_password}
+        elasticsearch_ip: ${elasticsearch_ip}
+        elasticsearch_port: ${elasticsearch_port}
+
+    - name: elasticsearch_node
+      type: custom.Alien4Cloud.Elasticsearch
+      properties:
+        elasticsearch_ip: ${elasticsearch_ip}
+        elasticsearch_port: ${elasticsearch_port}
+
+  relationships:
+    - type: "custom.Alien4Cloud.LinkElasticsearch"
+      source: alien4cloud_instance
+      target: elasticsearch_node
+
+  node_types:
+    custom.Alien4Cloud.Elasticsearch:
+      description: >
+        A node template for setting up an Elasticsearch node.
+      interfaces:
+        - type: ocf.infrastructure.Compute
+        - type: ocf.infrastructure.Network
+          properties:
+            network_name: default
+        - type: custom.Alien4Cloud.Elasticsearch
+      actions:
+        - name: start_elasticsearch
+          description: Start Elasticsearch.
+        - name: stop_elasticsearch
+          description: Stop Elasticsearch.
+        - name: deploy_elasticsearch
+          description: Deploy Elasticsearch.
+          input_parameters:
+            - name: elasticsearch_version
+              description: Elasticsearch version.
+            - name: elasticsearch_heap_size
+              description: Elasticsearch heap size.
+
+    custom.Alien4Cloud.Alien4Cloud:
+      description: >
+        A node template for setting up an Alien4Cloud instance.
+      interfaces:
+        - type: ocf.infrastructure.Compute
+        - type: ocf.infrastructure.Network
+          properties:
+            network_name: default
+        - type: custom.Alien4Cloud.Alien4Cloud
+      actions:
+        - name: deploy_alien4cloud
+          description: Deploy Alien4Cloud instance.
+          input_parameters:
+            - name: alien4cloud_version
+              description: Alien4Cloud version.
+            - name: alien4cloud_api_key
+              description: Alien4Cloud API key.

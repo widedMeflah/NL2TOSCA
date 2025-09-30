@@ -1,0 +1,150 @@
+definition_templates:
+  Alien4cloudOrchestrator:
+    yaml_description: |
+      name: Alien4cloudOrchestrator
+      description: Orchestrator for deploying a Java application and a Search Engine service
+      type: orchestrator
+      abstract: false
+
+      properties:
+        cloud_provider:
+          description: Cloud provider supported by Alien4cloud
+          type: string
+          default: openstack
+
+    implementation:
+      cloud_provider:  cloud_provider
+
+      artifact_repository:
+        type: artifact_repository.FileSystem
+
+      node_templates:
+        JavaApplicationNode:
+          yaml_description: |
+            name: JavaApplicationNode
+            description: Node template for the Java application
+            type: compute
+            abstract: false
+            implementation:
+              os:
+                type: operating_system.GenericLinux
+              application:
+                type: application.JavaApplication
+                properties:
+                  jar_file: !artifact_ref java_application_jar
+                  java_home: /usr/lib/jvm/java-8-openjdk
+                  java_opts: "-Xms512M -Xmx1024M"
+                requirements:
+                  - name: JavaRuntime
+                    type: service_template.JavaRuntime
+
+        SearchEngineNode:
+          yaml_description: |
+            name: SearchEngineNode
+            description: Node template for the Search Engine
+            type: compute
+            abstract: false
+            implementation:
+              os:
+                type: operating_system.GenericLinux
+              application:
+                type: application.SearchEngine
+                properties:
+                  config_file: !artifact_ref search_engine_config
+
+        JavaRuntime:
+          yaml_description: |
+            name: JavaRuntime
+            description: Service template for Java Runtime
+            type: service
+            abstract: false
+            implementation:
+              script:
+                file: !artifact_ref java_runtime_script
+                execution_mode: shell
+
+        SearchEngineService:
+          yaml_description: |
+            name: SearchEngineService
+            description: Service template for Search Engine
+            type: service
+            abstract: false
+            implementation:
+              script:
+                file: !artifact_ref search_engine_script
+                execution_mode: shell
+
+      policy_templates:
+        JavaApplicationNetworkAccess:
+          yaml_description: |
+            name: JavaApplicationNetworkAccess
+            description: Policy to enable network access for the Java application
+            type: policy
+            implementation:
+              rules:
+                - allow:
+                    from: JavaApplicationNode
+                    to: SearchEngineNode
+                    ports: 8080
+
+        SearchEngineNetworkAccess:
+          yaml_description: |
+            name: SearchEngineNetworkAccess
+            description: Policy to enable network access for the Search Engine
+            type: policy
+            implementation:
+              rules:
+                - allow:
+                    from: SearchEngineNode
+                    to: JavaApplicationNode
+                    ports: 8081
+
+      node_group_templates:
+        ApplicationEnvironment:
+          yaml_description: |
+            name: ApplicationEnvironment
+            description: Group template for the main application environment
+            type: group
+            abstract: false
+            properties:
+              cloud_resources:
+                nodes:
+                  - JavaApplicationNode
+                  - JavaRuntime
+
+        SearchEngineEnvironment:
+          yaml_description: |
+            name: SearchEngineEnvironment
+            description: Group template for the Search Engine environment
+            type: group
+            abstract: false
+            properties:
+              cloud_resources:
+                nodes:
+                  - SearchEngineNode
+                  - SearchEngineService
+
+    inputs:
+      java_application_jar:
+        description: Jar file for the Java application
+        type: file
+      search_engine_config:
+        description: Configuration file for the Search Engine
+        type: file
+      java_runtime_script:
+        description: Script for installing Java Runtime
+        type: file
+      search_engine_script:
+        description: Script for installing Search Engine
+        type: file
+
+topology_template:
+  name: ApplicationAndSearchEngineDeployment
+  description: Topology template for deploying a Java application and a Search Engine
+  composition:
+    node_groups:
+      -  ApplicationEnvironment
+      -  SearchEngineEnvironment
+    policies:
+      -  JavaApplicationNetworkAccess
+      -  SearchEngineNetworkAccess

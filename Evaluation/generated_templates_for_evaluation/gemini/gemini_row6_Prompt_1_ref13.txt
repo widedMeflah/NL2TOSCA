@@ -1,0 +1,264 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: KubernetesClusterDeployment
+  template_author: GeneratedByAIP
+  template_version: 1.0.0-SNAPSHOT
+
+imports:
+  - alien-base-types:1.0.0
+  - alien-commons-types:1.0.0
+  # Assuming these component types are available in Alien4Cloud catalog or a custom type archive
+  # e.g., alien-kubernetes-types:1.0.0, alien-docker-types:1.0.0, alien-network-types:1.0.0
+
+inputs:
+  cluster_domain_name:
+    type: string
+    description: The DNS domain name for the Kubernetes cluster.
+    default: "k8s.local"
+  dashboard_namespace:
+    type: string
+    description: The namespace where the Kubernetes dashboard will be deployed.
+    default: "kubernetes-dashboard"
+  master_api_port:
+    type: integer
+    description: The port for the Kubernetes API server endpoint.
+    default: 6443
+  dashboard_service_port:
+    type: integer
+    description: The service port for the Kubernetes Dashboard UI.
+    default: 8080
+  ssh_key_name:
+    type: string
+    description: The name of the SSH key to use for compute instances for secure access.
+    required: true
+
+node_templates:
+  MasterNetwork:
+    type: tosca.nodes.Network.Private
+    properties:
+      cidr: 10.0.0.0/24 # Example private network range
+
+  MasterCompute:
+    type: tosca.nodes.Compute
+    properties:
+      image_id: "ubuntu-20.04" # Assuming a public image ID for Ubuntu 20.04
+      # num_cpus: 2 # Example CPU requirement
+      # mem_size: 4 GB # Example Memory requirement
+    capabilities:
+      host:
+        properties:
+          os:
+            type: linux
+            distribution: ubuntu
+            version: "20.04"
+          arch: x86_64
+      endpoint:
+        properties:
+          network_name: PRIVATE
+    requirements:
+      - network:
+          node: MasterNetwork
+          relationship: tosca.relationships.NetworkConnectsTo
+      - host_credential:
+          node: Self # Or a separate credential component if defined
+          capability: tosca.capabilities.Endpoint.Admin
+          relationship: tosca.relationships.ConnectsTo # Connects to the host for SSH
+
+  WorkerCompute:
+    type: tosca.nodes.Compute
+    properties:
+      image_id: "ubuntu-20.04"
+      # num_cpus: 2
+      # mem_size: 4 GB
+    capabilities:
+      host:
+        properties:
+          os:
+            type: linux
+            distribution: ubuntu
+            version: "20.04"
+          arch: x86_64
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 5
+      endpoint:
+        properties:
+          network_name: PRIVATE
+    requirements:
+      - network:
+          node: MasterNetwork
+          relationship: tosca.relationships.NetworkConnectsTo
+      - host_credential:
+          node: Self
+          capability: tosca.capabilities.Endpoint.Admin
+          relationship: tosca.relationships.ConnectsTo
+
+  DockerEngineMaster:
+    type: a4c.nodes.docker.DockerEngine # Assumed Alien4Cloud specific type for Docker
+    requirements:
+      - host:
+          node: MasterCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+
+  DockerEngineWorker:
+    type: a4c.nodes.docker.DockerEngine
+    requirements:
+      - host:
+          node: WorkerCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+
+  EtcdServer:
+    type: a4c.nodes.data.Etcd # Assumed Alien4Cloud specific type for Etcd
+    requirements:
+      - host:
+          node: MasterCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+
+  FlannelNetworkMaster:
+    type: a4c.nodes.network.Flannel # Assumed Alien4Cloud specific type for Flannel
+    properties:
+      cluster_cidr: 10.244.0.0/16 # Default Flannel pod network CIDR
+    requirements:
+      - host:
+          node: MasterCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+      - etcd_server:
+          node: EtcdServer
+          capability: a4c.capabilities.data.KeyValueStore # Assumed custom capability
+          relationship: tosca.relationships.ConnectsTo
+
+  FlannelNetworkWorker:
+    type: a4c.nodes.network.Flannel
+    properties:
+      cluster_cidr: 10.244.0.0/16
+    requirements:
+      - host:
+          node: WorkerCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+      - etcd_server:
+          node: EtcdServer
+          capability: a4c.capabilities.data.KeyValueStore
+          relationship: tosca.relationships.ConnectsTo
+
+  KubernetesMaster:
+    type: a4c.nodes.kubernetes.KubernetesMaster # Assumed Alien4Cloud specific type for K8s Master
+    properties:
+      cluster_domain: { get_input: cluster_domain_name }
+    requirements:
+      - host:
+          node: MasterCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+      - container_runtime:
+          node: DockerEngineMaster
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.DependsOn
+      - etcd_store:
+          node: EtcdServer
+          capability: a4c.capabilities.data.KeyValueStore
+          relationship: tosca.relationships.ConnectsTo
+      - network_overlay:
+          node: FlannelNetworkMaster
+          capability: a4c.capabilities.overlay.NetworkOverlay # Assumed custom capability
+          relationship: tosca.relationships.ConnectsTo
+
+  KubernetesWorker:
+    type: a4c.nodes.kubernetes.KubernetesWorker # Assumed Alien4Cloud specific type for K8s Worker
+    requirements:
+      - host:
+          node: WorkerCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+      - container_runtime:
+          node: DockerEngineWorker
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.DependsOn
+      - master:
+          node: KubernetesMaster
+          capability: a4c.capabilities.kubernetes.ClusterMaster # Assumed custom capability
+          relationship: tosca.relationships.ConnectsTo
+      - network_overlay:
+          node: FlannelNetworkWorker
+          capability: a4c.capabilities.overlay.NetworkOverlay
+          relationship: tosca.relationships.ConnectsTo
+
+  KubectlClient:
+    type: a4c.nodes.kubernetes.KubectlClient # Assumed Alien4Cloud specific type for Kubectl CLI
+    requirements:
+      - host:
+          node: MasterCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+      - master_access:
+          node: KubernetesMaster
+          capability: a4c.capabilities.kubernetes.ClusterMaster
+          relationship: tosca.relationships.ConnectsTo
+
+  KubernetesDashboard:
+    type: a4c.nodes.kubernetes.KubernetesDashboard # Assumed Alien4Cloud specific type for K8s Dashboard
+    properties:
+      namespace: { get_input: dashboard_namespace }
+    requirements:
+      - host:
+          node: MasterCompute
+          capability: tosca.capabilities.ContainerHost
+          relationship: tosca.relationships.HostedOn
+      - master_access:
+          node: KubernetesMaster
+          capability: a4c.capabilities.kubernetes.ClusterMaster
+          relationship: tosca.relationships.ConnectsTo
+
+  MasterSSHPort:
+    type: tosca.nodes.network.Port
+    properties:
+      protocol: tcp
+      port: 22
+      is_shared: true # Exposed to the outside for SSH access
+    requirements:
+      - feature:
+          node: MasterCompute
+          capability: tosca.capabilities.Endpoint.Admin
+
+  K8sAPIPort:
+    type: tosca.nodes.network.Port
+    properties:
+      protocol: tcp
+      port: { get_input: master_api_port }
+      is_shared: true # Exposed for API access
+    requirements:
+      - feature:
+          node: KubernetesMaster
+          capability: tosca.capabilities.Endpoint # Or a more specific API endpoint capability
+
+  DashboardUIPort:
+    type: tosca.nodes.network.Port
+    properties:
+      protocol: tcp
+      port: { get_input: dashboard_service_port }
+      is_shared: true # Exposed for Dashboard UI access
+    requirements:
+      - feature:
+          node: KubernetesDashboard
+          capability: tosca.capabilities.Endpoint # Or a more specific UI endpoint capability
+
+outputs:
+  master_public_ip:
+    description: The public IP address of the Kubernetes Master.
+    value: { get_attribute: [ MasterCompute, public_address ] }
+  master_private_ip:
+    description: The private IP address of the Kubernetes Master.
+    value: { get_attribute: [ MasterCompute, private_address ] }
+  kubernetes_api_endpoint:
+    description: The endpoint for the Kubernetes API server.
+    value: { concat: [ "https://", get_attribute: [ MasterCompute, public_address ], ":", get_input: master_api_port ] }
+  kubernetes_dashboard_url:
+    description: The URL for the Kubernetes Dashboard UI.
+    value: { concat: [ "http://", get_attribute: [ MasterCompute, public_address ], ":", get_input: dashboard_service_port ] } # Assuming HTTP for simplicity, adjust for HTTPS

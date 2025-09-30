@@ -1,0 +1,73 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Nodecellar Application with MongoDB and Node.js
+  node_templates:
+    NodeJS:
+      type: tosca.nodes.WebServer
+      properties:
+        name: NodeJS
+        runtime: Node.js
+        port: 8088
+      requirements:
+        - host: Linux
+        - database: MongoDB
+
+    MongoDB:
+      type: tosca.nodes.Database
+      properties:
+        name: MongoDB
+        port: 27017
+        protocol: tcp
+      requirements:
+        - host: Linux
+
+    Linux:
+      type: tosca.nodes.Compute
+      properties:
+        name: Linux
+        distro: Ubuntu
+        network_name: IPv4
+      requirements:
+        - network: IPv4
+
+    IPv4:
+      type: tosca.nodes.Network
+      properties:
+        name: IPv4
+        protocol: ipv4
+
+  relationship_templates:
+    - type: tosca.relationships.Network
+      node_templates:
+        - NodeJS
+        - IPv4
+      properties:
+        network_name: IPv4
+
+    - type: tosca.relationships.HostedOn
+      node_templates:
+        - NodeJS
+        - Linux
+      properties:
+        host: Linux
+
+    - type: tosca.relationships.HostedOn
+      node_templates:
+        - MongoDB
+        - Linux
+      properties:
+        host: Linux
+
+    - type: tosca.relationships.ConnectsTo
+      node_templates:
+        - NodeJS
+        - MongoDB
+      properties:
+        port: 8088
+
+  outputs:
+    Nodecellar_URL:
+      value: { get_attribute: [ NodeJS, url ] }
+      description: URL of the Nodecellar application

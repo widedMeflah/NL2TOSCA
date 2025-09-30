@@ -1,0 +1,169 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+
+description: TOSCA template for deploying a Galaxy platform instance with cluster support using INDIGO orchestrator
+
+topology_template:
+  inputs:
+    num_worker_nodes:
+      type: integer
+      default: 2
+    frontend_flavor:
+      type: string
+      default: small
+    worker_flavor:
+      type: string
+      default: small
+    storage_size:
+      type: integer
+      default: 50
+    hybrid_environment:
+      type: boolean
+      default: false
+    admin_email:
+      type: string
+      default: admin@admin.com
+    admin_api_key:
+      type: string
+      default: not_very_secret_api_key
+    galaxy_version:
+      type: string
+      default: release_18.05
+    instance_description:
+      type: string
+      default: ELIXIR-ITALY
+    ssh_public_key:
+      type: string
+      default: your_ssh_public_key
+    export_directory:
+      type: string
+      default: /export
+    enable_storage_encryption:
+      type: boolean
+      default: false
+    vault_server_url:
+      type: string
+      default: changeit
+    vault_wrapping_token:
+      type: string
+      default: not_a_wrapping_token
+    vault_secret_path:
+      type: string
+      default: subject/depuuid
+    vault_secret_key_name:
+      type: string
+      default: secret
+    galaxy_flavor:
+      type: string
+      default: galaxy-no-tools
+    install_reference_data:
+      type: boolean
+      default: true
+    cvmfs_configuration:
+      type: string
+      default: cvmfs_preconfigured
+    cvmfs_repository_name:
+      type: string
+      default: elixir-italy.galaxy.refdata
+    cvmfs_server_url:
+      type: string
+      default: 90.147.102.186
+    cvmfs_public_key_file:
+      type: string
+      default: elixir-italy.galaxy.refdata.pub
+    cvmfs_proxy_url:
+      type: string
+      default: DIRECT
+    cvmfs_proxy_port:
+      type: integer
+      default: 80
+    reference_data_directory:
+      type: string
+      default: /cvmfs
+
+  node_templates:
+    galaxy_frontend:
+      type: tosca.nodes.Compute
+      properties:
+        flavor: { get_input: frontend_flavor }
+        operating_system: CentOS 7
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+      requirements:
+        - storage: galaxy_storage
+
+    galaxy_worker_nodes:
+      type: tosca.nodes.Compute
+      properties:
+        flavor: { get_input: worker_flavor }
+        operating_system: CentOS 7
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+      requirements:
+        - dependency: galaxy_frontend
+      directives:
+        - scalable:
+            num_instances: { get_input: num_worker_nodes }
+
+    galaxy_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: storage_size } 
+        encryption_enabled: { get_input: enable_storage_encryption }
+
+    slurm_resource_manager:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: latest
+      requirements:
+        - host: galaxy_frontend
+        - dependency: galaxy_worker_nodes
+
+    galaxy_platform:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: { get_input: galaxy_version }
+        flavor: { get_input: galaxy_flavor }
+        admin_email: { get_input: admin_email }
+        admin_api_key: { get_input: admin_api_key }
+        instance_description: { get_input: instance_description }
+        ssh_public_key: { get_input: ssh_public_key }
+        export_directory: { get_input: export_directory }
+      requirements:
+        - host: galaxy_frontend
+        - dependency: slurm_resource_manager
+        - storage: galaxy_storage
+
+    cvmfs_reference_data:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        install_reference_data: { get_input: install_reference_data }
+        configuration: { get_input: cvmfs_configuration }
+        repository_name: { get_input: cvmfs_repository_name }
+        server_url: { get_input: cvmfs_server_url }
+        public_key_file: { get_input: cvmfs_public_key_file }
+        proxy_url: { get_input: cvmfs_proxy_url }
+        proxy_port: { get_input: cvmfs_proxy_port }
+        data_directory: { get_input: reference_data_directory }
+      requirements:
+        - host: galaxy_frontend
+
+    vault_encryption_service:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        server_url: { get_input: vault_server_url }
+        wrapping_token: { get_input: vault_wrapping_token }
+        secret_path: { get_input: vault_secret_path }
+        secret_key_name: { get_input: vault_secret_key_name }
+      requirements:
+        - dependency: galaxy_storage
+
+  outputs:
+    confirmation_email:
+      description: Confirmation email with login instructions
+      value: { get_input: admin_email }

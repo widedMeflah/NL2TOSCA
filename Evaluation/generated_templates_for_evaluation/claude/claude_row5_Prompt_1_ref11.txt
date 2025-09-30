@@ -1,0 +1,142 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: application-system
+  template_version: 1.0.0
+  template_author: admin
+
+description: System deployment for application with data storage and testing capabilities
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+topology_template:
+  node_templates:
+    ApplicationServer:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            architecture: x86_64
+        endpoint:
+          properties:
+            protocol: tcp
+            network_name: IPv4
+            secure: true
+
+    DataStorage1:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            architecture: x86_64
+
+    DataStorage2:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            architecture: x86_64
+
+    TestingComponent:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            architecture: x86_64
+
+    JDK:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "11"
+        download_url: { get_input: jdk_url }
+        install_dir: { get_input: jdk_install_dir }
+      requirements:
+        - host: ApplicationServer
+
+    Application:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.0"
+        context_root: "/"
+        app_args:
+          security_enabled: true
+          documentation_enabled: true
+      requirements:
+        - host: ApplicationServer
+        - dependency: JDK
+        - storage1: DataStorage1
+        - storage2: DataStorage2
+
+    DataStorageService1:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.0"
+        replication_enabled: true
+      requirements:
+        - host: DataStorage1
+
+    DataStorageService2:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.0"
+        replication_enabled: true
+      requirements:
+        - host: DataStorage2
+
+    TestRunner:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.0"
+        test_branch: { get_input: test_branch }
+        plugin_version: { get_input: plugin_version }
+        test_suite: { get_input: test_suite }
+      requirements:
+        - host: TestingComponent
+        - application: Application
+
+  inputs:
+    jdk_url:
+      type: string
+      required: true
+    jdk_install_dir:
+      type: string
+      required: true
+    test_branch:
+      type: string
+      required: true
+    plugin_version:
+      type: string
+      required: true
+    test_suite:
+      type: string
+      required: true
+
+  relationships:
+    storage1:
+      type: tosca.relationships.ConnectsTo
+    storage2:
+      type: tosca.relationships.ConnectsTo
+    application:
+      type: tosca.relationships.ConnectsTo

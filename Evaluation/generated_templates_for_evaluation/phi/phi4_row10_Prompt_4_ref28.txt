@@ -1,0 +1,110 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/4.5/types.yaml
+  - plugins/cloudify-utilities-plugin/plugin.yaml # Assuming a plugin for utilities is used
+  - plugins/elasticsearch-plugin/plugin.yaml # Hypothetical Elasticsearch plugin
+
+inputs:
+
+  elasticsearch_version:
+    description: The version of Elasticsearch to deploy.
+    type: string
+    default: '7.10.1'
+
+  elasticsearch_password:
+    description: Password for the Elasticsearch system user.
+    type: password
+
+  kibana_password:
+    description: Password for the Kibana system user.
+    type: password
+
+node_templates:
+
+  vm:
+    type: cloudify.nodes.Compute
+    properties:
+      image: ubuntu/bionic # Ubuntu 18.04
+      size: 
+        cpu_cores: 2
+        ram: 4096MB
+    
+  elasticsearch_server:
+    type: cloudify-utilities-plugin.nodes.ElasticsearchServer
+    properties:
+      version: { get_input: elasticsearch_version }
+      system_user_password: { get_secret: elasticsearch_password }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: vm
+
+  kibana_server:
+    type: cloudify-utilities-plugin.nodes.KibanaServer
+    properties:
+      version: { get_input: elasticsearch_version }
+      system_user_password: { get_secret: kibana_password }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: vm
+
+  open_firewall_for_elasticsearch:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            port: '9200'
+            protocol: tcp
+          implementation: plugins/cloudify-utilities-plugin/open_port.py # Hypothetical script to open ports
+          executor: central_deployment_agent
+
+  expose_elasticsearch_service:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            host: { get_attribute: [ vm, ip ] }
+            port: '9200'
+          implementation: plugins/elasticsearch-plugin/expose_service.py # Hypothetical script to expose service
+          executor: central_deployment_agent
+
+  open_firewall_for_kibana:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            port: '5601'
+            protocol: tcp
+          implementation: plugins/cloudify-utilities-plugin/open_port.py # Hypothetical script to open ports
+          executor: central_deployment_agent
+
+  expose_kibana_service:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            host: { get_attribute: [ vm, ip ] }
+            port: '5601'
+          implementation: plugins/elasticsearch-plugin/expose_service.py # Hypothetical script to expose service
+          executor: central_deployment_agent
+
+workflows:
+
+  install_elasticsearch_and_kibana:
+    mapping:
+      prepare_vm: cloudify.interfaces.lifecycle.create
+      deploy_elasticsearch: elasticsearch_server.cloudify.interfaces.lifecycle.create
+      deploy_kibana: kibana_server.cloudify.interfaces.lifecycle.create
+      open_elasticsearch_port: open_firewall_for_elasticsearch.cloudify.interfaces.lifecycle.create
+      expose_elasticsearch_service: expose_elasticsearch_service.cloudify.interfaces.lifecycle.create
+      open_kibana_port: open_firewall_for_kibana.cloudify.interfaces.lifecycle.create
+      expose_kibana_service: expose_kibana_service.cloudify.interfaces.lifecycle.create
+
+  uninstall_elasticsearch_and_kibana:
+    mapping:
+      undeploy_elasticsearch: elasticsearch_server.cloudify.interfaces.lifecycle.delete
+      undeploy_kibana: kibana_server.cloudify.interfaces.lifecycle.delete

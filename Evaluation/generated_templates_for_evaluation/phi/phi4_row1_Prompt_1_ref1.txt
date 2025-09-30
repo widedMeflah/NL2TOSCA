@@ -1,0 +1,127 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: >
+  System setup for running a specific Java application connected to a search engine service.
+
+imports:
+  - http://www.aliennova.com/tosca/components/alien4cloud-1.3.6-SNAPSHOT-types.yaml
+  - https://raw.githubusercontent.com/TOSCA-Workshop/aliendsl/master/alien-workloads-types.yaml
+
+topology_template:
+
+  inputs:
+
+    java_app_image:
+      type: string
+      description: Docker image for the Java application.
+
+    search_engine_image:
+      type: string
+      description: Docker image for the search engine service.
+
+    network_cidr:
+      type: string
+      default: "10.0.0.0/24"
+      description: CIDR block for the network setup.
+
+  node_templates:
+
+    java_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        image: "openjdk:11-jre-slim"
+
+    search_engine_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        image: "openjdk:11-jre-slim"
+
+    main_app_environment:
+      type: tosca.nodes.Container.ApplicationRuntime
+      requirements:
+        - host:
+            node: main_app_host
+
+    search_engine_environment:
+      type: tosca.nodes.Container.ApplicationRuntime
+      requirements:
+        - host:
+            node: search_engine_host
+
+    main_app_host:
+      type: tosca.nodes.Compute
+      properties:
+        image: { get_input: java_app_image }
+        runtime: { get_requirement: 'main_app_environment' }
+
+    search_engine_host:
+      type: tosca.nodes.Compute
+      properties:
+        image: { get_input: search_engine_image }
+        runtime: { get_requirement: 'search_engine_environment' }
+
+    main_application:
+      type: tosca.workloads.tosca-1.3.components.Application
+      requirements:
+        - host: main_app_host
+
+    search_engine_service:
+      type: tosca.workloads.tosca-1.3.components.Service
+      properties:
+        service_id: search-engine-service
+        endpoint: 0.0.0.0:9200 # Example port for Elasticsearch
+      requirements:
+        - host: search_engine_host
+
+  relationships:
+
+    connects_to:
+      type: tosca.relationships.ConnectsTo
+      source_interfaces:
+        Standard:
+          connect:
+            inputs:
+              target_ip: { get_attribute: [target, ip] }
+      target_interfaces:
+        Standard:
+          accept:
+            implementation: 
+              script: |
+                #!/bin/bash
+
+                TARGET_IP=$(get_input 'target_ip')
+                
+                # Example command to configure connection
+                echo "Configuring application to connect to search engine at $TARGET_IP"
+    
+  policies:
+
+    - type: tosca.policies.autoscaling.Base
+      properties:
+        min_instances: 1
+        max_instances: 3
+
+workflows:
+
+  deploy:
+    mapping:
+      inputs:
+        java_app_image: { get_input: java_app_image }
+        search_engine_image: { get_input: search_engine_image }
+
+  configure_networking:
+    mapping:
+      main_app_host_ip: { get_attribute: [main_app_host, ip] }
+      search_engine_host_ip: { get_attribute: [search_engine_host, ip] }
+      
+      steps:
+        - connect_main_app_to_search_engine:
+            tasks:
+              - task_name: establish_connection
+                implementation: 
+                  script: |
+                    MAIN_APP_IP={ get_input 'main_app_host_ip' }
+                    SEARCH_ENGINE_IP={ get_input 'search_engine_host_ip' }
+
+                    echo "Establishing connection between Main App ($MAIN_APP_IP) and Search Engine ($SEARCH_ENGINE_IP)"

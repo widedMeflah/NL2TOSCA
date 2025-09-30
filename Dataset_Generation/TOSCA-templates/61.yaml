@@ -1,0 +1,86 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+
+description: TOSCA example for submitting a job to a QCG gateway
+
+metadata:
+  display_name: HPC Job
+  tag: qcg
+
+topology_template:
+
+  inputs:
+
+    run_command:
+      type: string
+      description: Command to run
+      required: no
+      default: 'printenv'
+    std_outerr:
+      type: string
+      description: HPC job output (located in user's HOME)
+      required: no
+      default: 'log.txt'
+    total_cores:
+      type: integer
+      description: Total number of cores
+      required: no
+      default: 2
+    num_gpus:
+      type: integer
+      description: Number of required GPUs
+      required: no
+      default: 0
+    total_nodes:
+      type: integer
+      description: total number of nodes
+      required: no
+      default: 1
+    cores_per_node:
+      type: integer
+      description: number of cores per single node
+      required: no
+      default: 2
+    memory_per_node:
+      required: no
+      type: integer
+      description: available memory per single node
+      default: 1024
+    memory_per_core:
+      required: no
+      type: integer
+      description: available memory per single core
+      default: 1024
+    queue:
+      type: string
+      description: Name of the HPC partition (e.g. standard, tesla)
+      required: no
+      default: standard
+    wall_clock:
+      type: string
+      description: maximum total execution time
+      required: no
+      default: "00:02:00"
+
+  node_templates:
+
+    qcg_job:
+      type: tosca.nodes.indigo.Qcg.Job
+      properties:
+        note: "Script to submit a test application"
+        executable: { get_input: run_command }
+        std_outerr: { get_input: std_outerr }
+        directory: "${HOME}"
+        total_cores: { get_input: total_cores }
+        total_nodes: { get_input: total_nodes }
+        cores_per_node: { get_input: cores_per_node }
+        memory_per_core: { get_input: memory_per_core }
+        memory_per_node: { get_input: memory_per_node }
+        gpus: { get_input: num_gpus }
+        queue: { get_input: queue }
+        wall_clock: { get_input: wall_clock }
+        environment:
+          NUM_GPUS: { get_input: num_gpus }

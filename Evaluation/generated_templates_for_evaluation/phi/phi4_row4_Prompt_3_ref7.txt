@@ -1,0 +1,64 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: >
+  Deployment setup for a MongoDB instance hosted on a Linux-based compute resource running Ubuntu.
+
+imports:
+  - tosca-normative-types:1.3.0
+
+description: MongoDB deployment on Ubuntu Compute Resource using Alien4Cloud
+
+topology_template:
+  inputs:
+    mongodb_port:
+      type: integer
+      description: TCP port for MongoDB, default is 27017.
+      constraints:
+        - valid_range: [8000, 65535]
+      default: 27017
+
+  node_templates:
+    ubuntu_compute_resource:
+      type: tosca.nodes.Compute
+      properties:
+        image: { get_input: os_image }
+        architecture: x86_64
+        os:
+          family: Ubuntu
+
+    mongodb_instance:
+      type: my.types.MongoDBInstance
+      requirements:
+        - host: ubuntu_compute_resource
+      properties:
+        port:
+          default: { get_input: mongodb_port }
+
+  relationship_templates:
+    runs_on:
+      type: tosca.relationships.HostedOn
+
+node_types:
+  my.types.MongoDBInstance:
+    derived_from: tosca.nodes.SoftwareComponent
+    capabilities:
+      host:
+        occurrences: [1, 1]
+        valid_target_types: [tosca.nodes.Compute]
+
+dsl_definitions:
+  types:
+    MyComputeUbuntu:
+      derived_from: tosca.nodes.Compute
+      properties:
+        os:
+          family: Ubuntu
+
+  artifacts:
+    mongodb_package:
+      type: tosca.artifacts.File
+      file: mongodb.deb
+
+profiles:
+  my.profile.Alien4Cloud:
+    derived_from: tosca.meta.alien.AlienProfile

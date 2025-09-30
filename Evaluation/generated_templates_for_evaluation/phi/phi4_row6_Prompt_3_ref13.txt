@@ -1,0 +1,97 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+description: >
+  A TOSCA-compliant description of a Kubernetes cluster orchestrated by Alien4Cloud.
+
+imports:
+  - tosca-normative-types:1.2.0
+
+topology_template:
+
+  node_templates:
+
+    kubernetes_master:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu:18.04
+        flavor:
+          id: c1.medium
+      capabilities:
+        host:
+          properties: {}
+        endpoint: {}
+      requirements:
+        - hosted_on: private_network
+
+      artifacts:
+        kube_config:
+          file: /etc/kubernetes/admin.conf
+
+    kubernetes_worker:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu:18.04
+        min_instances: 1
+        max_instances: 5
+        flavor:
+          id: c1.medium
+      capabilities:
+        host: {}
+        endpoint: {}
+
+    private_network:
+      type: tosca.nodes.network.Network
+
+    flannel_config:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        ip_mask: "10.244.0.0/16"
+      requirements:
+        - virtual_links: { node: private_network }
+
+    etcd_service:
+      type: tosca.nodes.Container
+      properties:
+        image: quay.io/coreos/etcd:v2.2.1
+      capabilities:
+        endpoint: {}
+
+    kubernetes_dashboard:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        namespace: kube-system
+      requirements:
+        - host: { node: kubernetes_master }
+
+  groups:
+
+    k8s_cluster:
+      members: [kubernetes_master, kubernetes_worker]
+
+  relationships:
+
+    - member: kubernetes_master
+      target: private_network
+
+    - member: kubernetes_worker
+      target: private_network
+
+    - member: flannel_config
+      target: kubernetes_master
+
+    - member: flannel_config
+      target: kubernetes_worker
+
+    - member: etcd_service
+      target: kubernetes_master
+
+    - member: kubernetes_dashboard
+      target: kubernetes_master
+
+outputs:
+
+  dashboard_endpoint:
+    value: { get_attribute: [kubernetes_master, endpoint, public_address] }
+
+  api_endpoint:
+    value: { get_attribute: [kubernetes_master, endpoint, private_address] }

@@ -1,0 +1,92 @@
+
+definition:
+  $id: k8s_cluster
+  title: Kubernetes Cluster
+  description: A Kubernetes cluster with master node and worker nodes, dashboard, network overlay (Flannel), Docker for containerization, Etcd for configuration storage and API endpoint and dashboard UI exposed as outputs.
+  composition_template:
+    type: node
+    id: k8s_cluster_node
+    name: k8s_cluster_node
+    properties:
+      software_list:
+        - type: kubernetes
+          version: latest
+          configuration:
+            container_runtime: docker
+            service_account: kubelet
+            api:
+              expose: true
+            dashboard:
+              expose: true
+            network:
+              plugin: flannel
+            etcd:
+              role: server
+            node_labels:
+              role: worker
+      count: 3
+
+    type: node
+    id: k8s_master_node
+    name: k8s_master_node
+    properties:
+      software_list:
+        - type: kubernetes
+          version: latest
+          configuration:
+            container_runtime: docker
+            service_account: kubelet
+            api:
+              expose: true
+              expose_port: 6443
+            dashboard:
+              expose: true
+            network:
+              plugin: flannel
+            etcd:
+              role: server
+            node_labels:
+              role: master
+
+    type: relationship
+    id: k8s_peer_relationship
+    source: k8s_cluster_node
+    target: k8s_cluster_node
+    role: k8s_peer
+
+    type: relationship
+    id: k8s_control_plane_relationship
+    source: k8s_master_node
+    target: k8s_cluster_node
+    role: k8s_control_plane
+
+    type: node
+    id: etcd_node
+    name: etcd_node
+    properties:
+      software_list:
+        - type: etcd
+          version: latest
+          configuration:
+            listen-client-urls: http://0.0.0.0:2379
+            listen-peer-urls: http://0.0.0.0:2380
+
+    type: relationship
+    id: etcd_cluster_relationship
+    source: etcd_node
+    target: etcd_node
+    role: etcd_peer
+
+    type: output
+    id: k8s_api_endpoint
+    name: k8s_api_endpoint
+    description: Kubernetes API endpoint
+    data_type: string
+    target: k8s_master_node.properties.api.expose_port
+
+    type: output
+    id: k8s_dashboard_ui
+    name: k8s_dashboard_ui
+    description: Kubernetes dashboard UI
+    data_type: string
+    target: k8s_master_node.properties.dashboard.expose_port

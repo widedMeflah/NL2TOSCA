@@ -1,0 +1,127 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA description for a scalable virtual computing environment with INDIGO orchestrator
+
+imports:
+  - file: indigo_custom_types.yaml
+
+topology_template:
+  inputs:
+    num_cpus_manager:
+      type: integer
+      description: Number of CPUs for the management node
+      default: 4
+    memory_manager:
+      type: string
+      description: Memory allocation for the management node
+      default: "8GB"
+    num_cpus_worker:
+      type: integer
+      description: Number of CPUs for each worker node
+      default: 2
+    memory_worker:
+      type: string
+      description: Memory allocation for each worker node
+      default: "4GB"
+    max_worker_nodes:
+      type: integer
+      description: Maximum number of worker nodes
+      default: 5
+    admin_email:
+      type: string
+      description: Administrator email for web interface access
+      default: "admin@example.com"
+    api_key:
+      type: string
+      description: API key for secure access
+      default: "default-api-key"
+    software_version:
+      type: string
+      description: Version of the software to be deployed
+      default: "1.0.0"
+    instance_description:
+      type: string
+      description: Description of the instance
+      default: "Scalable Compute Cluster"
+    ssh_public_key:
+      type: string
+      description: SSH public key for instance access
+      default: "ssh-rsa AAAAB3NzaC1yc2E..."
+    data_directory:
+      type: string
+      description: Directory for storing system data
+      default: "/data/cluster"
+
+  node_templates:
+    management_node:
+      type: indigo.Compute
+      properties:
+        num_cpus: { get_input: num_cpus_manager }
+        mem_size: { get_input: memory_manager }
+      requirements:
+        - host:
+            node: worker_nodes
+            relationship: indigo.relationships.HostedOn
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+
+    worker_nodes:
+      type: indigo.Compute
+      properties:
+        num_cpus: { get_input: num_cpus_worker }
+        mem_size: { get_input: memory_worker }
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: { get_input: max_worker_nodes }
+            default_instances: 2
+      requirements:
+        - hybrid_setup:
+            node: hybrid_cloud
+            relationship: indigo.relationships.HybridSetup
+
+    hybrid_cloud:
+      type: indigo.CloudProvider
+      properties:
+        provider_type: "hybrid"
+        description: Hybrid cloud setup for compute environment
+
+    web_interface:
+      type: indigo.WebInterface
+      properties:
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        software_version: { get_input: software_version }
+        instance_description: { get_input: instance_description }
+        ssh_public_key: { get_input: ssh_public_key }
+      requirements:
+        - host:
+            node: management_node
+            relationship: indigo.relationships.HostedOn
+
+    data_storage:
+      type: indigo.Storage
+      properties:
+        path: { get_input: data_directory }
+      requirements:
+        - host:
+            node: management_node
+            relationship: indigo.relationships.AttachedTo
+
+  outputs:
+    web_interface_url:
+      description: URL to access the web interface
+      value: { get_attribute: [web_interface, url] }
+    cluster_ip:
+      description: IP address of the cluster
+      value: { get_attribute: [management_node, public_ip] }
+    credentials:
+      description: Credentials to manage the environment
+      value:
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }

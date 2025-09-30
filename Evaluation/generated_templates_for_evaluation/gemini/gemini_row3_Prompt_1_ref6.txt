@@ -1,0 +1,72 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: A system with a JavaScript application and MongoDB backend.
+
+imports:
+  - alien-base-types:2.0.0
+  - alien-extended-types:2.0.0
+  - alien-nodejs-types:2.0.0
+  - tosca-normative-types:1.0.0.wd06
+
+inputs:
+  app_port:
+    type: integer
+    description: The network port for the JavaScript application.
+    required: true
+    default: 8080
+  db_port:
+    type: integer
+    description: The network port for the MongoDB database.
+    required: true
+    default: 27017
+
+node_templates:
+  application_server_host:
+    type: alien.nodes.Ubuntu
+    capabilities:
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 1
+
+  nodejs_runtime:
+    type: alien.nodes.Nodejs.WebServer
+    relationships:
+      - type: tosca.relationships.HostedOn
+        target: application_server_host
+
+  sample_javascript_app:
+    type: alien.nodes.nodejs.samples.NodejsApplication
+    properties:
+      port: { get_input: app_port }
+    relationships:
+      - type: tosca.relationships.HostedOn
+        target: nodejs_runtime
+      - type: tosca.relationships.ConnectsTo
+        target: mongodb
+        properties:
+          database_name: sample_db
+          username: app_user
+          password: app_password
+
+  database_server_host:
+    type: alien.nodes.Ubuntu
+    capabilities:
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 1
+
+  mongodb:
+    type: alien.nodes.MongoDB
+    properties:
+      port: { get_input: db_port }
+    relationships:
+      - type: tosca.relationships.HostedOn
+        target: database_server_host
+
+outputs:
+  application_url:
+    description: URL to access the deployed JavaScript application.
+    value: >-
+      http://{ get_attribute: [ application_server_host, public_address ] }:{ get_input: app_port }

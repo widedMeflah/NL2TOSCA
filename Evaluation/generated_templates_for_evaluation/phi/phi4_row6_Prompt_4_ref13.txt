@@ -1,0 +1,65 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+imports:
+  - cloudify/types/cloudify.nodes.docker_container:1.0.0
+  - cloudify/types/openstack.nodes.nova.server:1.0.0
+  - custom/kubernetes:1.0.0
+  - custom/network_overlay_flannel:1.0.0
+  - custom/k8s_dashboard:1.0.0
+
+description: Basic Kubernetes Cluster Topology using Alien4Cloud
+
+topology_template:
+
+  node_templates:
+
+    etcd_instance:
+      type: cloudify.nodes.docker_container.Etcd
+      properties:
+        image: quay.io/coreos/etcd:v3.5.8 # Example version, update as needed
+        env:
+          - name: ETCD_INITIAL_CLUSTER_STATE
+            value: new
+          - name: ETCD_NAME
+            value: etcd0
+
+    master_node:
+      type: cloudify.nodes.docker_container.KubernetesMaster
+      properties:
+        image: k8s.gcr.io/kube-apiserver:v1.21.2 # Example version, update as needed
+        env:
+          - name: ETCD_ENDPOINTS
+            value: etcd://etcd_instance_ip:2379
+          - name: KUBELET_HOSTNAME
+            value: master_node
+
+    worker_nodes:
+      type: cloudify.nodes.docker_container.KubernetesNode
+      relationships:
+        - type: cloudify.relationships.contained_in
+          target: master_node
+      properties:
+        image: k8s.gcr.io/kubelet:v1.21.2 # Example version, update as needed
+
+    network_overlay_flannel:
+      type: custom.network_overlay_flannel.Flannel
+      relationships:
+        - type: cloudify.relationships.contained_in
+          target: master_node
+
+    kubernetes_dashboard:
+      type: custom.k8s_dashboard.Dashboard
+      properties:
+        image: k8s.gcr.io/kubernetes-dashboard:v2.3.1 # Example version, update as needed
+      relationships:
+        - type: cloudify.relationships.contained_in
+          target: master_node
+
+  outputs:
+
+    api_endpoint:
+      value: { get_attribute: [ master_node, ip_address ] }
+
+    dashboard_ui_url:
+      value: "http://{ get_attribute: [ kubernetes_dashboard, ip_address ] }:30000"
+

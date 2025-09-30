@@ -1,0 +1,63 @@
+tosca_definitions_version: alien4cloud-1.3
+
+topology_template:
+  description: Sample JavaScript Application with Node.js and PostgreSQL
+
+  node_templates:
+    node_js_app:
+      type: tosca.nodes.NodeJS.Application
+      properties:
+        name: sample_js_app
+        version: 1.0.0
+        ports:
+          app_port: 3000
+        dependencies:
+          - database
+        environment:
+          - name: NODE_ENV
+            value: production
+        commands:
+          - start: npm start
+          - stop: npm stop
+
+    database:
+      type: tosca.nodes.Database.PostgreSQL
+      properties:
+        name: sample_db
+        version: 12
+        ports:
+          db_port: 5432
+        environment:
+          - name: POSTGRES_DB
+            value: sampledb
+          - name: POSTGRES_USER
+            value: sampleuser
+          - name: POSTGRES_PASSWORD
+            value: samplepass
+        storage:
+          size: 1GB
+          type: persistent
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        name: sample_network
+        cidr: 10.0.0.0/16
+
+  relationship_templates:
+    connect_to_database:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        ports:
+          - app_port: 3000
+          - db_port: 5432
+      interfaces:
+        - type: tosca.interfaces.network.Bind
+          properties:
+            network: sample_network
+
+  outputs:
+    app_url:
+      value: http://${node_js_app.networks.sample_network.floatting_ip.address}:${node_js_app.ports.app_port}
+    db_connection:
+      value: postgres://${database.environment.POSTGRES_USER}:${database.environment.POSTGRES_PASSWORD}@${database.networks.sample_network.floatting_ip.address}:${database.ports.db_port}/${database.environment.POSTGRES_DB}

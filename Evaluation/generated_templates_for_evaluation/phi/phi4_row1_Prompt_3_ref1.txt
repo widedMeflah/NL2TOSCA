@@ -1,0 +1,65 @@
+topology_template:
+  node_templates:
+    LinuxServer1:
+      type: tosca.nodes.Compute
+      properties:
+        architecture: x86_64
+        os: linux
+
+    LinuxServer2:
+      type: tosca.nodes.Compute
+      properties:
+        architecture: x86_64
+        os: linux
+
+    JDK:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 11.0.15
+
+    Alien4CloudApp:
+      type: tosca.nodes.Application
+      requirements:
+        - host: LinuxServer1
+          capability: tosca.capabilities.Container
+      properties:
+        application_type: alien4cloud
+
+    ElasticsearchService:
+      type: tosca.nodes.ElasticsearchCluster
+      requirements:
+        - host: LinuxServer2
+          capability: tosca.capabilities.Container
+      properties:
+        version: 7.10.1
+
+    RemoteElasticsearchNode:
+      type: tosca.nodes.ElasticsearchNode
+      capabilities:
+        host:
+          type: tosca.capabilities.Container
+      requirements:
+        - hostedOn: LinuxServer2
+        - usesJDK: JDK
+
+  relationships:
+    - type: tosca.relationships.HostedOn
+      target: LinuxServer1
+
+    - type: tosca.relationships.HostedOn
+      target: LinuxServer2
+      
+    - type: tosca.relationships.DependsOn
+      target: Alien4CloudApp
+      properties:
+        requirement_node: ElasticsearchService
+
+  groups:
+    ComputeNodesGroup:
+      members: [LinuxServer1, LinuxServer2]
+
+  policies:
+    NetworkSetupPolicy:
+      description: Ensure network connectivity between compute nodes.
+      targets: 
+        - group: ComputeNodesGroup

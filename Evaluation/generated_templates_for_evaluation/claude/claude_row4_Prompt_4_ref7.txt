@@ -1,0 +1,55 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: mongodb_service
+  template_version: 1.0.0
+  template_author: admin
+
+description: MongoDB service hosted on Linux compute
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+topology_template:
+  node_templates:
+    MongoHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "2 GB"
+        os:
+          properties:
+            type: linux
+            architecture: x86_64
+
+    MongoDB:
+      type: tosca.nodes.Database
+      properties:
+        port: 27017
+      requirements:
+        - host: MongoHost
+      capabilities:
+        database_endpoint:
+          properties:
+            protocol: tcp
+            port: { get_property: [SELF, port] }
+            network_name: PRIVATE
+
+  outputs:
+    mongodb_ip:
+      description: The IP address of the MongoDB host
+      value: { get_attribute: [MongoHost, ip_address] }
+    mongodb_port:
+      description: The port of the MongoDB service
+      value: { get_property: [MongoDB, port] }
+
+  inputs:
+    mongodb_port:
+      type: integer
+      required: false
+      default: 27017
+      constraints:
+        - in_range: [27017, 27030]

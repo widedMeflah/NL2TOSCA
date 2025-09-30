@@ -1,0 +1,91 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Galaxy Docker deployment on a single virtual machine
+
+topology_template:
+  node_templates:
+    galaxy_vm:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu_16_04
+        instance_type: configurable
+        networks:
+          public_network:
+            network_name: public_network
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports: 80
+        scalable:
+          properties:
+            disk_size: 10 GB
+            num_cpus: 2
+            mem_size: 4096 MB
+      artifacts:
+        my_image:
+          type: tosca.artifacts.OperatingSystem
+          properties:
+            type: ubuntu
+            version: 16.04
+
+    docker_container:
+      type: tosca.nodes.Container.Runtime
+      properties:
+        image: galaxy_image
+        network: public_network
+        ports:
+          http: 80
+          ftp: 21
+          lup_api: 8080
+      requirements:
+        - host: galaxy_vm
+        - network: public_network
+
+    block_storage:
+      type: tosca.nodes.Storage.Block
+      properties:
+        size: 100 GB
+        type: ephemeral
+      requirements:
+        - attach_to: galaxy_vm
+
+    hashicorp_vault:
+      type: tosca.nodes.Security.Token
+      properties:
+        type: hashicorp_vault
+        encryption: optional
+      requirements:
+        - host: galaxy_vm
+
+    galaxy_configuration:
+      type: tosca.nodes.Configuration
+      properties:
+        admin_email: admin@example.com
+        api_key: my_api_key
+        version: latest
+        instance_description: my_galaxy_instance
+      requirements:
+        - host: galaxy_vm
+
+    reference_data:
+      type: tosca.nodes.Application
+      properties:
+        reference_data: true
+      requirements:
+        - host: galaxy_vm
+
+    public_network:
+      type: tosca.nodes.Network
+      properties:
+        name: public_network
+
+  relationship_templates:
+    - connect_to_container:
+        type: tosca.relationships.ConnectsTo
+        properties:
+          protocol: http
+    - attach_to_vm:
+        type: tosca.relationships.AttachesTo
+    - hosted_on:
+        type: tosca.relationships.HostedOn

@@ -1,0 +1,77 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: TOSCA-compliant description for setting up a Kubernetes cluster using Alien4Cloud orchestrator.
+
+imports:
+  - custom-types/kubernetes.yaml
+
+topology_template:
+
+  inputs:
+    master_server_flavor:
+      type: string
+      required: true
+    worker_node_flavor:
+      type: string
+      required: true
+    dns_domain:
+      type: string
+      required: true
+
+  node_templates:
+
+    kubernetes_master:
+      type: org.alien4cloud.k8s.nodes.MasterNode
+      properties:
+        flavor: { get_input: master_server_flavor }
+        os_type: ubuntu
+        docker_version: "latest"
+        flannel_networking: true
+        etcd_enabled: true
+        dashboard_enabled: true
+        dns_domain: { get_input: dns_domain }
+      capabilities:
+        host:
+          properties:
+            agent_ip: { get_property: [ SELF, private_address ] }
+      
+    kubernetes_worker_1:
+      type: org.alien4cloud.k8s.nodes.WorkerNode
+      properties:
+        flavor: { get_input: worker_node_flavor }
+        os_type: ubuntu
+        docker_version: "latest"
+        flannel_networking: true
+
+    kubernetes_worker_pool:
+      type: tosca.policies.autoscaling.ComputePolicies
+      properties:
+        min_instances: 1
+        max_instances: 5
+        node_template: kubernetes_worker_1
+      
+    command_line_tool:
+      type: org.alien4cloud.cli.ManagerNodeTool
+      requirements:
+        - host: kubernetes_master
+
+    monitoring_dashboard:
+      type: org.alien4cloud.k8s.nodes.Dashboard
+      properties:
+        namespace: kube-system
+      requirements:
+        - host: kubernetes_master
+
+  policies:
+
+    scale_workers:
+      type: tosca.policies.autoscaling.ColdstartScalingPolicy
+      targets: [kubernetes_worker_pool]
+  
+outputs:
+
+  api_endpoint_url:
+    value: { get_attribute: [ kubernetes_master, public_address ] }
+
+  dashboard_url:
+    value: { concat: ["https://", { get_attribute: [ monitoring_dashboard, host, public_address ] }, ":443"] }

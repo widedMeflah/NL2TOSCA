@@ -1,0 +1,144 @@
+
+definition_version: 1.0.0
+
+describe: INDIGO Orchestrator Configuration for Web Application Deployment
+
+properties:
+  web_server:
+    type: apache
+    ram: 512MB
+    cpu: 1
+    disk_space: 10GB
+  database_server:
+    type: mysql
+    ram: 256MB
+    cpu: 0.5
+    disk_space: 5GB
+  application:
+    type: wine_cellar
+    source_url: https://github.com/example/wine-cellar-application.git
+  web_server_config:
+    document_root: /var/www/wine_cellar_application
+    listen_ports:
+      - http: 80
+      - https: 443
+    ssl_certificate: /etc/ssl/certs/server.crt
+    ssl_certificate_key: /etc/ssl/private/server.key
+  database:
+    name: wine_cellar_db
+    user: wine_cellar_user
+    password: wine_cellar_password
+    root_password: secure_root_password
+  network:
+    public_ip: public_ip_address
+
+topology_template:
+  nodes:
+    - type: web_server
+      properties: web_server
+    - type: database_server
+      properties: database_server
+    - type: php
+      dependencies: [web_server]
+      properties:
+        application: application
+    - type: mysql_db
+      dependencies: [database_server]
+      properties:
+        database: database
+
+relationships:
+  - type: php_to_apache
+    target: web_server
+    role: php
+  - type: db_to_mysql
+    target: database_server
+    role: mysql_db
+
+connections:
+  - source: php
+    target: apache
+    port: 9000
+  - source: mysql_db
+    target: database_server
+    port: 3306
+
+interfaces:
+  - name: web_server_interface
+    type: network_interface
+    args:
+      network: network
+      ip: public_ip
+    properties:
+      interface: eth0
+
+artifacts:
+  - name: wine_cellar_application
+    type: git
+    url: ${application.source_url}
+    destination: /opt/wine_cellar_application
+
+actions:
+  - name: configure_web_server
+    action_group:
+      - name: set_document_root
+        action: nodejs.fs.mkdir
+        args:
+          path: ${web_server_config.document_root}
+      - name: copy_application
+        action: nodejs.fs.copy
+        args:
+          src: ${artifacts.wine_cellar_application}
+          dest: ${web_server_config.document_root}
+      - name: set_listen_ports
+        action: nodejs.exec
+        args:
+          command: |
+            sed -i 's/Listen 8080/Listen ${web_server_config.listen_ports.http}/g' /etc/apache2/ports.conf
+            sed -i 's/<Listen 8080>/<Listen ${web_server_config.listen_ports.http}>/g' /etc/apache2/sites-available/000-default.conf
+            a2ensite wine_cellar_application
+            service apache2 reload
+
+  - name: configure_database
+    action_group:
+      - name: create_database
+        action: mysql.mysql_execute
+        args:
+          query: CREATE DATABASE ${database.name}
+      - name: create_user
+        action: mysql.mysql_execute
+        args:
+          query: CREATE USER '${database.user}'@'localhost' IDENTIFIED BY '${database.password}';
+      - name: grant_privileges
+        action: mysql.mysql_execute
+        args:
+          query: GRANT ALL PRIVILEGES ON ${database.name}.* TO '${database.user}'@'localhost';
+      - name: set_root_password
+        action: mysql.mysql_execute
+        args:
+          query: SET PASSWORD FOR root@'localhost' = PASSWORD('${database.root_password}');
+
+  - name: configure_network
+    action_group:
+      - name: set_public_ip
+        action: nodejs.exec
+        args:
+          command: sed -i 's/#${network.public_ip}/${network.public_ip}/g' /etc/network/interfaces
+          options:
+            ignoreErrors: true
+      - name: restart_networking
+        action: nodejs.exec
+        args:
+          command: service networking restart
+
+  - name: get_web_server_url
+    action: shell
+    args:
+      command: curl -s http://127.0.0.1:${indigo.port}/node | grep -oP '(?<=href=").*'"' | grep public_ip_address
+    output: ${url}
+
+initial_state:
+  - action: configure_web_server
+  - action: configure_database
+  - action: configure_network
+  - action: get_web_server_url

@@ -1,0 +1,105 @@
+
+topology_template_version: "2.0"
+
+node_templates:
+  SearchEngineVM:
+    type: vm
+    properties:
+      os:
+        type: ubuntu_16_04
+      memory_gb: 4
+      num_cpus: 2
+    resources:
+      links:
+        - name: search_engine_network
+      interfaces:
+        - name: eth0
+          type: public
+          subnetref: default
+      disks:
+        - name: root_disk
+          size: 40
+
+  SearchEngine:
+    type: service
+    properties:
+      service_template_ref: SearchEngineST
+    requirements:
+      host: SearchEngineVM
+
+  SearchEngineST:
+    type: todo
+    properties:
+      service_type: SearchEngine
+      version: 7.4.1
+      implementations:
+        SearchEngineImpl:
+          type: node
+          properties:
+            software:
+              search_engine:
+                type: specific_version
+                version: 7.4.1
+          requirements:
+            os: ubuntu_16_04
+
+  Security:
+    type: node
+    properties:
+      security_measures:
+        - set_password_main_user
+        - set_password_system_ui
+
+  set_password_main_user:
+    type: script
+    properties:
+      command: echo 'password1' | sudo -S usermod -p $1 search_engine
+      input_parameters:
+        - password1
+
+  set_password_system_ui:
+    type: script
+    properties:
+      command: echo 'password2' | sudo -S systemctl set-env SEARCH_ENGINE_PASSWORD
+      input_parameters:
+        - password2
+
+  SearchEnginePort:
+    type: port
+    properties:
+      protocol: tcp
+      port: 8080
+
+node_types:
+  vm:
+    type:tosca.nodes.Compute.VirtualMachine
+  service:
+    type:tosca.nodes.Service
+  todo:
+    type:tosca.nodes.TODO
+  node:
+    type:tosca.nodes.Compute
+  script:
+    type:tosca.nodes.Compute.Script
+  port:
+    type:tosca.nodes.Service.Endpoint
+
+relationships:
+  SearchEngineVM_SearchEngine:
+    type: tosca.relationships.Consumer
+    from: SearchEngineVM
+    to: SearchEngine
+  SearchEngine_SearchEnginePort:
+    type: tosca.relationships.IndirectProvider
+    from: SearchEngine
+    to: SearchEnginePort
+  Security_SearchEngine:
+    type: tosca.relationships.Provides
+    from: Security
+    to: SearchEngine
+
+interfaces:
+  public:
+    type:tosca.interfaces.Network
+  default:
+    type:tosca.interfaces.Network

@@ -1,0 +1,105 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: LAMP Stack with Wine Cellar Application
+
+topology_template:
+  inputs:
+    mysql_root_password:
+      type: string
+      description: MySQL root password
+      default: rootpass
+      required: true
+    mysql_user:
+      type: string
+      description: MySQL user
+      default: wineuser
+    mysql_password:
+      type: string
+      description: MySQL password
+      default: winepass
+    mysql_database:
+      type: string
+      description: MySQL database
+      default: winedb
+
+  node_templates:
+    apache:
+      type: tosca.nodes.WebServer.Apache
+      requirements:
+        - host: web_server
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/apache_install.sh
+
+    web_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            protocol: tcp
+            port: 80
+            secure_port: 443
+
+    mysql:
+      type: tosca.nodes.DBMS.MySQL
+      properties:
+        root_password: { get_input: mysql_root_password }
+      requirements:
+        - host: db_server
+
+    wine_db:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        name: { get_input: mysql_database }
+        user: { get_input: mysql_user }
+        password: { get_input: mysql_password }
+      requirements:
+        - host: mysql
+
+    db_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    wine_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /
+      requirements:
+        - host: apache
+        - database_endpoint: wine_db
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/wine_app_install.sh
+
+  outputs:
+    website_url:
+      description: URL for the Wine Cellar Application
+      value: { concat: ['http://', get_attribute: [web_server, public_address], '/'] }
+    website_secure_url:
+      description: Secure URL for the Wine Cellar Application
+      value: { concat: ['https://', get_attribute: [web_server, public_address], '/'] }

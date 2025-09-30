@@ -1,0 +1,111 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WebServerDeployment
+  template_version: 1.0.0
+  template_author: User
+
+description: TOSCA template for deploying a web server with specified requirements.
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.WebServer:
+    derived_from: tosca.nodes.WebServer
+    properties:
+      version:
+        type: string
+        default: "2.4"
+      port:
+        type: integer
+        default: 80
+      document_root:
+        type: string
+        default: "/var/www"
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+      endpoint:
+        type: tosca.capabilities.Endpoint.Public
+    requirements:
+      - host:
+          capability: tosca.capabilities.Compute
+          relationship: tosca.relationships.HostedOn
+    interfaces:
+      Standard:
+        create:
+          implementation: scripts/create.sh
+        start:
+          implementation: scripts/start.sh
+        stop:
+          implementation: scripts/stop.sh
+        restart:
+          implementation: scripts/restart.sh
+        check_welcome_page:
+          implementation: scripts/check_welcome_page.sh
+          inputs:
+            welcome_page_url:
+              type: string
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    WebServer:
+      type: Custom.WebServer
+      properties:
+        version: "2.4"
+        port: 80
+        document_root: "/var/www"
+      requirements:
+        - host: ComputeNode
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            port: 80
+            secure: false
+            url_path: "/"
+            network_name: PUBLIC
+      interfaces:
+        Standard:
+          check_welcome_page:
+            inputs:
+              welcome_page_url: { concat: ["http://", get_attribute: [SELF, endpoint, ip_address], ":", get_property: [SELF, port]] }
+
+    AdminNetwork:
+      type: tosca.nodes.Network
+      properties:
+        network_type: private
+        cidr: "192.168.1.0/24"
+      capabilities:
+        endpoint:
+          properties:
+            protocol: ssh
+            port: 22
+            secure: true
+            network_name: PRIVATE
+
+  relationships:
+    WebServerHostedOnCompute:
+      type: tosca.relationships.HostedOn
+      source: WebServer
+      target: ComputeNode
+
+  outputs:
+    webserver_url:
+      description: URL of the deployed web server
+      value: { concat: ["http://", get_attribute: [WebServer, endpoint, ip_address], ":", get_property: [WebServer, port]] }

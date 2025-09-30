@@ -1,0 +1,94 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Application System
+  node_templates:
+    Application:
+      type: tosca.nodes.WebApplication
+      properties:
+        name: My Application
+        jdks:
+          - url: http://example.com/jdk-11.tar.gz
+            install_dir: /opt/jdk-11
+        web_interface:
+          context_root: /
+          application_arguments: --security=high --docs=enabled
+      relationships:
+        - connect_to:
+            - DataStorage1
+            - DataStorage2
+        - host_on:
+            - ComputeResource1
+
+    DataStorage1:
+      type: tosca.nodes.DataStorage
+      properties:
+        name: Data Storage 1
+        redundancy: true
+      relationships:
+        - replicate_with:
+            - DataStorage2
+        - host_on:
+            - ComputeResource2
+
+    DataStorage2:
+      type: tosca.nodes.DataStorage
+      properties:
+        name: Data Storage 2
+        redundancy: true
+      relationships:
+        - replicate_with:
+            - DataStorage1
+        - host_on:
+            - ComputeResource3
+
+    TestingComponent:
+      type: tosca.nodes.TestingComponent
+      properties:
+        name: Integration Tester
+        plugin_version: 1.2.3
+        test_suite: integration-tests
+        branch: main
+      relationships:
+        - test:
+            - Application
+        - host_on:
+            - ComputeResource4
+
+    ComputeResource1:
+      type: tosca.nodes.Compute
+      properties:
+        name: Compute Resource 1
+        networking:
+          - network_name: IPv4_Network
+            ip_address: 10.0.0.1
+
+    ComputeResource2:
+      type: tosca.nodes.Compute
+      properties:
+        name: Compute Resource 2
+        networking:
+          - network_name: IPv4_Network
+            ip_address: 10.0.0.2
+
+    ComputeResource3:
+      type: tosca.nodes.Compute
+      properties:
+        name: Compute Resource 3
+        networking:
+          - network_name: IPv4_Network
+            ip_address: 10.0.0.3
+
+    ComputeResource4:
+      type: tosca.nodes.Compute
+      properties:
+        name: Compute Resource 4
+        networking:
+          - network_name: IPv4_Network
+            ip_address: 10.0.0.4
+
+    IPv4_Network:
+      type: tosca.nodes.Network
+      properties:
+        name: IPv4 Network
+        ipv4_address: 10.0.0.0/24

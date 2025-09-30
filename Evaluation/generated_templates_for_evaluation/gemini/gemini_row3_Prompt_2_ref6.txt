@@ -1,0 +1,70 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: A Node.js application with MongoDB data storage running on a Linux environment.
+
+imports:
+  - alien4cloud-extended-types:2.0.0-SNAPSHOT
+  - tosca-base-types:1.0.0
+
+topology_template:
+  inputs:
+    application_port:
+      type: integer
+      description: The network port on which the Node.js application will listen.
+      default: 3000
+      required: true
+    database_port:
+      type: integer
+      description: The network port on which the MongoDB database will listen.
+      default: 27017
+      required: true
+
+  node_templates:
+    compute_host:
+      type: alien.nodes.Linux
+      properties:
+        os_arch: x86_64
+        os_type: Linux
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    mongodb_database:
+      type: alien.nodes.MongoDB
+      requirements:
+        - host:
+            node: compute_host
+            capability: tosca.capabilities.Container
+      properties:
+        connection_port: { get_input: database_port }
+      
+    nodejs_application:
+      type: alien.nodes.Nodejs
+      requirements:
+        - host:
+            node: compute_host
+            capability: tosca.capabilities.Container
+        - database:
+            node: mongodb_database
+            capability: tosca.capabilities.DatabaseEndpoint
+      properties:
+        connection_port: { get_input: application_port }
+        application_folder: /opt/nodejs_app
+        source:
+          artifact_ref: sample_nodejs_app_artifact
+        entry_point: app.js
+
+  artifacts:
+    sample_nodejs_app_artifact:
+      file: "artifacts/sample_nodejs_app.zip"
+      type: tosca.artifacts.File
+
+  outputs:
+    application_url:
+      description: The URL to access the deployed Node.js application.
+      value: { concat: [ 'http://', get_attribute: [ compute_host, public_address ], ':', get_input: application_port ] }
+    database_connection_details:
+      description: Details for connecting to the MongoDB database from within the network.
+      value: { concat: [ 'mongodb://', get_attribute: [ compute_host, private_address ], ':', get_input: database_port, '/your_database_name' ] }

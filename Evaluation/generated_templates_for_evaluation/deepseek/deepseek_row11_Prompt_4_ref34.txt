@@ -1,0 +1,191 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA-compliant deployment setup for a Galaxy instance with cluster support
+
+node_templates:
+  galaxy_cluster:
+    type: tosca.nodes.INDIGO.GalaxyCluster
+    properties:
+      os: CentOS 7
+      cluster_manager: SLURM
+      galaxy_flavor: specific_flavor
+      companion_software: necessary_software
+      reference_data: specific_data
+      storage_encryption: true
+      vault_server: true
+      hybrid_support: true
+      confirmation_email: true
+      worker_nodes: 3
+
+  resource_manager:
+    type: tosca.nodes.INDIGO.ResourceManager
+    properties:
+      type: SLURM
+      os: CentOS 7
+
+  storage:
+    type: tosca.nodes.INDIGO.Storage
+    properties:
+      encryption: true
+
+  vault:
+    type: tosca.nodes.INDIGO.Vault
+    properties:
+      version: 1.7.3
+      configuration: |
+        storage "file" {
+          path = "/var/vault/data"
+        }
+        listener "tcp" {
+          address = "0.0.0.0:8200"
+          tls_disable = "true"
+        }
+        api_version = "v1"
+        max_lease_ttl = "10h"
+        default_lease_ttl = "10h"
+
+  galaxy_flavor:
+    type: tosca.nodes.INDIGO.GalaxyFlavor
+    properties:
+      version: 22.05
+      install_path: /opt/galaxy
+
+  companion_software:
+    type: tosca.nodes.INDIGO.CompanionSoftware
+    properties:
+      software: specific_software
+      version: 1.0.0
+      install_path: /opt/companion
+
+  reference_data:
+    type: tosca.nodes.INDIGO.ReferenceData
+    properties:
+      data: specific_data
+      version: 1.0.0
+      install_path: /opt/reference
+
+  notification:
+    type: tosca.nodes.INDIGO.Notification
+    properties:
+      email: true
+      smtp_server: smtp.example.com
+      from_email: deployment@example.com
+      to_email: admin@example.com
+
+relationships:
+  - type: tosca.relationships.INDIGO.DependsOn
+    target: resource_manager
+    source: galaxy_cluster
+
+  - type: tosca.relationships.INDIGO.DependsOn
+    target: storage
+    source: galaxy_cluster
+
+  - type: tosca.relationships.INDIGO.DependsOn
+    target: vault
+    source: galaxy_cluster
+
+  - type: tosca.relationships.INDIGO.DependsOn
+    target: galaxy_flavor
+    source: galaxy_cluster
+
+  - type: tosca.relationships.INDIGO.DependsOn
+    target: companion_software
+    source: galaxy_cluster
+
+  - type: tosca.relationships.INDIGO.DependsOn
+    target: reference_data
+    source: galaxy_cluster
+
+  - type: tosca.relationships.INDIGO.DependsOn
+    target: notification
+    source: galaxy_cluster
+
+deployment_artifacts:
+  - type: tosca.artifacts.Deployment.Artifact
+    content: |
+      resources:
+        - galaxy_cluster:
+            type: tosca.nodes.INDIGO.GalaxyCluster
+            properties:
+              os: CentOS 7
+              cluster_manager: SLURM
+              galaxy_flavor: specific_flavor
+              companion_software: necessary_software
+              reference_data: specific_data
+              storage_encryption: true
+              vault_server: true
+              hybrid_support: true
+              confirmation_email: true
+              worker_nodes: 3
+        - resource_manager:
+            type: tosca.nodes.INDIGO.ResourceManager
+            properties:
+              type: SLURM
+              os: CentOS 7
+        - storage:
+            type: tosca.nodes.INDIGO.Storage
+            properties:
+              encryption: true
+        - vault:
+            type: tosca.nodes.INDIGO.Vault
+            properties:
+              version: 1.7.3
+              configuration: |
+                storage "file" {
+                  path = "/var/vault/data"
+                }
+                listener "tcp" {
+                  address = "0.0.0.0:8200"
+                  tls_disable = "true"
+                }
+                api_version = "v1"
+                max_lease_ttl = "10h"
+                default_lease_ttl = "10h"
+        - galaxy_flavor:
+            type: tosca.nodes.INDIGO.GalaxyFlavor
+            properties:
+              version: 22.05
+              install_path: /opt/galaxy
+        - companion_software:
+            type: tosca.nodes.INDIGO.CompanionSoftware
+            properties:
+              software: specific_software
+              version: 1.0.0
+              install_path: /opt/companion
+        - reference_data:
+            type: tosca.nodes.INDIGO.ReferenceData
+            properties:
+              data: specific_data
+              version: 1.0.0
+              install_path: /opt/reference
+        - notification:
+            type: tosca.nodes.INDIGO.Notification
+            properties:
+              email: true
+              smtp_server: smtp.example.com
+              from_email: deployment@example.com
+              to_email: admin@example.com
+      relationships:
+        - type: tosca.relationships.INDIGO.DependsOn
+          target: resource_manager
+          source: galaxy_cluster
+        - type: tosca.relationships.INDIGO.DependsOn
+          target: storage
+          source: galaxy_cluster
+        - type: tosca.relationships.INDIGO.DependsOn
+          target: vault
+          source: galaxy_cluster
+        - type: tosca.relationships.INDIGO.DependsOn
+          target: galaxy_flavor
+          source: galaxy_cluster
+        - type: tosca.relationships.INDIGO.DependsOn
+          target: companion_software
+          source: galaxy_cluster
+        - type: tosca.relationships.INDIGO.DependsOn
+          target: reference_data
+          source: galaxy_cluster
+        - type: tosca.relationships.INDIGO.DependsOn
+          target: notification
+          source: galaxy_cluster

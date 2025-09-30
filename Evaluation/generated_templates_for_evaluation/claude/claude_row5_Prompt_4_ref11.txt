@@ -1,0 +1,94 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: elasticsearch-test-deployment
+  template_version: 1.0.0
+  template_author: alien4cloud
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+topology_template:
+  node_templates:
+    java_runtime:
+      type: org.alien4cloud.nodes.JRE
+      properties:
+        java_version: 11
+        java_url: "https://download.java.net/java/GA/jdk11"
+      requirements:
+        - host: compute_node
+
+    elasticsearch_master:
+      type: org.alien4cloud.nodes.Elasticsearch
+      properties:
+        cluster_name: "es-cluster"
+        node_name: "master-node"
+        elasticsearch_version: "7.9.3"
+        is_master_node: true
+      requirements:
+        - host: java_runtime
+        - depends_on: network
+
+    elasticsearch_data:
+      type: org.alien4cloud.nodes.Elasticsearch
+      properties:
+        cluster_name: "es-cluster"
+        node_name: "data-node"
+        elasticsearch_version: "7.9.3"
+        is_data_node: true
+      requirements:
+        - host: java_runtime
+        - depends_on: network
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 2
+            max_instances: 5
+            default_instances: 2
+
+    test_component:
+      type: org.alien4cloud.nodes.TestComponent
+      properties:
+        component_version: "1.0"
+        test_suite: "integration"
+      requirements:
+        - host: java_runtime
+        - depends_on: elasticsearch_master
+        - depends_on: elasticsearch_data
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: "192.168.1.0/24"
+
+    compute_node:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "4 GB"
+            disk_size: "10 GB"
+
+  relationships:
+    test_to_es_master:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        credential: 
+          protocol: http
+          port: 9200
+
+    test_to_es_data:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        credential:
+          protocol: http
+          port: 9200
+
+  outputs:
+    elasticsearch_url:
+      value: { get_attribute: [ elasticsearch_master, elasticsearch_url ] }
+    test_results:
+      value: { get_attribute: [ test_component, test_results ] }

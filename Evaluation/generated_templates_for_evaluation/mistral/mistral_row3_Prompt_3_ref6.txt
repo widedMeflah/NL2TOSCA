@@ -1,0 +1,77 @@
+
+topology_template_version: "2.0.0"
+
+description: Nodecellar Application Topology with MongoDB and Node.js on Ubuntu
+
+nodes:
+  - type: linux_node
+    ubuntu_version: "latest"
+    name: nodejs_node
+
+    properties:
+      network_connections:
+        - default
+
+      ports:
+        - name: nodecellar_app
+          port: 8088
+
+    interfaces:
+      - type: script
+        executable: |
+          # Install Node.js
+          curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+
+          # Install Nodecellar
+          git clone https://github.com/Nodecellar/nodecellar.git
+          cd nodecellar
+          npm install
+
+          # Start Nodecellar
+          npm start
+
+  - type: mongodb
+    name: mongodb_node
+
+    properties:
+      network_connections:
+        - default
+
+      ports:
+        - name: mongo_db
+          port: 27017
+
+  - type: linux_node
+    ubuntu_version: "latest"
+    name: mongodb_config_node
+
+    properties:
+      network_connections:
+        - default
+
+    interfaces:
+      - type: script
+        executable: |
+          # Install MongoDB
+          echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -sc)/mongodb-org/4.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+          wget -qO- https://repo.mongodb.org/apt/ubuntu $(lsb_release -sc)/mongodb-org/4.4/mongodb-org-4.4-gpg-key.asc | sudo apt-key add
+          sudo apt-get update
+          sudo apt-get install -y mongodb-org-server
+
+          # Configure MongoDB to listen on a port within the specified range
+          sudo systemctl stop mongod
+          sed -i "s/^bind_ip = 127.0.0.1/bind_ip = \$(curl -s http://ipecho.net/plain; echo -n '/1)/" /etc/mongod.conf
+          sudo systemctl start mongod
+
+relationships:
+  - type: compose
+    source: nodejs_node
+    target: mongodb_node
+    port_binding:
+      source: nodecellar_app
+      target: mongo_db
+
+outputs:
+  - id: nodecellar_app_url
+    value: "http://$(curl -s http://ipecho.net/plain; echo -n '/1):8088"

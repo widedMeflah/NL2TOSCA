@@ -1,0 +1,74 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: apache-web-server
+  template_version: 1.0.0
+  template_author: admin
+
+description: Apache web server deployment template
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+node_types:
+  apache.nodes.WebServer:
+    derived_from: tosca.nodes.WebServer
+    properties:
+      component_version:
+        type: string
+        default: "2.4"
+      port:
+        type: integer
+        default: 80
+      document_root:
+        type: string
+        default: "/var/www"
+    attributes:
+      server_url: { get_operation_output: [ SELF, Standard, start, server_url ] }
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+      endpoint:
+        type: tosca.capabilities.Endpoint
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            PORT: { get_property: [SELF, port] }
+            DOC_ROOT: { get_property: [SELF, document_root] }
+        stop: {}
+        restart: {}
+      custom:
+        check_health:
+          inputs:
+            PORT: { get_property: [SELF, port] }
+
+topology_template:
+  node_templates:
+    compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            secure: true
+            protocol: tcp
+            network_name: PRIVATE
+    apache:
+      type: apache.nodes.WebServer
+      properties:
+        component_version: "2.4"
+        port: 80
+        document_root: "/var/www"
+      requirements:
+        - host: compute
+
+outputs:
+  website_url:
+    description: URL for the website
+    value: { get_attribute: [ apache, server_url ] }

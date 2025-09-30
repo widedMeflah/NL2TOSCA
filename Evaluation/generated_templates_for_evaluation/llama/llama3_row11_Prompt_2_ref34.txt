@@ -1,0 +1,83 @@
+topology_template:
+  description: Galaxy instance on CentOS 7 with SLURM
+  node_templates:
+    galaxy:
+      type: tosca.nodes.Galaxy
+      properties:
+        os: centos
+        os_version: 7
+        galaxy_version: latest
+        slurm: true
+      requirements:
+        - disk:
+            node: disk
+            relationship: tosca.relationships.Networks
+        - network:
+            node: network
+            relationship: tosca.relationships.Networks
+      interfaces:
+        Standard:
+          create: >
+            ${galaxy_install_script}
+          configure: >
+            ${galaxy_configure_script}
+          start: >
+            ${galaxy_start_script}
+          stop: >
+            ${galaxy_stop_script}
+    disk:
+      type: tosca.nodes.Storage
+      properties:
+        size: 100GB
+        type: encrypted
+      requirements:
+        - network:
+            node: network
+            relationship: tosca.relationships.Networks
+    network:
+      type: tosca.nodes.Network
+      properties:
+        name: galaxy-net
+    worker_node:
+      type: tosca.nodes.Compute
+      properties:
+        os: centos
+        os_version: 7
+        instance_type: medium
+      requirements:
+        - disk:
+            node: disk
+            relationship: tosca.relationships.Networks
+        - network:
+            node: network
+            relationship: tosca.relationships.Networks
+      interfaces:
+        Standard:
+          create: >
+            ${worker_node_install_script}
+          configure: >
+            ${worker_node_configure_script}
+          start: >
+            ${worker_node_start_script}
+          stop: >
+            ${worker_node_stop_script}
+  relationship_templates:
+    tosca.relationships.Networks:
+      type: ConnectsTo
+  capability_definitions:
+    tosca.capabilities Scaling:
+      type: tosca.capabilities.Scaling
+      properties:
+        min_instances: 1
+        max_instances: 10
+  group_definitions:
+    galaxy_group:
+      type: tosca.groups.Root
+      members: [galaxy, worker_node]
+      properties:
+        notify_email: user@example.com
+  output_templates:
+    access_instructions:
+      type: string
+      value: >
+        ${galaxy_access_script}

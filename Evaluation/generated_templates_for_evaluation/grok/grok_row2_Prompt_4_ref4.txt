@@ -1,0 +1,114 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ApacheServerTopology
+  template_version: 1.0.0
+  template_author: User
+
+description: A basic TOSCA topology for deploying an Apache server on a compute node with custom workflows.
+
+node_types:
+  Custom.Compute:
+    derived_from: tosca.nodes.Compute
+    description: A generic compute node for hosting applications.
+
+  Custom.ApacheServer:
+    derived_from: tosca.nodes.WebServer
+    description: A basic Apache web server.
+    interfaces:
+      Standard:
+        start:
+          implementation: scripts/start_apache.sh
+        stop:
+          implementation: scripts/stop_apache.sh
+        restart:
+          implementation: scripts/restart_apache.sh
+      Custom:
+        check_welcome_page:
+          implementation: scripts/check_welcome_page.sh
+          inputs:
+            target_url:
+              type: string
+              default: "http://localhost"
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: Custom.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            cpu_frequency: 2.5 GHz
+            disk_size: 50 GB
+            mem_size: 4 GB
+
+    ApacheServer:
+      type: Custom.ApacheServer
+      requirements:
+        - host: ComputeNode
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/start_apache.sh
+          stop:
+            implementation: scripts/stop_apache.sh
+          restart:
+            implementation: scripts/restart_apache.sh
+        Custom:
+          check_welcome_page:
+            implementation: scripts/check_welcome_page.sh
+            inputs:
+              target_url: "http://{get_attribute: [SELF, ip_address]}"
+
+  workflows:
+    start_apache:
+      description: Workflow to start the Apache server.
+      steps:
+        start_compute:
+          target: ComputeNode
+          activities:
+            - set_state: starting
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.create
+            - set_state: started
+        start_apache_server:
+          target: ApacheServer
+          activities:
+            - set_state: starting
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.start
+            - set_state: started
+          on_success:
+            - check_welcome_page
+        check_welcome_page:
+          target: ApacheServer
+          activities:
+            - call_operation: Custom.check_welcome_page
+
+    stop_apache:
+      description: Workflow to stop the Apache server.
+      steps:
+        stop_apache_server:
+          target: ApacheServer
+          activities:
+            - set_state: stopping
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.stop
+            - set_state: stopped
+
+    restart_apache:
+      description: Workflow to restart the Apache server.
+      steps:
+        restart_apache_server:
+          target: ApacheServer
+          activities:
+            - set_state: restarting
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.restart
+            - set_state: started
+          on_success:
+            - check_welcome_page
+        check_welcome_page:
+          target: ApacheServer
+          activities:
+            - call_operation: Custom.check_welcome_page

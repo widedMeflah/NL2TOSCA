@@ -1,0 +1,51 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    Data_Server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        architecture: x86_64
+      capabilities:
+        endpoint:
+          properties:
+            network_name: private_network
+            protocol: tcp
+            port: { get_property: [ Data_Server_Port, port ] }
+        binding:
+          properties:
+            network_name: private_network
+      requirements:
+        - network:
+            node: Private_Network
+            relationship: tosca.relationships.Network
+        - server_port:
+            node: Data_Server_Port
+            relationship: tosca.relationships.Bind
+
+    Private_Network:
+      type: tosca.nodes.Network
+      properties:
+        name: private_network
+
+    Data_Server_Port:
+      type: tosca.nodes.NetworkPort
+      properties:
+        protocol: tcp
+        port: 27017
+
+  relationship_templates:
+    - tosca.relationships.Network:
+        properties:
+          network_name: private_network
+    - tosca.relationships.Bind:
+        properties:
+          port_name: data_server_port
+
+  output_templates:
+    server_ip:
+      value: { get_property: [ Data_Server, public_address ] }
+    server_port:
+      value: { get_property: [ Data_Server_Port, port ] }

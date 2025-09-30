@@ -1,0 +1,61 @@
+
+tosca_definitions_version: alien_dsl_3_1_0
+
+metadata:
+  template_name: mongodb-linux-service
+  template_version: 1.0.0-SNAPSHOT
+  template_author: alien4cloud
+
+description: "Topology template for a MongoDB service hosted on a Linux-based compute instance, with configurable port and host IP/port outputs."
+
+imports:
+  - alien-base-types:3.1.0
+
+topology_template:
+  inputs:
+    mongodb_port:
+      type: integer
+      description: The port on which MongoDB will be accessible.
+      required: true
+      default: 27017
+      constraints:
+        - in_range: [1024, 65535]
+
+  node_templates:
+    compute:
+      type: alien.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    mongodb:
+      type: alien.nodes.MongoDB
+      properties:
+        port: { get_input: mongodb_port }
+      requirements:
+        - host:
+            node: compute
+            capability: alien.capabilities.Container
+            relationship: alien.relationships.HostedOn
+      capabilities:
+        mongodb_endpoint:
+          type: alien.capabilities.Endpoint.TCP
+          properties:
+            protocol: tcp
+            port: { get_input: mongodb_port }
+            initiator: source
+            network_name: PRIVATE
+
+  outputs:
+    mongodb_service_port:
+      description: The port on which the MongoDB service is accessible.
+      value: { get_property: [ mongodb, port ] }
+
+    host_ip_address:
+      description: The IP address of the host machine.
+      value: { get_attribute: [ compute, ip_address ] }

@@ -1,0 +1,91 @@
+
+topology_template_version: "2.0"
+
+description: Web Server Orchestration Template for Alien4cloud
+
+resources:
+  web_server:
+    type: web_server
+    properties:
+      port: 80
+      directory: files_directory
+      security: private_network_only
+      management:
+        start: start_command
+        stop: stop_command
+        restart: restart_command
+        status_check: status_check_command
+
+    requirements: []
+
+    interfaces:
+      ocf:tosca_simple_profile:ocf:tosca_server.web_server:1.0.0
+
+artifacts:
+  files_directory:
+    type: filesystem
+    description: Directory for storing website files
+    source:
+      type: local_filesystem
+      location: /path/to/website/files
+
+  start_command:
+    type: script
+    description: Command to start the web server
+    source:
+      type: inline_script
+      content: |
+        # Example start command for a web server
+        service web_server start
+
+  stop_command:
+    type: script
+    description: Command to stop the web server
+    source:
+      type: inline_script
+      content: |
+        # Example stop command for a web server
+        service web_server stop
+
+  restart_command:
+    type: script
+    description: Command to restart the web server
+    source:
+      type: inline_script
+      content: |
+        # Example restart command for a web server
+        service web_server restart
+
+  status_check_command:
+    type: script
+    description: Command to check the status of the welcome page
+    source:
+      type: inline_script
+      content: |
+        # Example status check command for a web server
+        curl -s -o /dev/null -w %{http_code} http://localhost/ && echo 200 || echo 500
+
+nodes:
+  web_server_node:
+    type: node
+    properties:
+      os: linux
+
+    interfaces:
+      ocf:tosca_simple_profile:ocs_ inode_type:tosca_node_type.general:1.0.0
+
+    resources:
+      web_server:
+        binding:
+          interface: ocf:tosca_simple_profile:ocf:tosca_server.web_server:1.0.0
+
+links:
+  - type: relationship
+    source: web_server_node
+    target: web_server
+    properties:
+      relationship_id: web_server_instance
+      relationship_type: ocf:tosca_simple_profile:ocf:tosca_server.web_server_instance:1.0.0
+    roles:
+      - provider
+      - consumer

@@ -1,0 +1,151 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A system to store and manage data efficiently, accessible over a network with a configurable port.
+
+metadata:
+  template_name: DataStorageSystem
+  template_version: 1.0.0
+  author: TOSCA User
+
+topology_template:
+  node_templates:
+    DataStorageServer:
+      type: tosca.nodes.nfv.vdu.vm
+      properties:
+        name: DataStorageVM
+        description: Ubuntu-based server for data storage and management
+        image: Ubuntu-20.04
+        flavor: m1.small
+        mgmt_ip_address: { get_property: [ SELF, ip_address ] }
+        mgmt_port: 22
+        mgmt_protocol: tcp
+        hypervisor: KVM
+        availability_zone: us-east-1a
+        boot_order: network
+        personality:
+          - path: /etc/datastorage/config
+            content: |
+              [server]
+              port = 5000
+              ip = 192.168.1.100
+        key_name: default_key
+        key_private: |
+          -----BEGIN RSA PRIVATE KEY-----
+          ...
+          -----END RSA PRIVATE KEY-----
+        key_public: |
+          ssh-rsa AAAAB3NzaC1yc2E...
+        user_data: |
+          #cloud-config
+          users:
+            - name: dataadmin
+              sudo: ALL=(ALL) NOPASSWD:ALL
+              groups: sudo
+              shell: /bin/bash
+              ssh-authorized-keys:
+                - ssh-rsa AAAAB3NzaC1yc2E...
+        metadata:
+          - name: datastorage
+          - description: Data storage instance
+        tags:
+          - env: dev
+          - role: storage
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create.sh
+            inputs:
+              port_range: 5000-6000
+              default_port: 5000
+              secure_connection: true
+            outputs:
+              ip_address: { get_property: [ SELF, ip_address ] }
+              port: { get_property: [ SELF, port ] }
+          configure:
+            implementation: scripts/configure.sh
+            inputs:
+              port: { get_input: port }
+              secure_connection: true
+      capabilities:
+        endpoint:
+          type: tosca.capabilities.network.Port
+          properties:
+            port: { get_property: [ SELF, port ] }
+            protocol: tcp
+            ip_address: { get_property: [ SELF, ip_address ] }
+    DataStorageService:
+      type: tosca.nodes.nfv.vdu
+      properties:
+        name: DataStorageService
+        description: Service for managing data operations securely over TCP
+        image: DataStorageImage
+        flavor: m1.small
+        mgmt_ip_address: { get_property: [ DataStorageServer, ip_address ] }
+        mgmt_port: { get_property: [ DataStorageServer, port ] }
+        mgmt_protocol: tcp
+        availability_zone: us-east-1a
+        boot_order: network
+        personality:
+          - path: /etc/datastorage/config
+            content: |
+              [server]
+              port = 5000
+              ip = 192.168.1.100
+        user_data: |
+          #cloud-config
+          users:
+            - name: dataadmin
+              sudo: ALL=(ALL) NOPASSWD:ALL
+              groups: sudo
+              shell: /bin/bash
+              ssh-authorized-keys:
+                - ssh-rsa AAAAB3NzaC1yc2E...
+        metadata:
+          - name: datastorage
+          - description: Data storage service
+        tags:
+          - env: dev
+          - role: storage
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create_service.sh
+            inputs:
+              port_range: 5000-6000
+              default_port: 5000
+              secure_connection: true
+            outputs:
+              ip_address: { get_property: [ SELF, ip_address ] }
+              port: { get_property: [ SELF, port ] }
+          configure:
+            implementation: scripts/configure_service.sh
+            inputs:
+              port: { get_input: port }
+              secure_connection: true
+      capabilities:
+        endpoint:
+          type: tosca.capabilities.network.Port
+          properties:
+            port: { get_property: [ SELF, port ] }
+            protocol: tcp
+            ip_address: { get_property: [ SELF, ip_address ] }
+
+  inputs:
+    port:
+      type: integer
+      description: Configurable port for data operations within a specified range
+      constraints:
+        - valid_values: 5000-6000
+      default: 5000
+    secure_connection:
+      type: boolean
+      description: Whether to use a secure TCP connection
+      default: true
+
+  outputs:
+    server_ip:
+      description: IP address of the server hosting the data storage system
+      value: { get_property: [ DataStorageServer, ip_address ] }
+    server_port:
+      description: Port used for data operations
+      value: { get_property: [ DataStorageServer, port ] }

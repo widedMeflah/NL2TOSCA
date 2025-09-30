@@ -1,0 +1,99 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template for deploying a single-node Elasticsearch 7.4.1 instance on a configurable Ubuntu 16.04 VM with public access.
+
+metadata:
+  template_name: single-node-elasticsearch
+  template_author: indigo-user
+  template_version: 1.0
+
+topology_template:
+  inputs:
+    elasticsearch_version:
+      type: string
+      description: Version of Elasticsearch to deploy
+      default: 7.4.1
+      constraints:
+        - valid_values: [ '7.4.1', '7.5.0', '7.6.0', '7.9.2' ]
+    elastic_user_password:
+      type: string
+      required: true
+      description: Password for the 'elastic' user
+    kibana_system_password:
+      type: string
+      required: true
+      description: Password for the 'kibana' system user
+    vm_cpu:
+      type: integer
+      description: Number of virtual CPUs
+      default: 2
+      constraints:
+        - valid_values: [ 2, 4 ]
+    vm_memory:
+      type: scalar-unit.size
+      description: Amount of memory for the host
+      default: 4 GB
+      constraints:
+        - valid_values: [ 4 GB, 8 GB ]
+
+  node_templates:
+
+    elastic_vm:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+        host:
+          properties:
+            num_cpus: { get_input: vm_cpu }
+            mem_size: { get_input: vm_memory }
+            disk_size: 40 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 16.04
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            ports:
+              elasticsearch_port:
+                protocol: tcp
+                source: 9200
+
+    elasticsearch:
+      type: tosca.nodes.indigo.Elasticsearch
+      properties:
+        version: { get_input: elasticsearch_version }
+        network_host: 0.0.0.0
+        elastic_password: { get_input: elastic_user_password }
+        kibana_system_password: { get_input: kibana_system_password }
+      requirements:
+        - host: elastic_vm
+
+  outputs:
+    elasticsearch_endpoint_url:
+      description: URL for accessing Elasticsearch
+      value: { concat: [ "http://", { get_attribute: [ elastic_vm, public_address, 0 ] }, ":9200" ] }
+
+    elasticsearch_public_ip:
+      description: Public IP address of the virtual machine
+      value: { get_attribute: [ elastic_vm, public_address, 0 ] }
+
+    elastic_user_password:
+      description: Password for 'elastic' user
+      value: { get_input: elastic_user_password }
+
+    kibana_system_password:
+      description: Password for 'kibana' system user
+      value: { get_input: kibana_system_password }
+
+    vm_credentials:
+      description: SSH username and password/key for accessing the node
+      value:
+        username: { get_attribute: [ elastic_vm, endpoint, public_credential, 0, user ] }
+        key: { get_attribute: [ elastic_vm, endpoint, public_credential, 0, token ] }

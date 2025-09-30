@@ -1,0 +1,76 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+imports:
+  - alien-base-types:2.0.0
+  - alien-cloud-types:2.0.0
+  - alien-java-types:2.0.0
+  - alien-tomcat-types:2.0.0
+  - alien-war-types:2.0.0
+topology_template:
+  inputs:
+    server_os_type:
+      type: string
+      description: The operating system type for the server (e.g., linux, windows).
+      required: true
+      default: linux
+    server_os_architecture:
+      type: string
+      description: The operating system architecture for the server (e.g., x86_64, aarch64).
+      required: true
+      default: x86_64
+    java_version:
+      type: string
+      description: The specific Java version to be used (e.g., 8, 11, 17).
+      required: true
+      default: "8"
+    web_application_artifact_url:
+      type: string
+      description: URL to the web application WAR file.
+      required: true
+      default: "https://github.com/alien4cloud/samples/blob/master/apache-war-sample/target/simple-war-sample-1.0-SNAPSHOT.war?raw=true"
+    web_application_context_path:
+      type: string
+      description: The context path for the web application (e.g., myapp, ROOT).
+      required: true
+      default: "simple-war-sample"
+  node_templates:
+    WebServer:
+      type: alien.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+        host:
+          properties:
+            os_arch: { get_input: server_os_architecture }
+            os_type: { get_input: server_os_type }
+    JavaRuntime:
+      type: alien.nodes.Java
+      properties:
+        version: { get_input: java_version }
+      requirements:
+        - host: WebServer
+    TomcatServer:
+      type: alien.nodes.Tomcat
+      requirements:
+        - host: WebServer
+        - java_runtime: JavaRuntime
+    WebApplication:
+      type: alien.nodes.WebApplication
+      properties:
+        context_path: { get_input: web_application_context_path }
+      artifacts:
+        war_file:
+          file: { get_input: web_application_artifact_url }
+          type: tosca.artifacts.File
+      requirements:
+        - host: TomcatServer
+  outputs:
+    web_application_url:
+      description: The URL to access the deployed web application.
+      value: { get_attribute: [ WebApplication, url ] }
+    tomcat_server_url:
+      description: The URL to access the Tomcat server (e.g., base URL or management console).
+      value: { get_attribute: [ TomcatServer, url ] }
+

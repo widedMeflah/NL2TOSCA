@@ -1,0 +1,103 @@
+
+topology_template_version: "2.0"
+
+node_types:
+  web_application_server:
+    type: java_application_server
+    properties:
+      software: Apache Tomcat
+
+  search_engine_server:
+    type: search_engine
+    properties:
+      software: Elasticsearch
+
+  network:
+    type: network
+
+  server:
+    type: server
+
+relationships:
+  web_app_to_search_engine:
+    type: data_retrieval
+    roles:
+      web_application_server: provider
+      search_engine_server: requirer
+
+  server_to_network:
+    type: connected_to
+    roles:
+      server: requirer
+      network: provider
+
+  java_app_deployment:
+    type: application_deployment
+    roles:
+      web_application_server: requirer
+      java_application: provider
+
+  search_engine_data_store:
+    type: data_indexing
+    roles:
+      search_engine_server: requirer
+      data_store: provider
+
+service_templates:
+  WebApplicationPlatformWithSearchEngine:
+    label: Web Application Platform with Search Engine
+    requirements:
+      - type: node
+        node_expression: network
+        multiplicity: 1..1
+      - type: node
+        node_expression: server
+        multiplicity: 1..*
+      - type: node
+        node_expression: web_application_server
+        multiplicity: 1..1
+      - type: node
+        node_expression: search_engine_server
+        multiplicity: 1..1
+
+    properties:
+      network_interface:
+        type: property
+        value: eth0
+
+    nodes:
+      - ref: network
+      - ref: server
+        dependencies: [network]
+      - ref: web_application_server
+        dependencies: [server]
+        properties:
+          deployed_application:
+            ref: java_app_deployment
+            type: component_ref
+      - ref: search_engine_server
+        dependencies: [server]
+        properties:
+          data_store:
+            ref: data_store
+
+    relationships:
+      - type: connected_to
+        source: server
+        target: network
+      - type: data_retrieval
+        source: web_application_server
+        target: search_engine_server
+      - type: application_deployment
+      - type: data_indexing
+
+data_types:
+  data_store:
+    type: object
+    properties:
+      software:
+        type: string
+        mandatory: true
+      storage_capacity:
+        type: integer
+        mandatory: true

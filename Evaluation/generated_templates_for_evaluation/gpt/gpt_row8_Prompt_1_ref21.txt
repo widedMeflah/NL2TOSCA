@@ -1,0 +1,164 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Deploy Wine Cellar PHP Application with Apache and MySQL using INDIGO Orchestrator
+
+imports:
+  - indigo_types: indigo_service_types.yaml
+
+topology_template:
+  inputs:
+    db_name:
+      type: string
+      description: Name of the MySQL database
+      default: winecellar_db
+    db_user:
+      type: string
+      description: MySQL user name
+      default: winecellar_user
+    db_password:
+      type: string
+      description: MySQL user password
+      default: winecellar_pass
+    db_root_password:
+      type: string
+      description: MySQL root user password
+      default: rootpass
+    apache_cpu:
+      type: integer
+      description: Number of vCPUs for the web server
+      default: 2
+    apache_mem:
+      type: scalar-unit.size
+      description: Amount of RAM for the web server
+      default: 4 GB
+    apache_disk:
+      type: scalar-unit.size
+      description: Disk size for the web server
+      default: 20 GB
+    db_cpu:
+      type: integer
+      description: Number of vCPUs for the database server
+      default: 2
+    db_mem:
+      type: scalar-unit.size
+      description: Amount of RAM for the database server
+      default: 4 GB
+    db_disk:
+      type: scalar-unit.size
+      description: Disk size for the database server
+      default: 20 GB
+
+  node_templates:
+    web_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        indigo_endpoint:
+          properties:
+            ports:
+              http:
+                protocol: tcp
+                source: 80
+                target: 80
+                accessible: true
+              https:
+                protocol: tcp
+                source: 443
+                target: 443
+                accessible: true
+        scalable:
+          properties:
+            count: 1
+        host:
+          properties:
+            num_cpus: { get_input: apache_cpu }
+            mem_size: { get_input: apache_mem }
+            disk_size: { get_input: apache_disk }
+      requirements:
+        - local_storage:
+            node: web_server_storage
+
+    web_server_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: apache_disk }
+
+    apache_php:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "2.4"
+        name: apache2
+      requirements:
+        - host: web_server
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_apache_php.sh
+
+    winecellar_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        component_version: "latest"
+        name: winecellar
+        context_root: /
+      requirements:
+        - host: web_server
+        - dependency:
+            node: db
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/deploy_winecellar.sh
+            inputs:
+              db_host: { get_attribute: [ db, private_address ] }
+              db_name: { get_input: db_name }
+              db_user: { get_input: db_user }
+              db_password: { get_input: db_password }
+
+    db:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: db_cpu }
+            mem_size: { get_input: db_mem }
+            disk_size: { get_input: db_disk }
+        scalable:
+          properties:
+            count: 1
+      requirements:
+        - local_storage:
+            node: db_storage
+
+    db_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: db_disk }
+
+    mysql:
+      type: tosca.nodes.DBMS.MySQL
+      properties:
+        db_name: { get_input: db_name }
+        db_user: { get_input: db_user }
+        db_password: { get_input: db_password }
+        root_password: { get_input: db_root_password }
+      requirements:
+        - host: db
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_mysql.sh
+            inputs:
+              db_name: { get_input: db_name }
+              db_user: { get_input: db_user }
+              db_password: { get_input: db_password }
+              root_password: { get_input: db_root_password }
+
+  outputs:
+    application_url:
+      description: URL to access the Wine Cellar Application
+      value:
+        concat:
+          - "http://"
+          - { get_attribute: [ web_server, public_address ] }
+          - "/"

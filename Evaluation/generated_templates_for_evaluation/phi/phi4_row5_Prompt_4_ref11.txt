@@ -1,0 +1,103 @@
+description: |
+  This TOSCA-compliant description outlines the deployment of an application using Alien4cloud orchestrator.
+topology_template:
+  inputs:
+    es_node_count: 
+      type: integer
+    es_replica_count: 
+      type: integer
+    network_configuration: {}
+  
+  node_templates:
+    elasticsearch_master:
+      type: tosca.nodes.Compute
+      properties:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+        flavor_id: m1.small
+      capabilities:
+        endpoint: 
+          properties:
+            protocol: "http"
+            host: { get_attribute: [ SELF, address ] }
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: { get_input: es_node_count }
+    
+    elasticsearch_replica:
+      type: tosca.nodes.Compute
+      relationships:
+        - type: tosca.relationships.MemberOfCluster
+          target: elasticsearch_master
+      groups:
+        - name: elasticsearch_replicas
+          members: [ SELF ]
+      properties:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+        flavor_id: m1.small
+        count: { get_input: es_replica_count }
+    
+    java_runtime_environment:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: "11"
+        distributionType: "jdk"
+    
+    application_component:
+      type: tosca.nodes.ApplicationComponent
+      requirements:
+        - host: elasticsearch_master
+          capabilities: [ endpoint, scalable ]
+        - host: java_runtime_environment
+    
+    testing_component:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: "1.0"
+      interfaces:
+        Standard:
+          test_application:
+            inputs:
+              es_endpoint: { get_attribute: [ elasticsearch_master, endpoint ] }
+            implementation: |
+              def main(inputs):
+                # Integration test logic with ElasticSearch and application component
+                pass
+    
+    network_configuration_component:
+      type: tosca.nodes.Network
+      properties:
+        configuration: { get_input: network_configuration }
+
+  policies:
+    - type: tosca.policies.scaling
+      targets: [ elasticsearch_master ]
+      properties:
+        default_instances: 1
+        min_instances: 2
+        max_instances: 5
+
+workflows:
+  deploy_application:
+    mapping:
+      inputs:
+        es_node_count: { get_input: es_node_count }
+        es_replica_count: { get_input: es_replica_count }
+        network_configuration: { get_input: network_configuration }
+
+      tasks:
+        setup_elasticsearch_cluster:
+          implements: tosca.interfaces.node.lifecycle.create
+        deploy_java_runtime:
+          implements: tosca.interfaces.node.lifecycle.start
+          requirements: [ host ]
+        deploy_application_component:
+          implements: tosca.interfaces.node.lifecycle.start
+          requirements: [ host ]
+        setup_testing_environment:
+          implements: tosca.interfaces.node.lifecycle.start
+          requirements: [ host ]
+        configure_network:
+          implements: tosca.interfaces.node.lifecycle.configure
+          requirements: [ host ]
+

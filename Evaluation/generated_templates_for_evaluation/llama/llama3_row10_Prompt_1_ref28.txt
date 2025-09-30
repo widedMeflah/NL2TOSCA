@@ -1,0 +1,91 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    Search_Engine_VM:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_attribute: [ Search_Engine_VM, num_cpus ] }
+        num_cpus_range: [ 2, 4 ]
+        memory_size: { get_attribute: [ Search_Engine_VM, memory_size ] }
+        memory_size_range: [ 4 GB, 8 GB ]
+        os: Ubuntu 16.04
+      capabilities:
+        endpoint:
+          properties:
+            network_name: public
+            ports:
+              search_engine: 80
+            protocol: tcp
+          attributes:
+            ip_address: { get_attribute: [ Search_Engine_VM, public_address ] }
+        scalable:
+          properties:
+            count: 1
+        bindable:
+          properties:
+            binding_protocol: http
+      requirements:
+        - search_engine:
+            node: Search_Engine
+            relationship: tosca.relationships.ConnectsTo
+            properties:
+              port: 80
+
+    Search_Engine:
+      type: tosca.nodes.WebServer
+      properties:
+        version: 7.4.1
+        protocol: http
+        port: 80
+        user_password: { get_input: user_password }
+        sys_user_password: { get_input: sys_user_password }
+      capabilities:
+        endpoint:
+          properties:
+            network_name: public
+            ports:
+              search_engine: 80
+            protocol: tcp
+          attributes:
+            ip_address: { get_attribute: [ Search_Engine_VM, public_address ] }
+      requirements:
+        - host:
+            node: Search_Engine_VM
+            relationship: tosca.relationships.HostedOn
+
+  relationship_templates:
+    tosca.relationships.ConnectsTo:
+      properties:
+        protocol: http
+        port: 80
+
+  output_templates:
+    search_engine_address:
+      value: { get_attribute: [ Search_Engine_VM, public_address ] }
+      description: Address to access the search engine
+    search_engine_credentials:
+      value: { get_input: user_password }
+      description: Credentials required to connect to the search engine
+    sys_user_credentials:
+      value: { get_input: sys_user_password }
+      description: System user credentials for the search engine
+
+  input_templates:
+    num_cpus:
+      type: integer
+      description: Number of CPUs for the virtual machine
+      constraints:
+        - valid_values: [ 2, 4 ]
+    memory_size:
+      type: integer
+      description: Memory size for the virtual machine
+      constraints:
+        - valid_values: [ 4 GB, 8 GB ]
+    user_password:
+      type: string
+      description: Password for the main user
+    sys_user_password:
+      type: string
+      description: Password for the system user interface

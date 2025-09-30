@@ -1,0 +1,176 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Wine Cellar Web Application
+  topology:
+    node_templates:
+      cloud_provider:
+        type: tosca.nodes.CloudProvider
+        properties:
+          type: OpenStack
+
+      network:
+        type: tosca.nodes.network.Network
+        properties:
+          name: WineCellarNetwork
+          cidr: 10.0.0.0/24
+
+      subnet:
+        type: tosca.nodes.network.Subnet
+        properties:
+          name: WineCellarSubnet
+          network: network
+          cidr: 10.0.0.0/24
+          gateway: 10.0.0.1
+
+      security_group:
+        type: tosca.nodes.network.SecurityGroup
+        properties:
+          name: WineCellarSecurity
+          rules:
+            - protocol: tcp
+              ports: 80
+            - protocol: tcp
+              ports: 443
+            - protocol: tcp
+              ports: 22
+
+      web_server:
+        type: tosca.nodes.WebServer
+        properties:
+          name: WineCellarWebServer
+          operating_system: Ubuntu 20.04
+          web_server: Apache
+          ports:
+            - 80
+            - 443
+        relationships:
+          - type: ConnectsTo
+            target: database
+          - type: ConnectsTo
+            target: security_group
+        interfaces:
+          Standard:
+            inputs:
+              - instance_type: m1.small
+              - image: ubuntu-20.04
+              - key_name: wine_cellar_key
+
+      database:
+        type: tosca.nodes.Database
+        properties:
+          name: WineCellarDB
+          database_management_system: MySQL
+          version: 5.7
+        relationships:
+          - type: HostedOn
+            target: cloud_provider
+          - type: ConnectsTo
+            target: security_group
+        interfaces:
+          Standard:
+            inputs:
+              - instance_type: m1.medium
+              - image: ubuntu-20.04
+              - key_name: wine_cellar_key
+
+      security:
+        type: tosca.nodes.Security
+        properties:
+          name: WineCellarSecurity
+          ssl_certificate: let's encrypt
+          authentication: OAuth2
+        relationships:
+          - type: Secures
+            target: web_server
+          - type: Secures
+            target: database
+
+      application:
+        type: tosca.nodes.WebApplication
+        properties:
+          name: WineCellarApp
+          content: wine_cellar_content
+          framework: WordPress
+          version: 5.8
+        relationships:
+          - type: HostedOn
+            target: web_server
+          - type: DependsOn
+            target: database
+          - type: SecuredBy
+            target: security
+
+      volume:
+        type: tosca.nodes.Storage
+        properties:
+          name: WineCellarVolume
+          size: 10 GB
+          type: SSD
+        relationships:
+          - type: AttachedTo
+            target: database
+
+    relationship_templates:
+      ConnectsTo:
+        type: tosca.relationships.ConnectsTo
+        properties:
+          protocol: tcp
+          ports:
+            - 3306
+
+      HostedOn:
+        type: tosca.relationships.HostedOn
+        properties:
+          allocation: dedicated
+
+      DependsOn:
+        type: tosca.relationships.DependsOn
+        properties:
+          timeout: 300
+
+      Secures:
+        type: tosca.relationships.Secures
+        properties:
+          protocol: https
+
+      SecuredBy:
+        type: tosca.relationships.SecuredBy
+        properties:
+          protocol: oauth2
+
+    inputs:
+      - name: instance_type
+        type: string
+        required: true
+      - name: image
+        type: string
+        required: true
+      - name: key_name
+        type: string
+        required: true
+      - name: network_name
+        type: string
+        required: true
+      - name: subnet_name
+        type: string
+        required: true
+      - name: security_group_name
+        type: string
+        required: true
+      - name: database_name
+        type: string
+        required: true
+      - name: database_user
+        type: string
+        required: true
+      - name: database_password
+        type: string
+        required: true
+        sensitive: true
+
+    outputs:
+      - name: web_server_ip
+        value: { get_attribute: [web_server, public_address] }
+      - name: database_endpoint
+        value: { get_attribute: [database, endpoint] }

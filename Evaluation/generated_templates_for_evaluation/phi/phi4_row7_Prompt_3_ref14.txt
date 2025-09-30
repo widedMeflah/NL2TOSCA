@@ -1,0 +1,80 @@
+node_types:
+  tosca.nodes.WebServer.Tomcat:
+    derived_from: tosca.nodes.Compute
+    properties:
+      version:
+        type: string
+        default: '9.0'
+      download_url:
+        type: string
+        default: "https://archive.apache.org/dist/tomcat/tomcat-${{version}}/v${{version}}.bin"
+    requirements:
+      - host: tosca.nodes.Compute
+
+  tosca.nodes.JDK:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        default: '11'
+      download_url:
+        type: string
+        default: "https://download.oracle.com/java/development-kit/${version}/jdk-${{version}}-linux-x64.tar.gz"
+    requirements:
+      - host: tosca.nodes.Compute
+
+  tosca.nodes.Compute:
+    derived_from: tosca.nodes.Root
+    properties:
+      os_type:
+        type: string
+        constraints:
+          - valid_values: [ 'Linux', 'AIX', 'Mac OS X', 'Windows' ]
+      arch:
+        type: string
+        constraints:
+          - valid_values: [ 'x86_32', 'x86_64' ]
+
+node_templates:
+  TomcatServer:
+    type: tosca.nodes.WebServer.Tomcat
+    properties:
+      version: { get_input: tomcat_version }
+
+  JDKInstallation:
+    type: tosca.nodes.JDK
+    requirements:
+      - host: ComputeNode
+
+  ComputeNode:
+    type: tosca.nodes.Compute
+    properties:
+      os_type: { get_input: os_type }
+      arch: { get_input: architecture }
+
+relationships:
+  - type: tosca.relationships.HostedOn
+    source: TomcatServer
+    target: ComputeNode
+
+  - type: tosca.relationships.DeployedOn
+    source: JDKInstallation
+    target: ComputeNode
+
+topology_template:
+  inputs:
+    tomcat_version:
+      description: The version of Apache Tomcat.
+      default: '9.0'
+    os_type:
+      description: Operating system type for the compute node.
+      default: 'Linux'
+    architecture:
+      description: Architecture for the compute node.
+      default: 'x86_64'
+
+  outputs:
+    tomcat_url:
+      value: { concat: [ "http://", { get_attribute: [ ComputeNode, address ] }, ":8080" ] }
+    war_application_url:
+      value: { concat: [ "http://", { get_attribute: [ ComputeNode, address ] }, ":8080/yourapp.war" ]}

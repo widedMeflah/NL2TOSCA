@@ -1,0 +1,116 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA-compliant description for deploying a virtual elastic cluster using INDIGO orchestration. 
+  This includes configurations for an Elastic Cluster Front-End, Galaxy Portal, LRMS front-end with Slurm, compute resources, worker nodes, and Galaxy-specific worker nodes.
+
+imports:
+  - indigo.nodes.indigo_vm: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/node_types/virtual_machine.yaml
+
+topology_template:
+
+  inputs:
+    admin_email: 
+      type: string
+      description: Admin email for Galaxy Portal configuration.
+    api_key: 
+      type: string
+      description: API key for managing the Galaxy instance.
+    max_worker_instances:
+      type: integer
+      description: Maximum number of worker instances to scale up to.
+    export_directory:
+      type: string
+      default: /export/galaxy_data
+      description: Directory where Galaxy will store data.
+
+  node_templates:
+
+    elastic_cluster_front_end:
+      type: indigo.nodes.indigo_vm
+      properties:
+        image: ubuntu:14.04
+        cpu: 4
+        memory: 8GB
+        management_systems: [Torque, SGE, Slurm, Condor]
+        hybrid_environment_enabled: true
+
+    galaxy_portal:
+      type: indigo.nodes.indigo_vm
+      properties:
+        image: ubuntu:14.04
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+      interfaces:
+        install_galaxy:
+          inputs:
+            version: latest
+          implementation: scripts/install-galaxy.sh
+
+    lrms_front_end:
+      type: indigo.nodes.indigo_vm
+      properties:
+        image: ubuntu:14.04
+        cpu: 8
+        memory: 16GB
+      interfaces:
+        install_slurm:
+          inputs:
+            config: { get_property: [SELF, slurm_config] }
+          implementation: scripts/install-slurm.sh
+
+    compute_node_group:
+      type: indigo.nodes.indigo_vm
+      properties:
+        image: ubuntu:14.04
+        cpu: 2
+        memory: 4GB
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_property: [SELF, cpu] }
+            mem_size: { get_property: [SELF, memory] }
+
+    worker_nodes:
+      type: indigo.nodes.indigo_vm
+      properties:
+        image: ubuntu:14.04
+        cpu: 2
+        memory: 4GB
+      requirements:
+        - scale_up_to:
+            node: max_worker_instances
+            relationship: tosca.relationships.Scales
+
+    galaxy_worker_nodes:
+      type: indigo.nodes.indigo_vm
+      properties:
+        image: ubuntu:14.04
+        cpu: 2
+        memory: 4GB
+        data_export_directory: { get_input: export_directory }
+      interfaces:
+        configure_galaxy_node:
+          inputs:
+            slurm_integration: true
+          implementation: scripts/configure-galaxy-node.sh
+
+    network_configuration:
+      type: indigo.nodes.indigo_network
+      properties:
+        dns_name: cluster.example.com
+        public_ip: 192.0.2.1
+
+  outputs:
+
+    galaxy_url:
+      value: >
+        { concat: ["http://", { get_property: [network_configuration, public_ip] }, "/galaxy"] }
+
+    cluster_ip:
+      value: 
+        { get_property: [network_configuration, public_ip] }
+
+    cluster_credentials:
+      value:
+        admin_email: { get_input: admin_email }

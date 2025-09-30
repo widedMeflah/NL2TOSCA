@@ -1,0 +1,72 @@
+
+topology_template_version: "2.0"
+
+description: Kubernetes Cluster Deployment Template using Alien4cloud Orchestrator for Ubuntu OS, secure communication, dashboard access, and IPv4 network support.
+
+resources:
+  Alien4cloud_Orchestrator:
+    type: orchestrator
+    name: Alien4cloud_Orchestrator
+    properties:
+      orchestrator_type: Alien4cloud
+      endpoint: "https://<Alien4cloud_URL>"
+      username: "<Alien4cloud_Username>"
+      password: "<Alien4cloud_Password>"
+
+  Kubernetes_Cluster:
+    type: cloud.kubernetes.cluster
+    name: Kubernetes_Cluster
+    properties:
+      cloud_provider: OpenStack
+      cloud_credentials: OpenStack_Credentials
+      os_image: "ubuntu"
+      os_version: "latest"
+      master_count: 1
+      worker_count_min: 1
+      worker_count_max: 5
+      secret_spec: |
+        - name: kubernetes-service-account-key
+          type: kubernetesauth
+          username: "<Service_Account_Username>"
+          password: "<Service_Account_Password>"
+          ca_cert: "<CA_Certificate>"
+      network:
+        cidr: "10.0.0.0/24"
+        type: v4
+        subnets:
+          - name: master
+            ip: "10.0.0.1"
+            cidr: "10.0.0.2-10.0.0.254"
+          - name: worker
+            cidr: "10.0.1.0/24"
+
+  Kubernetes_Dashboard:
+    type: cloud.kubernetes.dashboard
+    name: Kubernetes_Dashboard
+    properties:
+      kubernetes_cluster: Kubernetes_Cluster
+      expose_to_public: false
+      service_type: LoadBalancer
+
+  OpenStack_Credentials:
+    type: cloud.openstack.credentials
+    name: OpenStack_Credentials
+    properties:
+      username: "<OpenStack_Username>"
+      api_key: "<OpenStack_API_Key>"
+      auth_url: "<OpenStack_Auth_URL>"
+      project_id: "<OpenStack_Project_ID>"
+      region_name: "<OpenStack_Region_Name>"
+
+interfaces:
+  - name: Kubernetes_Cluster_Deployment
+    nodes: [Kubernetes_Cluster]
+    relationships:
+      - type: uses
+        target_node: Alien4cloud_Orchestrator
+
+  - name: Kubernetes_Dashboard_Deployment
+    nodes: [Kubernetes_Dashboard]
+    relationships:
+      - type: uses
+        target_node: Alien4cloud_Orchestrator

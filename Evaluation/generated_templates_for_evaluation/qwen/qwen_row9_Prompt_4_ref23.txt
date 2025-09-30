@@ -1,0 +1,66 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of a containerized machine learning service using Docker and Marathon.
+
+topology_template:
+  node_templates:
+    ml_container:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: ml-service-container
+        description: Containerized machine learning service
+        nfv:
+          vdu:
+            number_of_instances: 1
+            virtual_deployment_unit_description:
+              virtual_cpu:
+                num: 1
+              virtual_memory:
+                size: 1024
+                unit: MB
+              virtual_local_storage:
+                size: 10
+                unit: GB
+              connection_point:
+                - id: ml-service-port
+                  name: ml-service-port
+                  type: OVS
+                  virtual_link_end_point:
+                    port_security: true
+              image: docker.io/library/ml-service-image:latest
+              config:
+                parameters:
+                  - key: ML_SERVICE_PORT
+                    value: "8080"
+              monitoring_parameter:
+                - id: ml-service-health
+                  name: ML Service Health
+                  type: HTTP
+                  threshold: 200
+                  interval: 30
+                  timeout: 5
+                  parameters:
+                    - key: URL
+                      value: http://localhost:8080/health
+      interfaces:
+        nfv:
+          configure:
+            input:
+              - ml-service-port
+            output:
+              - ml-service-port
+          start:
+            input:
+              - ML_SERVICE_PORT
+            output:
+              - ML_SERVICE_PORT
+          stop:
+            input:
+              - ML_SERVICE_PORT
+            output:
+              - ML_SERVICE_PORT
+          terminate:
+            input:
+              - ML_SERVICE_PORT
+            output:
+              - ML_SERVICE_PORT

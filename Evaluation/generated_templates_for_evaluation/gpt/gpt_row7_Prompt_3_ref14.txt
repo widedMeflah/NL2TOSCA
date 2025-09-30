@@ -1,0 +1,101 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA topology for deploying a WAR application on Apache Tomcat, using Oracle JDK, 
+  with support for multiple OS and architectures. Outputs include application and server URLs.
+
+metadata:
+  template_name: war_on_tomcat
+  template_version: 1.0.0
+  template_author: your_organization
+
+topology_template:
+  inputs:
+    war_file_url:
+      type: string
+      description: URL to the WAR file to deploy
+    tomcat_version:
+      type: string
+      description: Version of Tomcat to deploy
+      default: "9.0.85"
+    jdk_version:
+      type: string
+      description: Oracle JDK version to use
+      default: "17"
+    os_type:
+      type: string
+      description: Operating system type (linux, aix, mac, windows)
+      default: linux
+      constraints:
+        - valid_values: [linux, aix, mac, windows]
+    os_arch:
+      type: string
+      description: Operating system architecture (x86_32, x86_64)
+      default: x86_64
+      constraints:
+        - valid_values: [x86_32, x86_64]
+    os_image:
+      type: string
+      description: Image or reference for the desired operating system
+      default: "ubuntu:22.04"
+
+  node_templates:
+
+    my_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: { get_input: os_type }
+          architecture: { get_input: os_arch }
+          distribution: { get_input: os_image }
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40960 MB
+
+    my_os:
+      type: tosca.nodes.OperatingSystem
+      properties:
+        type: { get_input: os_type }
+        distribution: { get_input: os_image }
+        architecture: { get_input: os_arch }
+      requirements:
+        - host: my_compute
+
+    my_jdk:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: { get_input: jdk_version }
+        download_url: "https://download.oracle.com/java/{ get_input: jdk_version }/latest/jdk-{ get_input: jdk_version }_linux-x64_bin.tar.gz"
+        install_path: "/opt/jdk"
+      requirements:
+        - host: my_os
+
+    my_tomcat:
+      type: tosca.nodes.WebServer.Tomcat
+      properties:
+        version: { get_input: tomcat_version }
+        download_url: "https://archive.apache.org/dist/tomcat/tomcat-9/v{ get_input: tomcat_version }/bin/apache-tomcat-{ get_input: tomcat_version }.tar.gz"
+        http_port: 8080
+        https_port: 8443
+        catalina_base: "/opt/tomcat"
+      requirements:
+        - host: my_jdk
+
+    my_war_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_path: 
+        war_file: { get_input: war_file_url }
+      requirements:
+        - host: my_tomcat
+
+  outputs:
+    tomcat_url:
+      description: URL to access the Tomcat server
+
+    application_url:
+      description: URL to access the deployed WAR application

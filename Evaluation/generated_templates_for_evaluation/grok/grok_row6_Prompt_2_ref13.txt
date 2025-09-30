@@ -1,0 +1,133 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: Kubernetes_Cluster_Deployment
+  template_version: 1.0.0
+  template_author: Anonymous
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:2.2.0
+
+node_types:
+  Custom.KubernetesMaster:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: ubuntu
+      os_version:
+        type: string
+        default: 20.04
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+      endpoint:
+        type: tosca.capabilities.Endpoint.Admin
+    requirements:
+      - network:
+          capability: tosca.capabilities.Network
+          relationship: tosca.relationships.Network
+
+  Custom.KubernetesWorker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: ubuntu
+      os_version:
+        type: string
+        default: 20.04
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+    requirements:
+      - network:
+          capability: tosca.capabilities.Network
+          relationship: tosca.relationships.Network
+      - master:
+          capability: tosca.capabilities.Endpoint
+          node: Custom.KubernetesMaster
+          relationship: tosca.relationships.ConnectsTo
+
+  Custom.KubernetesDashboard:
+    derived_from: tosca.nodes.WebApplication
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: Custom.KubernetesMaster
+          relationship: tosca.relationships.HostedOn
+      - network:
+          capability: tosca.capabilities.Network
+          relationship: tosca.relationships.Network
+
+topology_template:
+  node_templates:
+    MasterNode:
+      type: Custom.KubernetesMaster
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 50 GB
+      capabilities:
+        endpoint:
+          properties:
+            protocol: https
+            secure: true
+            port: 6443
+      requirements:
+        - network: ClusterNetwork
+
+    WorkerNode:
+      type: Custom.KubernetesWorker
+      properties:
+        num_cpus: 2
+        mem_size: 2 GB
+        disk_size: 30 GB
+      requirements:
+        - network: ClusterNetwork
+        - master: MasterNode
+      instances:
+        deploy: 1
+        scalable:
+          min: 1
+          max: 5
+
+    Dashboard:
+      type: Custom.KubernetesDashboard
+      requirements:
+        - host: MasterNode
+        - network: ClusterNetwork
+      capabilities:
+        endpoint:
+          properties:
+            protocol: https
+            secure: true
+            port: 443
+
+    ClusterNetwork:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: 10.0.0.0/24
+        gateway_ip: 10.0.0.1
+
+  groups:
+    KubernetesCluster:
+      type: tosca.groups.Root
+      members: [MasterNode, WorkerNode, Dashboard]
+      policies:
+        - scalability:
+            type: tosca.policies.Scaling
+            targets: [WorkerNode]
+            properties:
+              min_instances: 1
+              max_instances: 5
+
+  outputs:
+    dashboard_url:
+      description: URL to access the Kubernetes Dashboard
+      value: { get_attribute: [Dashboard, endpoint, url] }
+    master_endpoint:
+      description: Endpoint for Kubernetes Master API
+      value: { get_attribute: [MasterNode, endpoint, url] }

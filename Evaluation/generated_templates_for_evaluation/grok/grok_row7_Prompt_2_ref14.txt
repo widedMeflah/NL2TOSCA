@@ -1,0 +1,90 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WebAppTomcatDeployment
+  template_version: 1.0.0
+  template_author: User
+
+description: TOSCA topology for deploying a web application on a Tomcat server with configurable OS, architecture, and Java version.
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+topology_template:
+  node_templates:
+    ComputeServer:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: { get_input: os_architecture }
+        os_type: { get_input: os_type }
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            cpu_frequency: 2.0 GHz
+            disk_size: 50 GB
+            mem_size: 4 GB
+
+    JavaRuntime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: { get_input: java_version }
+      requirements:
+        - host:
+            node: ComputeServer
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    TomcatServer:
+      type: tosca.nodes.WebServer.Tomcat
+      properties:
+        component_version: 9.0.50
+        port: 8080
+      requirements:
+        - host:
+            node: JavaRuntime
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+      capabilities:
+        endpoint:
+          properties:
+            initiator: source
+            protocol: http
+            port: 8080
+            secure: false
+
+    WebApplication:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: myapp
+      requirements:
+        - host:
+            node: TomcatServer
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+      artifacts:
+        - war_file:
+            file: myapp.war
+            type: tosca.artifacts.Deployment.WAR
+
+  inputs:
+    os_type:
+      type: string
+      description: The type of operating system for the server.
+      default: linux
+    os_architecture:
+      type: string
+      description: The architecture of the operating system.
+      default: x86_64
+    java_version:
+      type: string
+      description: The version of Java to be installed.
+      default: 11
+
+  outputs:
+    application_url:
+      description: URL to access the deployed web application.
+      value: { concat: ['http://', get_attribute: [ComputeServer, ip_address], ':', get_attribute: [TomcatServer, port], '/', get_property: [WebApplication, context_root]] }
+    tomcat_url:
+      description: URL to access the Tomcat server.
+      value: { concat: ['http://', get_attribute: [ComputeServer, ip_address], ':', get_attribute: [TomcatServer, port]] }

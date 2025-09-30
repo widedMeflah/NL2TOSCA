@@ -1,0 +1,58 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Deployment configuration for a web application (WAR) hosted on Apache Tomcat using a Java environment and compute resource.
+
+topology_template:
+  inputs:
+    war_file_url:
+      type: string
+      description: URL to the WAR file to be deployed
+
+  node_templates:
+
+    my_compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            architecture: { get_input: os_architecture }
+            type: { get_input: os_type }
+    
+    java_runtime:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: my_compute
+
+    tomcat_server:
+      type: tosca.nodes.WebServer.Tomcat
+      requirements:
+        - host: my_compute
+        - dependency: java_runtime
+      properties:
+        port: 8080
+
+    web_application:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_path: /
+        war_file_location: { get_input: war_file_url }
+      requirements:
+        - host: tomcat_server
+
+  outputs:
+    application_url:
+      value: { concat: ["http://", { get_attribute: [ my_compute, public_address ] }, ":", { get_property: [ tomcat_server, port ] }, "/" ] }
+      description: URL to access the deployed web application
+
+    server_url:
+      value: { concat: ["http://", { get_attribute: [ my_compute, public_address ] }, ":", { get_property: [ tomcat_server, port ] } ] }
+      description: URL to access the Tomcat server
+
+  inputs:
+    os_architecture:
+      description: The compute resource OS architecture
+      type: string
+    os_type:
+      description: The compute resource OS type
+      type: string

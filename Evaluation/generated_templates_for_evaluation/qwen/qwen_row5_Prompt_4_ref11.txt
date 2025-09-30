@@ -1,0 +1,75 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A TOSCA template for deploying a replicated ElasticSearch setup with a Java runtime environment, connectivity, and integration testing.
+
+metadata:
+  template_name: ElasticSearch_Replicated_With_Testing
+  template_author: TOSCA Author
+  template_version: 1.0.0
+
+topology_template:
+  node_templates:
+
+    # Java Runtime Environment
+    JavaRuntime:
+      type: tosca.nodes.Compute
+      properties:
+        # Java runtime properties can be set here
+        # For example, Java version, memory, etc.
+        # java_version: "11"
+      capabilities:
+        endpoint:
+          type: tosca.capabilities.Endpoint
+          properties:
+            protocol: tcp
+            port: 8080
+
+    # ElasticSearch Node
+    ElasticsearchNode:
+      type: tosca.nodes.Container
+      properties:
+        image: elasticsearch:7.17.6
+        environment:
+          - "discovery.type=single-node"
+          - "cluster.name=my-cluster"
+          - "ES_JAVA_OPTS=-Xms512m -Xmx1g"
+        ports:
+          - "9200:9200"
+          - "9300:9300"
+        command: elasticsearch -Enode.name=node-1 -Ediscovery.type=single-node
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: JavaRuntime
+
+    # Replicated ElasticSearch Node
+    ElasticsearchReplicaNode:
+      type: tosca.nodes.Container
+      properties:
+        image: elasticsearch:7.17.6
+        environment:
+          - "discovery.seed_hosts=ElasticsearchNode"
+          - "cluster.initial_master_nodes=ElasticsearchNode"
+          - "cluster.name=my-cluster"
+          - "ES_JAVA_OPTS=-Xms512m -Xmx1g"
+        ports:
+          - "9200:9200"
+          - "9300:9300"
+        command: elasticsearch -Enode.name=node-2
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: JavaRuntime
+
+    # Testing Component
+    IntegrationTestComponent:
+      type: tosca.nodes.Compute
+      properties:
+        # Example: Java-based test runner with test framework
+        image: openjdk:11-jre
+        command: java -jar /tests/test-runner.jar
+        volumes:
+          - ./tests:/tests
+      relationships:
+        - type: tosca.relationships.ConnectsTo
+          target: ElasticsearchNode
+        - type: tosca.relationships.ConnectsTo
+          target: ElasticsearchReplicaNode

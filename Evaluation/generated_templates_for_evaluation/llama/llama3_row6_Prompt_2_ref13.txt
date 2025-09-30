@@ -1,0 +1,108 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Kubernetes Cluster
+
+topology_template:
+  node_templates:
+    master_node:
+      type: tosca.nodes.Compute
+      properties:
+        operating_system: Ubuntu
+        networks:
+          private_network:
+            network_name: private_network
+            port_name: master_port
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports: 22
+
+    worker_node:
+      type: tosca.nodes.Compute
+      properties:
+        operating_system: Ubuntu
+        networks:
+          private_network:
+            network_name: private_network
+            port_name: worker_port
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports: 22
+      artifacts:
+        os_image: { file: 'ubuntu_image.qcow2' }
+
+    kubernetes_cluster:
+      type: tosca.nodes.KubernetesCluster
+      properties:
+        num_workers: 1
+        max_workers: 5
+        min_workers: 1
+      requirements:
+        - master_node:
+            node: master_node
+            relationship: tosca.relationships.Network
+        - worker_nodes:
+            node: worker_node
+            relationship: tosca.relationships.Network
+            occurrence: [1, 5]
+
+    dashboard:
+      type: tosca.nodes.KubernetesDashboard
+      properties:
+        admin_token: admin_token
+      requirements:
+        - cluster:
+            node: kubernetes_cluster
+            relationship: tosca.relationships.DependsOn
+
+    private_network:
+      type: tosca.nodes.Network
+      properties:
+        name: private_network
+        protocol: ipv4
+
+    master_port:
+      type: tosca.nodes.NetworkPort
+      properties:
+        name: master_port
+        protocol: tcp
+        port: 22
+      requirements:
+        - network:
+            node: private_network
+            relationship: tosca.relationships.Network
+
+    worker_port:
+      type: tosca.nodes.NetworkPort
+      properties:
+        name: worker_port
+        protocol: tcp
+        port: 22
+      requirements:
+        - network:
+            node: private_network
+            relationship: tosca.relationships.Network
+
+  relationship_templates:
+    tosca.relationships.Network:
+      properties:
+        protocol: tcp
+      interfaces:
+        Establish:
+          inputs:
+            - network_name
+            - port_name
+        Configure:
+          inputs:
+            - network_name
+            - port_name
+
+    tosca.relationships.DependsOn:
+      properties: {}
+      interfaces:
+        Configure:
+          inputs: []

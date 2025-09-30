@@ -1,0 +1,37 @@
+tosca_definitions_version: tosca_simple_profile_1_0
+description: Deployment of Galaxy platform with cluster support using CentOS 7 and SLURM.
+metadata:
+  template_name: Galaxy_Cluster_Indigo
+  template_version: 1.0.0
+  description: TOSCA template for deploying a Galaxy instance with cluster support.
+topology_template:
+  node_templates:
+    galaxy_instance:
+      type: tosca.nodes.indigo.Galaxy
+      properties:
+        flavor: release_18.05
+        admin_email: admin@admin.com
+        admin_api_key: not_very_secret_api_key
+        instance_description: "ELIXIR-ITALY"
+        ssh_public_key: your_ssh_public_key
+        export_directory: /export
+        storage_encryption: false
+        vault_server_url: changeit
+        vault_wrapping_token: not_a_wrapping_token
+        vault_secret_path: subject/depuuid
+        vault_secret_key_name: secret
+        tools_flavor: galaxy-no-tools
+        install_reference_data: true
+        cvmfs_config: cvmfs_preconfigured
+        cvmfs_repo_name: elixir-italy.galaxy.refdata
+        cvmfs_server_url: 90.147.102.186
+        cvmfs_pub_key_file: elixir-italy.galaxy.refdata.pub
+        cvmfs_proxy_url: DIRECT
+        cvmfs_proxy_port: 80
+        cvmfs_data_directory: /cvmfs
+        cluster_configuration:
+          number_of_workers: 2
+          frontend_flavor: small
+          worker_flavor: small
+          storage_size_gb: 50
+          hybrid_environment: false

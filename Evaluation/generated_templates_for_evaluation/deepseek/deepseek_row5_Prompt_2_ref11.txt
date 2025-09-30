@@ -1,0 +1,182 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: System for running a data analysis application with web UI, automated testing, scalability, security, and backup capabilities
+  node_templates:
+    web_application:
+      type: tosca.nodes.WebApplication
+      properties:
+        name: DataAnalysisApp
+        version: 1.0
+        description: Web application for data analysis and visualization
+        dependencies:
+          - data_storage
+          - data_processing
+          - automated_testing
+          - scalability_orchestration
+          - security_management
+          - backup_system
+
+    data_storage:
+      type: tosca.nodes.Database
+      properties:
+        name: TimescaleDB
+        version: 2.7.0
+        description: Time-series database for efficient data storage and retrieval
+        properties:
+          database_name: analysis_db
+          username: admin_user
+          password: secure_password
+          port: 5432
+
+    data_processing:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: ApacheSpark
+        version: 3.3.0
+        description: Data processing engine for efficient analysis
+        properties:
+          spark_master: local[4]
+          spark_app_name: DataAnalysisProcessor
+
+    automated_testing:
+      type: tosca.nodes.QualityAssurance
+      properties:
+        name: Jenkins
+        version: 2.303
+        description: Automated testing framework
+        properties:
+          jobs:
+            - test_data_analysis
+
+    scalability_orchestration:
+      type: tosca.nodes.Orm
+      properties:
+        name: Kubernetes
+        version: 1.22.5
+        description: Scalability orchestration for future growth
+        properties:
+          cluster_name: data_analysis_cluster
+          node_count: 3
+
+    security_management:
+      type: tosca.nodes.Security
+      properties:
+        name: Vault
+        version: 1.11.1
+        description: Security and secrets management
+        properties:
+          secrets_engine: kv
+          auth_methods:
+            - userpass
+
+    backup_system:
+      type: tosca.nodes.Backup
+      properties:
+        name: MinIO
+        version: 8.2.0
+        description: Backup and disaster recovery system
+        properties:
+          bucket_name: data_analysis_backups
+          retention_policy: 30 days
+
+    frontend:
+      type: tosca.nodes.WebServer
+      properties:
+        name: ReactApp
+        version: 17.0.2
+        description: Web interface for data analysis application
+        properties:
+          port: 3000
+          routes:
+            - /analysis
+            - /visualization
+          dependencies:
+            - web_application
+
+    backend:
+      type: tosca.nodes.WebServer
+      properties:
+        name: ExpressServer
+        version: 4.18.2
+        description: Backend server for data analysis application
+        properties:
+          port: 5000
+          routes:
+            - /api/analyze
+            - /api/results
+          dependencies:
+            - data_storage
+            - data_processing
+
+  relationship_templates:
+    connects_to_web:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        port: 3000
+
+    connects_to_backend:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        port: 5000
+
+    connects_to_database:
+      type: ConnectsTo
+      properties:
+        protocol: postgresql
+        port: 5432
+
+    connects_to_spark:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        port: 4040
+
+    connects_to_jenkins:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        port: 8080
+
+    connects_to_kubernetes:
+      type: ConnectsTo
+      properties:
+        protocol: https
+        port: 6443
+
+    connects_to_vault:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        port: 8200
+
+    connects_to_minio:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        port: 9000
+
+  orchestration:
+    start:
+      - web_application
+      - data_storage
+      - data_processing
+      - automated_testing
+      - scalability_orchestration
+      - security_management
+      - backup_system
+      - frontend
+      - backend
+
+    dependencies:
+      - web_application depends_on data_storage
+      - web_application depends_on data_processing
+      - web_application depends_on automated_testing
+      - web_application depends_on scalability_orchestration
+      - web_application depends_on security_management
+      - web_application depends_on backup_system
+      - frontend depends_on web_application
+      - backend depends_on web_application

@@ -1,0 +1,114 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: Basic TOSCA topology for Alien4Cloud with JDK, Alien4Cloud, and remote Elasticsearch
+
+topology_template:
+  node_templates:
+    jdk:
+      type: tosca.nodes.SoftwareComponent
+      capabilities:
+        host:
+          node: { get_self: [host] }
+      requirements:
+        - host: compute
+      properties:
+        jdk_version: "11"
+
+    application_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          node: compute
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute
+      properties:
+        ip: "192.168.1.10"
+        os_distro: "Ubuntu"
+        os_version: "20.04"
+
+    database_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          node: compute
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute
+      properties:
+        ip: "192.168.1.11"
+        os_distro: "Ubuntu"
+        os_version: "20.04"
+
+    alien4cloud_instance:
+      type: tosca.nodes.SoftwareComponent
+      capabilities:
+        host:
+          node: compute
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute
+      properties:
+        alien4cloud_version: "4.0"
+        jdk_version: "11"
+        elasticsearch_url: "http://elasticsearch.example.com:9200"
+
+    compute:
+      type: tosca.nodes.Compute
+      properties:
+        ip: "192.168.1.5"
+        os_distro: "Ubuntu"
+        os_version: "20.04"
+        num_cpus: 4
+        memory_gb: 8
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: "application_network"
+        subnets:
+          - "192.168.1.0/24"
+
+  relationships:
+    - source: jdk
+      target: application_server
+      type: tosca.relationships.DependsOn
+
+    - source: jdk
+      target: database_server
+      type: tosca.relationships.DependsOn
+
+    - source: alien4cloud_instance
+      target: compute
+      type: tosca.relationships.HostedOn
+
+    - source: application_server
+      target: network
+      type: tosca.relationships.ConnectsTo
+
+    - source: database_server
+      target: network
+      type: tosca.relationships.ConnectsTo
+
+    - source: alien4cloud_instance
+      target: network
+      type: tosca.relationships.ConnectsTo
+
+    - source: alien4cloud_instance
+      target: elasticsearch_node
+      type: tosca.relationships.ConnectsTo
+
+  groups:
+    application_group:
+      type: tosca.groups.Root
+      members:
+        - application_server
+        - database_server
+        - alien4cloud_instance
+
+  policies:
+    - type: tosca.policies.Placement
+      description: Ensure all application components are in the same network
+      targets:
+        - application_group
+      properties:
+        network: network

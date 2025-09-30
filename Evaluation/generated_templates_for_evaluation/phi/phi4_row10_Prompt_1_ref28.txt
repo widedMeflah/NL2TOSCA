@@ -1,0 +1,70 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/4.5/types.yaml
+
+inputs:
+
+  vm_cpu_count:
+    description: Number of virtual CPUs (2 or 4)
+    default: 2
+    constraints:
+      - allowed_values: [2, 4]
+    
+  vm_memory_size:
+    description: Memory size in GB (4 GB or 8 GB)
+    default: 4
+    constraints:
+      - allowed_values: [4, 8]
+
+  search_engine_version:
+    description: Version of the search engine software
+    default: '7.4.1'
+
+  main_user_password:
+    description: Password for the main user
+
+  system_ui_user_password:
+    description: Password for the system user interface
+
+node_templates:
+
+  virtual_machine:
+    type: cloudify.nodes.Compute
+    properties:
+      num_cpus: { get_input: vm_cpu_count }
+      mem_size: { get_input: vm_memory_size }
+      os:
+        version: ubuntu16.04
+
+  search_engine:
+    type: custom.nodes.SearchEngine
+    properties:
+      version: { get_input: search_engine_version }
+      config:
+        network_access: any
+        main_user_password: { get_input: main_user_password }
+        system_ui_user_password: { get_input: system_ui_user_password }
+
+  install_search_engine:
+    type: cloudify.workflows.Install
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            vm_name: { get_attribute: [virtual_machine, name] }
+            search_engine_version: { get_property: [search_engine, version] }
+            main_user_password: { get_input: main_user_password }
+            system_ui_user_password: { get_input: system_ui_user_password }
+
+outputs:
+
+  search_engine_address:
+    description: Address to access the search engine
+    value: { concat: ['http://', { get_attribute: [virtual_machine, ip] }, ':9200'] }
+
+  credentials:
+    description: Credentials for accessing the service
+    value:
+      main_user_password: { get_input: main_user_password }
+      system_ui_user_password: { get_input: system_ui_user_password }

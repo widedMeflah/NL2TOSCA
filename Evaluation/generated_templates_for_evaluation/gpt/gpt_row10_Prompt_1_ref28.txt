@@ -1,0 +1,89 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template to deploy a secure search engine service (version 7.4.1) on an Ubuntu 16.04
+  VM with configurable hardware resources, exposed on all network addresses, secured
+  with separate passwords for main and UI users.
+
+topology_template:
+  inputs:
+    cpu_count:
+      type: integer
+      description: Number of vCPUs
+      constraints:
+        - valid_values: [2, 4]
+      default: 2
+    mem_size:
+      type: integer
+      description: Size of RAM in GB
+      constraints:
+        - valid_values: [4, 8]
+      default: 4
+    main_user_password:
+      type: string
+      description: Password for the main search engine user
+      required: true
+    ui_password:
+      type: string
+      description: Password for the system UI
+      required: true
+
+  node_templates:
+    search_vm:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 16.04
+        host:
+          properties:
+            num_cpus: { get_input: cpu_count }
+            mem_size: { get_input: mem_size } # GB
+      requirements:
+        - local_storage:
+            node: search_storage
+
+    search_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 20 GB
+
+    search_engine:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: 7.4.1
+        admin_user: admin
+        admin_password: { get_input: main_user_password }
+        ui_user: ui_admin
+        ui_password: { get_input: ui_password }
+      requirements:
+        - host: search_vm
+
+    search_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        protocol: tcp
+        port: 9200
+        network_name: PUBLIC
+      requirements:
+        - host: search_engine
+
+outputs:
+  search_engine_url:
+    description: URL to access the search engine
+    value: { get_attribute: [ search_vm, public_address ] }
+  main_user:
+    description: Username for the main user
+    value: admin
+  main_user_password:
+    description: Password for the main user
+    value: { get_input: main_user_password }
+  ui_user:
+    description: Username for the UI
+    value: ui_admin
+  ui_password:
+    description: Password for the system UI
+    value: { get_input: ui_password }

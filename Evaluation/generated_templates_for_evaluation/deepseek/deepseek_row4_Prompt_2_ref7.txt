@@ -1,0 +1,38 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Efficient Data Storage and Management System
+  node_templates:
+    Data_Server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        port:
+          type: integer
+          constraints:
+            - greater_or_equal: 1000
+            - less_or_equal: 9999
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              data_port: ${port}
+      artifacts:
+        script:
+          type: tosca.artifacts.Script
+          file: scripts/data_server.sh
+          description: Installs and configures the data server
+      interfaces:
+        Standard:
+          inputs:
+            port: { get_property: [SELF, port] }
+          operations:
+            configure: scripts/data_server.sh
+            start: sudo systemctl start data_server
+            stop: sudo systemctl stop data_server
+  outputs:
+    server_ip:
+      value: { get_attribute: [Data_Server, endpoint, ip_address] }
+    server_port:
+      value: { get_attribute: [Data_Server, endpoint, ports, data_port] }

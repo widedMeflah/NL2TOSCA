@@ -1,0 +1,146 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: SimpleWebServerSetup
+  template_version: 1.0.0
+  template_author: Anonymous
+
+description: A simple web server setup for hosting a website with basic management capabilities and network security.
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+topology_template:
+  node_templates:
+    WebServerHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    WebServer:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 80
+        document_root: /var/www/html
+      requirements:
+        - host: WebServerHost
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_webserver.sh
+          start:
+            implementation: scripts/start_webserver.sh
+          stop:
+            implementation: scripts/stop_webserver.sh
+          restart:
+            implementation: scripts/restart_webserver.sh
+
+    WebsiteContent:
+      type: tosca.nodes.Artifact
+      properties:
+        file: website_files.zip
+        type: tosca.artifacts.File
+      requirements:
+        - target: WebServer
+          capability: tosca.capabilities.Attachment
+
+    PrivateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        cidr: 192.168.1.0/24
+        gateway_ip: 192.168.1.1
+        network_type: private
+
+    NetworkBinding:
+      type: tosca.relationships.Network
+      requirements:
+        - source: WebServerHost
+          target: PrivateNetwork
+
+    HealthCheck:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        endpoint: http://<WebServerHost.ip_address>:80
+        check_script: scripts/check_welcome_page.sh
+      requirements:
+        - host: WebServerHost
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/run_health_check.sh
+
+  workflows:
+    install:
+      steps:
+        install_host:
+          target: WebServerHost
+          activities:
+            - install
+        install_webserver:
+          target: WebServer
+          activities:
+            - install
+          preceding_phases:
+            - install_host
+        deploy_content:
+          target: WebsiteContent
+          activities:
+            - install
+          preceding_phases:
+            - install_webserver
+        configure_network:
+          target: PrivateNetwork
+          activities:
+            - install
+          preceding_phases:
+            - install_host
+        run_health_check:
+          target: HealthCheck
+          activities:
+            - install
+            - start
+          preceding_phases:
+            - deploy_content
+
+    start:
+      steps:
+        start_webserver:
+          target: WebServer
+          activities:
+            - start
+
+    stop:
+      steps:
+        stop_webserver:
+          target: WebServer
+          activities:
+            - stop
+
+    restart:
+      steps:
+        restart_webserver:
+          target: WebServer
+          activities:
+            - restart
+
+    check_status:
+      steps:
+        check_welcome_page:
+          target: HealthCheck
+          activities:
+            - start
+outputs:
+  webserver_ip:
+    value: { get_attribute: [WebServerHost, ip_address] }
+  welcome_page_status:
+    value: { get_attribute: [HealthCheck, status] }

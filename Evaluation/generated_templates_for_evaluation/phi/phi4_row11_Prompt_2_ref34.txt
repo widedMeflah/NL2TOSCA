@@ -1,0 +1,102 @@
+tosca_definitions_version: cloudify_dsl_1_5
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/4.8/types.yaml
+
+node_templates:
+
+  # Node to represent the CentOS 7 server where Galaxy will be installed.
+  galaxy_server:
+    type: cloudify.nodes.Compute
+    properties:
+      image: { get_input: centos_image_id }
+      flavor: { get_input: instance_flavor }
+
+  # Node for SLURM workload manager setup on the Galaxy server.
+  slurm_manager:
+    type: cloudify.nodes.SoftwareComponent
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: galaxy_server
+    properties:
+      package_name: slurm
+
+  # Node to handle Galaxy installation and configuration.
+  galaxy_instance:
+    type: cloudify.nodes.SoftwareComponent
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: galaxy_server
+    properties:
+      install_method: package
+      package_name: galaxy-platform
+      config_properties:
+        job_system: slurm
+
+  # Node for companion software and reference data setup.
+  companion_software:
+    type: cloudify.nodes.SoftwareComponent
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: galaxy_instance
+    properties:
+      package_name:
+        - some_companion_package_1
+        - some_reference_data_package
+
+  # Node to ensure secure storage with encryption.
+  secure_storage:
+    type: cloudify.nodes.Volume
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: galaxy_server
+    properties:
+      volume_type: encrypted_volume
+
+  # Email notification for setup completion.
+  email_notification:
+    type: cloudify.nodes.Script
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: galaxy_instance
+    properties:
+      script: |
+        echo "Galaxy instance is set up. Access it at http://<galaxy_server_ip> with the credentials provided." | mail -s "Galaxy Setup Complete" { get_input: admin_email }
+
+  # Node for scaling by adding worker nodes.
+  slurm_worker_node:
+    type: cloudify.nodes.Compute
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: galaxy_server
+
+workflows:
+
+  setup_galaxy_environment:
+    mapping: workflow.mapping
+    sequence:
+      - create:
+          - galaxy_server
+          - slurm_manager
+          - secure_storage
+      - install:
+          - galaxy_instance
+          - companion_software
+      - configure:
+          - slurm_manager
+          - galaxy_instance
+      - notify:
+          - email_notification
+
+inputs:
+
+  centos_image_id:
+    description: "The image ID for the CentOS 7 server."
+    default: "centos-7"
+
+  instance_flavor:
+    description: "The flavor of the compute instance to use."
+    default: "m4.large"
+
+  admin_email:
+    description: "Email address to send setup completion notification."

@@ -1,0 +1,65 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: MongoDB deployment on an Ubuntu compute resource, configured for Alien4Cloud.
+
+imports:
+  - alien-base-types:2.0.0
+  - alien-extended-types:2.0.0
+  - alien-compute-types:2.0.0
+  - alien-network-types:2.0.0
+  - alien-software-types:2.0.0
+
+inputs:
+  mongo_db_port:
+    type: integer
+    description: The TCP port on which the MongoDB instance will listen.
+    default: 27017
+    constraints:
+      - in_range: [8000, 65535]
+
+node_templates:
+  mongo_host:
+    type: alien.nodes.Ubuntu
+    properties:
+      architecture: x86_64
+    capabilities:
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 1
+    requirements:
+      - network:
+          node: private_network
+          capability: alien.capabilities.Network
+          relationship: alien.relationships.ConnectsTo
+
+  private_network:
+    type: alien.nodes.Network
+    properties:
+      is_public: false
+      is_secure: false
+
+  mongo_db:
+    type: alien.nodes.MongoDB
+    properties:
+      port: { get_input: mongo_db_port }
+    capabilities:
+      database_endpoint:
+        properties:
+          port: { get_property: [ SELF, port ] }
+          protocol: tcp
+          secure: false
+    requirements:
+      - host:
+          node: mongo_host
+          capability: alien.capabilities.Container
+          relationship: alien.relationships.HostedOn
+
+outputs:
+  mongo_host_ip:
+    description: The private IP address of the host running MongoDB.
+    value: { get_attribute: [ mongo_host, private_address ] }
+  mongo_db_running_port:
+    description: The TCP port on which the MongoDB instance is accessible.
+    value: { get_attribute: [ mongo_db, database_endpoint, port ] }

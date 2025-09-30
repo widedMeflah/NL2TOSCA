@@ -1,0 +1,73 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template for deploying a plant classification application as an internet-accessible service with configurable resources and update capabilities.
+
+metadata:
+  template_name: plant-classification-service
+  template_version: 1.0
+
+topology_template:
+  inputs:
+    app_image:
+      type: string
+      description: Docker image or software package for plant classification
+      default: "indigo-dc/plant-classifier:latest"
+    service_port:
+      type: integer
+      description: Port to expose the service
+      default: 8080
+    cpu_cores:
+      type: integer
+      description: Number of virtual CPU cores
+      default: 2
+    mem_size:
+      type: scalar-unit.size
+      description: Memory size for the VM or container
+      default: 4 GB
+
+  node_templates:
+    plant_classifier_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: cpu_cores }
+            mem_size: { get_input: mem_size }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    plant_classifier_app:
+      type: tosca.nodes.indigo.Container.Application.Docker
+      properties:
+        image: { get_input: app_image }
+        ports:
+          - { get_input: service_port }
+      requirements:
+        - host: plant_classifier_host
+
+    plant_classifier_web_endpoint:
+      type: tosca.nodes.WebServer
+      properties:
+        port: { get_input: service_port }
+      requirements:
+        - host: plant_classifier_host
+        - dependency: plant_classifier_app
+
+    app_public_endpoint:
+      type: tosca.nodes.network.Endpoint.Public
+      properties:
+        port: { get_input: service_port }
+        protocol: tcp
+      requirements:
+        - host: plant_classifier_host
+        - endpoint: plant_classifier_web_endpoint
+
+  outputs:
+    public_url:
+      description: URL to access the plant classification service
+      value: { concat: [ "http://", { get_attribute: [ plant_classifier_host, public_address ] }, ":", { get_input: service_port } ] }

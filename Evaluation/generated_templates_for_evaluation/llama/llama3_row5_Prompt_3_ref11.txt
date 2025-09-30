@@ -1,0 +1,84 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Alien4Cloud Deployment Environment
+  node_templates:
+    Alien4Cloud:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /
+        profiles: [security-demo, noApiDoc]
+      requirements:
+        - host: ComputeNode_Alien4Cloud
+        - jdk: JDK
+
+    ElasticSearch1:
+      type: tosca.nodes.Database
+      properties:
+        name: ElasticSearch1
+        replica_of: ElasticSearch2
+      requirements:
+        - host: ComputeNode_ElasticSearch1
+        - jdk: JDK
+
+    ElasticSearch2:
+      type: tosca.nodes.Database
+      properties:
+        name: ElasticSearch2
+      requirements:
+        - host: ComputeNode_ElasticSearch2
+        - jdk: JDK
+
+    JDK:
+      type: tosca.nodes.Java
+      properties:
+        distributor: Oracle
+        version: latest
+        install_url: https://www.oracle.com/java/technologies/javase-downloads.html
+        install_dir: /usr/local/java
+
+    IT_Testing:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        branch: develop
+        version: 1.3.0-RC5
+        test_suite: RunCloudify3AmazonLongRunIT
+      requirements:
+        - host: ComputeNode_Alien4Cloud
+
+    ComputeNode_Alien4Cloud:
+      type: tosca.nodes.Compute
+      properties:
+        network_name: IPv4_Network
+        num_cpus: 2
+        disk_size: 40 GB
+        mem_size: 8 GB
+
+    ComputeNode_ElasticSearch1:
+      type: tosca.nodes.Compute
+      properties:
+        network_name: IPv4_Network
+        num_cpus: 2
+        disk_size: 40 GB
+        mem_size: 8 GB
+
+    ComputeNode_ElasticSearch2:
+      type: tosca.nodes.Compute
+      properties:
+        network_name: IPv4_Network
+        num_cpus: 2
+        disk_size: 40 GB
+        mem_size: 8 GB
+
+    IPv4_Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: IPv4_Network
+        protocol: ipv4
+
+  relationship_templates:
+    - type: tosca.relationships.Network
+      name: ConnectsToNetwork
+      properties:
+        network_name: IPv4_Network
+      target: IPv4_Network

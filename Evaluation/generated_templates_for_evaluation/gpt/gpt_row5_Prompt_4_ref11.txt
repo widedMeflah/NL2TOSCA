@@ -1,0 +1,78 @@
+
+tosca_definitions_version: alien_dsl_1_4_0
+
+description: >
+  TOSCA deployment setup for an application with a replicated ElasticSearch cluster, Java runtime,
+  integration-testing component, and connectivity using the Alien4Cloud orchestrator.
+
+topology_template:
+  node_templates:
+    elasticsearch_cluster:
+      type: tosca.nodes.Elasticsearch.Cluster
+      properties:
+        number_of_nodes: 3
+      capabilities:
+        network_endpoint:
+          properties:
+            protocol: tcp
+            port: 9200
+
+    java_runtime:
+      type: tosca.nodes.Container.Runtime.Java
+      properties:
+        version: 11
+
+    application:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: java_runtime
+        - dependency: elasticsearch_cluster
+      capabilities:
+        app_endpoint:
+          properties:
+            protocol: http
+            port: 8080
+
+    integration_test:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        test_type: integration
+      requirements:
+        - host: java_runtime
+        - dependency: application
+        - dependency: elasticsearch_cluster
+
+    app_network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: app_net
+
+  relationships:
+    ConnectsToES:
+      type: tosca.relationships.ConnectsTo
+    ConnectsToNet:
+      type: tosca.relationships.AttachesTo
+
+  node_types:
+    tosca.nodes.Elasticsearch.Cluster:
+      derived_from: tosca.nodes.SoftwareComponent
+      properties:
+        number_of_nodes:
+          type: integer
+          required: true
+      capabilities:
+        network_endpoint:
+          type: tosca.capabilities.Endpoint
+
+  groups:
+    testing_group:
+      type: tosca.groups.Root
+      members: [integration_test, application, elasticsearch_cluster]
+
+  policies:
+    - network_attachment:
+        type: tosca.policies.Placement
+        targets: [elasticsearch_cluster, application, integration_test]
+        properties:
+          networks:
+            - app_net

@@ -1,0 +1,40 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+description: TOSCA template for deploying ML service on Marathon
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+topology_template:
+  node_templates:
+    marathon:
+      type: tosca.nodes.indigo.Container.Runtime.Marathon
+      properties:
+        marathon_url: { get_input: marathon_url }
+        mesos_url: { get_input: mesos_url }
+        
+    docker_runtime:
+      type: tosca.nodes.indigo.Container.Runtime.Docker
+      properties:
+        expose_ports: true
+        
+    ml_application:
+      type: tosca.nodes.indigo.Container.Application.Docker
+      properties:
+        ports:
+          - "8080:8080"
+        environment_variables:
+          LISTEN_ADDRESS: "0.0.0.0"
+        cpu_share: "1.0"
+        memory_mb: "1024"
+      requirements:
+        - host: docker_runtime
+        
+  inputs:
+    marathon_url:
+      type: string
+      description: Marathon endpoint URL
+      default: "http://marathon.example.com:8080"
+      
+    mesos_url:
+      type: string
+      description: Mesos master URL
+      default: "http://mesos.example.com:5050"

@@ -1,0 +1,196 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+description: TOSCA Service Template for deploying Galaxy Docker on a single VM with associated services.
+imports:
+  - tosca-normative-types:1.2
+node_types:
+  my.nodes.GalaxyApp:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      image_name:
+        type: string
+        description: The Docker image name for Galaxy.
+        default: "bgruening/galaxy-stable"
+      image_tag:
+        type: string
+        description: The Docker image tag (version) for Galaxy.
+        default: "latest"
+      admin_email:
+        type: string
+        description: Administrator email for the Galaxy instance.
+        default: "admin@example.com"
+      api_key:
+        type: string
+        description: API key for the Galaxy instance.
+        default: "your_galaxy_api_key_here"
+      instance_description:
+        type: string
+        description: A description for the Galaxy instance.
+        default: "My default Galaxy Instance"
+      install_reference_data:
+        type: boolean
+        description: Whether to install common Galaxy reference data.
+        default: false
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container.Runtime
+          node: tosca.nodes.Container.Runtime.DockerEngine
+          relationship: tosca.relationships.HostedOn
+      - data_storage:
+          capability: tosca.capabilities.DataStorage
+          node: tosca.nodes.BlockStorage
+          relationship: tosca.relationships.Uses
+  my.nodes.HashiCorpVault:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      enable_luks_encryption:
+        type: boolean
+        description: Enable LUKS encryption for Vault data storage.
+        default: false
+    requirements:
+      - host:
+          capability: tosca.capabilities.OperatingSystem
+          node: tosca.nodes.Compute
+          relationship: tosca.relationships.HostedOn
+topology_template:
+  node_templates:
+    galaxy_vm:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 50 GB
+      capabilities:
+        os:
+          properties:
+            architecture: x86_64
+            type: Linux
+            distribution: Ubuntu
+            version: "16.04"
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+    galaxy_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 100 GB
+      requirements:
+        - attachment:
+            node: galaxy_vm
+            capability: tosca.capabilities.Attachment
+            relationship: tosca.relationships.AttachesTo
+    docker_engine:
+      type: tosca.nodes.Container.Runtime.DockerEngine
+      requirements:
+        - host:
+            node: galaxy_vm
+            capability: tosca.capabilities.OperatingSystem
+            relationship: tosca.relationships.HostedOn
+    vault_server:
+      type: my.nodes.HashiCorpVault
+      properties:
+        enable_luks_encryption: false
+      requirements:
+        - host:
+            node: galaxy_vm
+            capability: tosca.capabilities.OperatingSystem
+            relationship: tosca.relationships.HostedOn
+    galaxy_app:
+      type: my.nodes.GalaxyApp
+      properties:
+        image_name: "bgruening/galaxy-stable"
+        image_tag: "latest"
+        admin_email: "galaxy-admin@example.com"
+        api_key: "secure-galaxy-api-key"
+        instance_description: "Galaxy instance for bioinformatics workflows"
+        install_reference_data: false
+      requirements:
+        - host:
+            node: docker_engine
+            capability: tosca.capabilities.Container.Runtime
+            relationship: tosca.relationships.HostedOn
+        - data_storage:
+            node: galaxy_storage
+            capability: tosca.capabilities.DataStorage
+            relationship: tosca.relationships.Uses
+    public_ip:
+      type: tosca.nodes.network.PublicIp
+      requirements:
+        - link:
+            node: galaxy_vm
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.NetworkConnectsTo
+    http_port:
+      type: tosca.nodes.network.Port
+      properties:
+        protocol: tcp
+        target_port: 80
+        source_port: 80
+      requirements:
+        - binding:
+            node: galaxy_vm
+            capability: tosca.capabilities.network.Bindable
+            relationship: tosca.relationships.BindsTo
+        - exposure:
+            node: public_ip
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.Exposes
+    ftp_port:
+      type: tosca.nodes.network.Port
+      properties:
+        protocol: tcp
+        target_port: 21
+        source_port: 21
+      requirements:
+        - binding:
+            node: galaxy_vm
+            capability: tosca.capabilities.network.Bindable
+            relationship: tosca.relationships.BindsTo
+        - exposure:
+            node: public_ip
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.Exposes
+    luks_api_port:
+      type: tosca.nodes.network.Port
+      properties:
+        protocol: tcp
+        target_port: 8200
+        source_port: 8200
+      requirements:
+        - binding:
+            node: galaxy_vm
+            capability: tosca.capabilities.network.Bindable
+            relationship: tosca.relationships.BindsTo
+        - exposure:
+            node: public_ip
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.Exposes
+    ssh_port:
+      type: tosca.nodes.network.Port
+      properties:
+        protocol: tcp
+        target_port: 22
+        source_port: 22
+      requirements:
+        - binding:
+            node: galaxy_vm
+            capability: tosca.capabilities.network.Bindable
+            relationship: tosca.relationships.BindsTo
+        - exposure:
+            node: public_ip
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.Exposes
+  outputs:
+    galaxy_public_ip:
+      description: The public IP address of the Galaxy instance.
+      value: { get_attribute: [ public_ip, floating_ip_address ] }
+    galaxy_http_url:
+      description: The URL to access the Galaxy instance via HTTP.
+      value: { concat: [ "http://", { get_attribute: [ public_ip, floating_ip_address ] }, ":", { get_property: [ http_port, source_port ] } ] }
+    galaxy_admin_email:
+      description: The configured admin email for Galaxy.
+      value: { get_property: [ galaxy_app, admin_email ] }
+    galaxy_api_key:
+      description: The configured API key for Galaxy.
+      value: { get_property: [ galaxy_app, api_key ] }

@@ -1,0 +1,73 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: Deployment of Nodecellar application with Node.js and MongoDB on Linux-based infrastructure
+
+topology_template:
+  node_templates:
+    NodecellarApp:
+      type: tosca.nodes.Compute
+      properties:
+        host:
+          type: tosca.nodes.Compute
+          properties:
+            os:
+              type: tosca.nodes.OperatingSystem
+              properties:
+                type: Ubuntu
+                distribution: Ubuntu
+                version: '20.04'
+        networks:
+          default:
+            network_name: 'NodecellarNetwork'
+            ip: '192.168.1.2'
+        ports:
+          - port: 8088
+            protocol: TCP
+      interfaces:
+        Standard:
+          create:
+            implementation: nodecellar/scripts/create.sh
+            inputs:
+              mongodb_host: '192.168.1.3'
+              mongodb_port: 27017
+              app_port: 8088
+
+    MongoDB:
+      type: tosca.nodes.Database
+      properties:
+        host:
+          type: tosca.nodes.Compute
+          properties:
+            os:
+              type: tosca.nodes.OperatingSystem
+              properties:
+                type: Ubuntu
+                distribution: Ubuntu
+                version: '20.04'
+        networks:
+          default:
+            network_name: 'NodecellarNetwork'
+            ip: '192.168.1.3'
+        ports:
+          - port: 27017
+            protocol: TCP
+      interfaces:
+        Standard:
+          create:
+            implementation: mongodb/scripts/create.sh
+            inputs:
+              port: 27017
+
+    NodecellarNetwork:
+      type: tosca.nodes.Network
+      properties:
+        name: 'NodecellarNetwork'
+        ip_range: '192.168.1.0/24'
+        subnet_mask: '255.255.255.0'
+        gateway_ip: '192.168.1.1'
+        network_type: IPv4
+
+  outputs:
+    nodecellar_url:
+      description: URL to access the Nodecellar application
+      value: >-
+        http://${NodecellarApp.host.networks.default.ip}:8088

@@ -1,0 +1,99 @@
+topology_template:
+  description: Two-tier application with PHP-based Wine Cellar web app and MySQL database
+  node_templates:
+    web_server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        network_name: private
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports:
+              http: 80
+              https: 443
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      artifacts:
+        os_image:
+          type: tosca.artifacts.Implementable.Image
+          file: https://cloud-images.ubuntu.com/releases/20.04/release-20200423/ubuntu-20.04-server-cloudimg-amd64.img
+    database_server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        network_name: private
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      artifacts:
+        os_image:
+          type: tosca.artifacts.Implementable.Image
+          file: https://cloud-images.ubuntu.com/releases/20.04/release-20200423/ubuntu-20.04-server-cloudimg-amd64.img
+    web_app:
+      type: tosca.nodes.WebApplication.PHP
+      properties:
+        app_name: Wine Cellar
+        app_version: 1.0
+        war_file: https://example.com/winecellar.war
+      requirements:
+        - host: web_server
+        - database: database_server
+    mysql_db:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        root_password: my_root_password
+        database_name: winecellar
+      requirements:
+        - host: database_server
+    apache_server:
+      type: tosca.nodes.WebServer.Apache
+      properties:
+        port: 80
+      requirements:
+        - host: web_server
+        - app: web_app
+  relationship_templates:
+    connect_to_database:
+      type: ConnectsTo
+      properties:
+        protocol: tcp
+        ports:
+          mysql: 3306
+    connect_to_web_server:
+      type: ConnectsTo
+      properties:
+        protocol: http
+        ports:
+          http: 80
+          https: 443
+  relationship:
+    - type: tosca.relationships.ConnectsTo
+      target: web_server
+      target_interfaces:
+        - tosca.interfaces.network.bind
+    - type: tosca.relationships.ConnectsTo
+      target: database_server
+      target_interfaces:
+        - tosca.interfaces.network.bind
+    - type: tosca.relationships.HostedOn
+      target: web_server
+      target_interfaces:
+        - tosca.interfaces.node.lifecycle
+    - type: tosca.relationships.HostedOn
+      target: database_server
+      target_interfaces:
+        - tosca.interfaces.node.lifecycle
+    - type: tosca.relationships.Runnable
+      target: web_app
+      target_interfaces:
+        - tosca.interfaces.node.lifecycle
+    - type: tosca.relationships.Runnable
+      target: mysql_db
+      target_interfaces:
+        - tosca.interfaces.node.lifecycle

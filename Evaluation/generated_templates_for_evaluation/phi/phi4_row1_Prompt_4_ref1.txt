@@ -1,0 +1,91 @@
+TopologyTemplate:
+  inputs:
+    javaVersion:
+      type: string
+      description: "Java version for JDK installation."
+    elasticsearchHost:
+      type: string
+      description: "Hostname of the remote Elasticsearch node."
+    computeInstanceType1:
+      type: string
+      description: "Compute instance type for application server and database server."
+    computeInstanceType2:
+      type: string
+      description: "Compute instance type for Alien4Cloud instance."
+
+  nodes:
+    ApplicationServer:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu-20.04
+        flavor: { get_input: computeInstanceType1 }
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              scripts:
+                - |
+                  apt-get update
+                  apt-get install -y openjdk-{get_input: javaVersion}-jdk
+
+    DatabaseServer:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu-20.04
+        flavor: { get_input: computeInstanceType1 }
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              scripts:
+                - |
+                  apt-get update
+                  apt-get install -y openjdk-{get_input: javaVersion}-jdk
+
+    Alien4CloudInstance:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu-20.04
+        flavor: { get_input: computeInstanceType2 }
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              scripts:
+                - |
+                  apt-get update
+                  apt-get install -y alien4cloud
+
+    ElasticsearchNode:
+      type: tosca.nodes.Network
+      properties:
+        host: { get_input: elasticsearchHost }
+
+  relationships:
+    Alien4CloudElasticsearchConnection:
+      node: Alien4CloudInstance
+      relationshipType: tosca.relationships.ConnectsTo
+      target: ElasticsearchNode
+
+  policies:
+    - type: tosca.policies.networking.NetworkPolicy
+      properties:
+        name: ApplicationNetwork
+      targets: [ApplicationServer, DatabaseServer]
+
+  groups:
+    - hostGroup1:
+        members: [ApplicationServer]
+    - hostGroup2:
+        members: [DatabaseServer]
+
+  artifacts:
+    Alien4CloudConfiguration:
+      type: tosca.artifacts.File
+      file: configuration-files/alien4cloud-config.xml
+
+  substitution_mappings:
+    node_type: tosca.nodes.Root
+    capabilities:
+      host:
+        node: ApplicationServer

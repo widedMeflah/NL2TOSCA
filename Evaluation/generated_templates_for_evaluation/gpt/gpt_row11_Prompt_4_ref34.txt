@@ -1,0 +1,106 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template for deploying a Galaxy instance with cluster support using CentOS 7, SLURM, storage encryption, Vault-based secrets management, a specified Galaxy flavor, companion software, reference data, hybrid cloud support, deployment notification emails, and configurable worker nodes.
+
+topology_template:
+  inputs:
+    galaxy_flavor:
+      type: string
+      description: Specific Galaxy flavor to deploy
+    worker_count:
+      type: integer
+      description: Number of worker nodes
+      default: 2
+    vault_address:
+      type: string
+      description: Vault server address
+    vault_token:
+      type: string
+      description: Token to access Vault server
+      required: true
+    email_recipient:
+      type: string
+      description: Email to notify after successful deployment
+
+  node_templates:
+    galaxy_server:
+      type: tosca.nodes.indigo.GalaxyServer
+      properties:
+        os_family: centos
+        os_version: 7
+        galaxy_flavor: { get_input: galaxy_flavor }
+        companion_software:
+          - postgresql
+          - nginx
+          - proftpd
+        reference_data: true
+        storage_encryption: true
+        secrets_manager: vault
+        vault_address: { get_input: vault_address }
+        vault_token: { get_input: vault_token }
+        slurm_cluster: galaxy_slurm_cluster
+        hybrid_support: true
+        email_notification:
+          enabled: true
+          recipient: { get_input: email_recipient }
+      requirements:
+        - host: galaxy_head_node
+        - dependency: galaxy_slurm_cluster
+
+    galaxy_head_node:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: centos
+            version: 7
+        host:
+          properties:
+            num_cpus: 8
+            mem_size: 32 GB
+            disk_size: 200 GB
+      properties:
+        storage_encryption: true
+
+    galaxy_slurm_cluster:
+      type: tosca.nodes.indigo.SlurmCluster
+      properties:
+        compute_image: centos:7
+        cluster_size: { get_input: worker_count }
+        slurm_version: 20.11
+        storage_encryption: true
+        secrets_manager: vault
+        vault_address: { get_input: vault_address }
+        vault_token: { get_input: vault_token }
+        hybrid_support: true
+      requirements:
+        - head_node: galaxy_head_node
+        - worker_nodes: slurm_worker_nodes
+
+    slurm_worker_nodes:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 100
+            default_instances: { get_input: worker_count }
+        os:
+          properties:
+            type: linux
+            distribution: centos
+            version: 7
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 16 GB
+            disk_size: 100 GB
+      properties:
+        storage_encryption: true
+
+  outputs:
+    deployment_status_email:
+      value: "A confirmation email will be sent to { get_input: email_recipient } upon successful deployment."

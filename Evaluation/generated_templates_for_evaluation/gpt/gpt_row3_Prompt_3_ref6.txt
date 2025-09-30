@@ -1,0 +1,110 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA topology for deploying Nodecellar application with Node.js and MongoDB on Ubuntu Linux, with IPv4 networking, customized port configuration, and output URL.
+
+topology_template:
+  inputs:
+    nodejs_port:
+      type: integer
+      default: 8088
+      constraints:
+        - in_range: [8000, 65535]
+    mongodb_port:
+      type: integer
+      default: 27017
+      constraints:
+        - in_range: [8000, 65535]
+
+  node_templates:
+    nodecellar_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 10 GB
+            mem_size: 4 GB
+        endpoint:
+          properties:
+            network_name: nodecellar_net
+            network_id: { get_attribute: [ nodecellar_net, network_id ] }
+            ip_address: { get_attribute: [ SELF, private_address ] }
+
+    nodecellar_app:
+      type: tosca.nodes.WebApplication.Nodejs
+      requirements:
+        - host: nodecellar_host
+        - dependency: nodejs_runtime
+        - database: mongodb_server
+      properties:
+        admin_user: admin
+        admin_password: admin
+        port: { get_input: nodejs_port }
+
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_nodecellar.sh
+          configure:
+            implementation: scripts/configure_nodecellar.sh
+          start:
+            implementation: scripts/start_nodecellar.sh
+
+    nodejs_runtime:
+      type: tosca.nodes.SoftwareComponent.Nodejs
+      requirements:
+        - host: nodecellar_host
+
+    mongodb_server:
+      type: tosca.nodes.Database.MongoDB
+      requirements:
+        - host: nodecellar_host
+      properties:
+        port: { get_input: mongodb_port }
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_mongodb.sh
+          configure:
+            implementation: scripts/configure_mongodb.sh
+          start:
+            implementation: scripts/start_mongodb.sh
+
+    nodecellar_net:
+      type: tosca.nodes.network.Network
+      properties:
+        ip_version: 4
+
+    mongodb_endpoint:
+      type: tosca.nodes.network.Port
+      properties:
+        protocol: tcp
+        port: { get_input: mongodb_port }
+      requirements:
+        - network: nodecellar_net
+        - binding: mongodb_server
+
+    nodejs_endpoint:
+      type: tosca.nodes.network.Port
+      properties:
+        protocol: tcp
+        port: { get_input: nodejs_port }
+      requirements:
+        - network: nodecellar_net
+        - binding: nodecellar_app
+
+  outputs:
+    nodecellar_url:
+      description: URL to access the Nodecellar application.
+      value: 
+        concat:
+          - 'http://'
+          - { get_attribute: [ nodecellar_host, public_address ] }
+          - ':'
+          - { get_input: nodejs_port }

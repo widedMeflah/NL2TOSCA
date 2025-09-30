@@ -1,0 +1,52 @@
+name: nodejs-mongodb-deployment
+
+description: Deployment template for a sample application using Node.js and MongoDB, configured to run on a Linux-based infrastructure.
+
+topology_template:
+  node_templates:
+    NodeJS:
+      type: nodejs
+      properties:
+        architecture: linux
+        ram: 512
+        disk: 10
+        port: {get_param: NODE_PORT}
+    MongoDB:
+      type: mongodb
+      properties:
+        architecture: linux
+        ram: 512
+        disk: 10
+        port: {get_param: MONGO_PORT}
+
+  relationships:
+    - id: nodejs_to_mongo
+      source: NodeJS
+      target: MongoDB
+      relation_type: db
+
+  nodes:
+    - node_ref: NodeJS
+    - node_ref: MongoDB
+
+  links:
+    - id: network
+      source: NodeJS
+      target: MongoDB
+      link_type: network
+
+parameters:
+  NODE_PORT:
+    description: Port number for the Node.js application
+    type: integer
+    default: 3000
+  MONGO_PORT:
+    description: Port number for the MongoDB service
+    type: integer
+    default: 27017
+
+outputs:
+  NODE_APP_URL:
+    description: URL where the Node.js application can be accessed
+    type: string
+    expression: "http://{NodeJS.links.network.target.address}:{NODE_PORT}"

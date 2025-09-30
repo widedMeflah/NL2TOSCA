@@ -1,0 +1,120 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Kubernetes Cluster
+
+topology_template:
+  node_templates:
+    kubernetes_master:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        networks:
+          private_network:
+            network_name: private_network
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              kubectl: 8443
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    kubernetes_worker:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              docker: 2375
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+
+    docker_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: latest
+      relationships:
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_master
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_worker
+
+    flannel_network:
+      type: tosca.nodes.Network
+      properties:
+        version: 0.5.5
+        ip_mask: 10.244.0.0/16
+      relationships:
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_master
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_worker
+
+    etcd_service:
+      type: tosca.nodes.Database
+      properties:
+        version: 2.2.1
+        image: etcd
+      relationships:
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_master
+        - type: tosca.relationships.HostedOn
+          target: docker_runtime
+
+    kubernetes_dashboard:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: latest
+        namespace: kube-system
+      relationships:
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_master
+        - type: tosca.relationships.HostedOn
+          target: docker_runtime
+
+    kubernetes_cluster:
+      type: tosca.nodes.Container.Application
+      properties:
+        version: 1.2.1
+        dns_domain: cluster.local
+      relationships:
+        - type: tosca.relationships.ContainedIn
+          target: kubernetes_master
+        - type: tosca.relationships.ConnectsTo
+          target: flannel_network
+        - type: tosca.relationships.ConnectsTo
+          target: etcd_service
+        - type: tosca.relationships.ConnectsTo
+          target: kubernetes_dashboard
+
+    kubectl_version:
+      type: alien4cloud.types.KubectlVersion
+      properties:
+        version: 1.5.3
+      relationships:
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_cluster
+
+  relationship_templates:
+    - type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        ports:
+          kubectl: 8443
+
+  output_templates:
+    kubernetes_ui_endpoint:
+      type: string
+      value: { get_property: [ kubernetes_dashboard, endpoint, url ] }
+    kubernetes_api_endpoint:
+      type: string
+      value: { get_property: [ kubernetes_cluster, endpoint, url ] }

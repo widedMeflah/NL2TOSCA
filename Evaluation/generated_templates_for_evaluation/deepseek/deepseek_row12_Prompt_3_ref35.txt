@@ -1,0 +1,121 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for deploying a Galaxy Docker image on a single virtual machine with configurable resources and security features.
+
+topology_template:
+  node_templates:
+    galaxy_vm:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        os_version: '16.04'
+        instance_type: 
+          type: string
+          constraints:
+            - valid_values: [ 'small', 'medium', 'large' ]
+          default: small
+      capabilities:
+        endpoint:
+          properties:
+            network_name: public
+            ports:
+              http: 80
+              ftp: 21
+              lukas_api: 8080
+
+    docker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        package: docker
+        version: latest
+      dependencies:
+        - node: galaxy_vm
+          relationship: tosca.relationships.Install
+
+    galaxy_docker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        package: galaxy
+        version: ${galaxy_version}
+        admin_email: ${admin_email}
+        api_key: ${api_key}
+        instance_description: ${instance_description}
+      dependencies:
+        - node: docker
+          relationship: tosca.relationships.Install
+        - node: galaxy_vm
+          relationship: tosca.relationships.Configure
+
+    block_storage:
+      type: tosca.nodes.Storage
+      properties:
+        size: 10 GB
+        type: block
+      dependencies:
+        - node: galaxy_vm
+          relationship: tosca.relationships.Attach
+
+    hashi_vault:
+      type: tosca.nodes.Security
+      properties:
+        package: hashi_vault
+        version: latest
+        secrets_path: ${secrets_path}
+        encryption: ${encryption_enabled}
+      dependencies:
+        - node: galaxy_vm
+          relationship: tosca.relationships.Configure
+
+    reference_data:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        package: reference_data
+        version: latest
+        condition: ${install_reference_data}
+      dependencies:
+        - node: galaxy_docker
+          relationship: tosca.relationships.Install
+
+  inputs:
+    admin_email:
+      type: string
+      description: Email address for Galaxy admin
+    api_key:
+      type: string
+      description: API key for Galaxy
+    galaxy_version:
+      type: string
+      default: 'latest'
+      description: Version of Galaxy to deploy
+    instance_description:
+      type: string
+      description: Description of the Galaxy instance
+    instance_type:
+      type: string
+      constraints:
+        - valid_values: [ 'small', 'medium', 'large' ]
+      default: small
+      description: Instance flavor for the VM
+    install_reference_data:
+      type: boolean
+      default: false
+      description: Whether to install reference data
+    encryption_enabled:
+      type: boolean
+      default: false
+      description: Enable LUKS encryption for storage
+    secrets_path:
+      type: string
+      default: 'secret/galaxy'
+      description: Path for secrets in HashiCorp Vault
+
+  workflows:
+    deploy:
+      steps:
+        - install_network: galaxy_vm
+        - create_volume: block_storage
+        - boot_vm: galaxy_vm
+        - install_docker: docker
+        - configure_galaxy: galaxy_docker
+        - optional_reference_data: reference_data

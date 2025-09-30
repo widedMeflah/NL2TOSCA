@@ -1,0 +1,58 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: data-management-system
+  template_version: 1.0.0
+  template_author: alien4cloud
+
+description: Data management system with network accessibility
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+node_types:
+  org.data.management.system:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Data Management System Component
+    properties:
+      port:
+        type: integer
+        required: true
+        constraints:
+          - in_range: [ 1024, 65535 ]
+        default: 8080
+    attributes:
+      server_ip:
+        type: string
+      server_port:
+        type: integer
+    capabilities:
+      data_endpoint:
+        type: tosca.capabilities.Endpoint.Database
+        properties:
+          protocol: tcp
+          port: { get_property: [ SELF, port ] }
+
+topology_template:
+  node_templates:
+    ubuntu_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+
+    data_management:
+      type: org.data.management.system
+      properties:
+        port: 8080
+      requirements:
+        - host: ubuntu_host
+
+  outputs:
+    server_ip:
+      value: { get_attribute: [ data_management, server_ip ] }
+    server_port:
+      value: { get_attribute: [ data_management, server_port ] }

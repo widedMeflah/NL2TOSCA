@@ -1,0 +1,127 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/4.5/types.yaml
+
+node_types:
+  my.nodes.elasticsearch_vm:
+    derived_from: cloudify.nodes.Compute
+    properties:
+      image_source: ubuntu-20.04
+      min_cpu: 2
+      max_cpu: 4
+      min_ram: 4096 MB
+      max_ram: 8192 MB
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            es_version: "7.4.1"
+            network_access: true
+          implementation:
+            main: scripts/create_elasticsearch_vm.py
+
+    artifacts:
+      bootstrap_script:
+        file: scripts/bootstrap.sh
+
+node_templates:
+  elasticsearch_vm:
+    type: my.nodes.elasticsearch_vm
+    properties:
+      min_cpu: 2
+      max_cpu: 4
+      min_ram: 4096 MB
+      max_ram: 8192 MB
+    relationships:
+      - type: cloudify.relationships.contained_in_cloud
+        target: cloudify.nodes.Cloud
+
+dsl_definitions:
+
+  set_elasticsearch_credentials:
+    inputs:
+      es_password:
+        description: Elasticsearch user password.
+        required: true
+      kibana_password:
+        description: Kibana system user password.
+        required: true
+    implementation:
+      main: scripts/set_credentials.py
+
+workflows:
+  setup_elasticsearch_system:
+    mapping:
+      inputs:
+        es_version:
+          default: "7.4.1"
+        network_access:
+          default: true
+        es_password:
+          default: ""
+        kibana_password:
+          default: ""
+      outputs:
+        credentials:
+          - es_password
+          - kibana_password
+
+  install_elasticsearch:
+    mapping:
+      inputs:
+        es_version: { default: "7.4.1" }
+      tasks:
+        - name: install_package
+          action: scripts/install_elasticsearch.sh
+          input_parameters:
+            version: { get_input: es_version }
+
+  configure_network_access:
+    mapping:
+      tasks:
+        - name: open_firewall
+          action: cloudify.interfaces.lifecycle.configure_network
+
+  set_credentials_workflow:
+    mapping:
+      inputs:
+        es_password:
+          default: ""
+        kibana_password:
+          default: ""
+      tasks:
+        - name: set_elasticsearch_credentials
+          action: dsl_definitions.set_elasticsearch_credentials
+          input_parameters:
+            es_password: { get_input: es_password }
+            kibana_password: { get_input: kibana_password }
+
+  deploy_workflow:
+    mapping:
+      inputs:
+        es_version:
+          default: "7.4.1"
+        network_access:
+          default: true
+        es_password:
+          required: true
+        kibana_password:
+          required: true
+      tasks:
+        - name: elasticsearch_vm_create
+          action: cloudify.interfaces.lifecycle.create
+        - name: install_elasticsearch
+          action: install_elasticsearch
+        - name: configure_network_access
+          action: configure_network_access
+        - name: set_credentials_workflow
+          action: set_credentials_workflow
+
+outputs:
+  vm_public_address:
+    description: The public IP address of the virtual machine.
+    expression: workflow.outputs.vm_public_address
+  credentials:
+    description: Elasticsearch and Kibana access credentials.
+    value: workflow.outputs.credentials

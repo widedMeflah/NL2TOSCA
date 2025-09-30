@@ -1,0 +1,100 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Basic Application Topology
+  node_templates:
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        name: My Network
+
+    Compute_Alien4Cloud:
+      type: tosca.nodes.Compute
+      properties:
+        name: Alien4Cloud Server
+        num_cpus: 2
+        disk_size: 10 GB
+        mem_size: 4 GB
+      requirements:
+        - network:
+            node: Network
+            relationship: tosca.relationships.Network
+        - host:
+            node: JDK_Alien4Cloud
+            relationship: tosca.relationships.HostedOn
+
+    JDK_Alien4Cloud:
+      type: tosca.nodes.Java
+      properties:
+        version: 11
+      requirements:
+        - host:
+            node: Compute_Alien4Cloud
+            relationship: tosca.relationships.HostedOn
+
+    Compute_Application:
+      type: tosca.nodes.Compute
+      properties:
+        name: Application Server
+        num_cpus: 2
+        disk_size: 10 GB
+        mem_size: 4 GB
+      requirements:
+        - network:
+            node: Network
+            relationship: tosca.relationships.Network
+        - host:
+            node: JDK_Application
+            relationship: tosca.relationships.HostedOn
+
+    JDK_Application:
+      type: tosca.nodes.Java
+      properties:
+        version: 11
+      requirements:
+        - host:
+            node: Compute_Application
+            relationship: tosca.relationships.HostedOn
+
+    Compute_Database:
+      type: tosca.nodes.Compute
+      properties:
+        name: Database Server
+        num_cpus: 2
+        disk_size: 10 GB
+        mem_size: 4 GB
+      requirements:
+        - network:
+            node: Network
+            relationship: tosca.relationships.Network
+        - host:
+            node: JDK_Database
+            relationship: tosca.relationships.HostedOn
+
+    JDK_Database:
+      type: tosca.nodes.Java
+      properties:
+        version: 11
+      requirements:
+        - host:
+            node: Compute_Database
+            relationship: tosca.relationships.HostedOn
+
+    Alien4Cloud:
+      type: tosca.nodes.Alien4Cloud
+      properties:
+        name: My Alien4Cloud
+      requirements:
+        - host:
+            node: Compute_Alien4Cloud
+            relationship: tosca.relationships.HostedOn
+        - elasticsearch:
+            node: Elasticsearch
+            relationship: tosca.relationships.ConnectsTo
+
+    Elasticsearch:
+      type: tosca.nodes.Elasticsearch
+      properties:
+        name: My Elasticsearch
+        endpoint: https://elasticsearch.example.com

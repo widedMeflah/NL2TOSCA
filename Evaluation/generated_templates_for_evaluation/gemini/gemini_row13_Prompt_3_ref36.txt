@@ -1,0 +1,189 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+description: TOSCA description for a virtual elastic cluster deployment for INDIGO.
+
+node_types:
+  tosca.nodes.indigo.ElasticClusterFrontend:
+    derived_from: tosca.nodes.Compute
+    properties:
+      workload_managers:
+        type: list
+        entry_schema: { type: string, constraints: [ valid_values: [TORQUE, SGE, SLURM, CONDOR] ] }
+        default: [SLURM]
+      hybrid_environment:
+        type: boolean
+        default: false
+    capabilities:
+      host:
+        properties:
+          disk_size: 10 GB
+          mem_size: 2 GB
+          num_cpus: 1
+
+  tosca.nodes.indigo.GalaxyPortal:
+    derived_from: tosca.nodes.Compute
+    properties:
+      admin_email:
+        type: string
+      api_key:
+        type: string
+      galaxy_version:
+        type: string
+        default: "latest"
+      instance_description:
+        type: string
+
+  tosca.nodes.indigo.SlurmController:
+    derived_from: tosca.nodes.Compute
+    properties:
+      slurm_version:
+        type: string
+        default: "latest"
+
+  tosca.nodes.indigo.SlurmWorker:
+    derived_from: tosca.nodes.Compute
+
+  tosca.nodes.indigo.GalaxyWorker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      export_directory:
+        type: string
+
+topology_template:
+  inputs:
+    admin_email:
+      type: string
+      description: Admin email for Galaxy Portal
+    galaxy_api_key:
+      type: string
+      description: API Key for Galaxy Portal management
+
+  node_templates:
+    cluster_internal_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: 10.0.0.0/24
+
+    lrms_slurm_frontend:
+      type: tosca.nodes.indigo.SlurmController
+      properties:
+        image: ubuntu-14.04
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+      requirements:
+        - network:
+            node: cluster_internal_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+
+    elastic_cluster_frontend:
+      type: tosca.nodes.indigo.ElasticClusterFrontend
+      properties:
+        image: ubuntu-14.04
+        workload_managers: [SLURM]
+        hybrid_environment: true
+      requirements:
+        - network:
+            node: cluster_internal_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+        - manage_lrms:
+            node: lrms_slurm_frontend
+            relationship: tosca.relationships.ConnectsTo
+
+    public_ip_cluster_fe:
+      type: tosca.nodes.PublicIp
+      requirements:
+        - link:
+            node: elastic_cluster_frontend
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+
+    galaxy_portal:
+      type: tosca.nodes.indigo.GalaxyPortal
+      properties:
+        image: ubuntu-14.04
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: galaxy_api_key }
+        galaxy_version: "latest"
+        instance_description: "Galaxy Portal for Bioinformatics Applications"
+      requirements:
+        - network:
+            node: cluster_internal_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+
+    public_ip_galaxy:
+      type: tosca.nodes.PublicIp
+      requirements:
+        - link:
+            node: galaxy_portal
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+
+    slurm_worker_nodes:
+      type: tosca.nodes.indigo.SlurmWorker
+      properties:
+        image: ubuntu-14.04
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 10
+            default_instances: 1
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+      requirements:
+        - host:
+            node: lrms_slurm_frontend
+            capability: tosca.capabilities.ConnectsTo # Represents Slurm client capability
+            relationship: tosca.relationships.ConnectsTo
+        - network:
+            node: cluster_internal_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+
+    galaxy_worker_nodes:
+      type: tosca.nodes.indigo.GalaxyWorker
+      properties:
+        image: ubuntu-14.04
+        export_directory: "/mnt/galaxy_data"
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+      requirements:
+        - host:
+            node: galaxy_portal
+            capability: tosca.capabilities.ConnectsTo # Represents Galaxy client capability
+            relationship: tosca.relationships.ConnectsTo
+        - network:
+            node: cluster_internal_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.AttachesTo
+
+  policies:
+    - slurm_workers_scaling_policy:
+        type: tosca.policies.Scaling
+        properties:
+          min_instances: 1
+          max_instances: 10
+          default_instances: 1
+        targets: [slurm_worker_nodes]
+
+  outputs:
+    galaxy_url:
+      description: URL to access the Galaxy Portal.
+      value: { get_attribute: [public_ip_galaxy, ip_address] }
+    cluster_management_ip:
+      description: Public IP address for cluster management (Elastic Cluster Front-End).
+      value: { get_attribute: [public_ip_cluster_fe, ip_address] }
+    cluster_credentials:
+      description: Placeholder for cluster access credentials (e.g., SSH user/key for frontend).
+      value: "Please retrieve SSH key or user from orchestrator logs/outputs."

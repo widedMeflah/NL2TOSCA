@@ -1,0 +1,37 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A TOSCA service template to deploy a MongoDB-like data storage system on an Ubuntu server.
+
+metadata:
+  template_name: DataStorageSystem
+  template_version: 1.0.0
+  author: TOSCA User
+
+topology_template:
+  node_templates:
+    DataStorageServer:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: data-storage-server
+        description: A Linux-based server running the data storage system.
+        architecture: x86_64
+        os_distro: Ubuntu
+        os_version: "20.04"
+        ip_address: 192.168.1.10
+        private_network: true
+        tcp_ports:
+          - 27017
+        config:
+          parameters:
+            storage_port: 27017
+        capabilities:
+          endpoint:
+            - name: data_endpoint
+              protocol: TCP
+              port: 27017
+      interfaces:
+        Configure:
+          create:
+            implementation: scripts/configure.sh
+            inputs:
+              storage_port: 27017

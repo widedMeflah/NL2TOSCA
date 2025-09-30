@@ -1,0 +1,133 @@
+
+definition_versions:
+  - name: Alien4cloud_WebApp_Deployment
+    version: 1.0.0
+
+types:
+  NodeTypes:
+    ComputeNode:
+      description: Virtual or physical machine that will serve as the host for the JDK.
+      node_template:
+        type: cm:cloudforms:x-orn:ComputeNode
+        sw_id: ComputeNode
+        disk_config:
+          size: 20
+        os:
+          type: cm:cloudforms:x-orn:OS
+          sw_id: OS
+        properties:
+          architecture:
+            type: string
+            description: Architecture options for x86_32 and x86_64.
+            allowed_values: x86_32, x86_64
+          operating_system:
+            type: string
+            description: The host machine's operating system should be configurable.
+            allowed_values:
+              - Linux
+              - AIX
+              - Mac OS
+              - Windows
+
+    ApacheTomcat:
+      description: Apache Tomcat server hosting the WAR file.
+      node_template:
+        type: apache:tomcat:Tomcat
+        sw_id: ApacheTomcat
+        properties:
+          catalina_home:
+            type: file
+            description: Home directory for the Tomcat server.
+          catalina_base:
+            type: file
+            description: Base directory for the Tomcat server.
+          java_home:
+            type: file
+            description: Path to the JDK installation.
+          port:
+            type: number
+            description: Port number to bind the Tomcat server.
+          download_binaries:
+            type: boolean
+            description: Enable or disable automatic download of Tomcat binaries from the official Apache archive.
+            default: true
+
+    JDK:
+      description: Java Development Kit (JDK) used by the Apache Tomcat server.
+      node_template:
+        type: oracle:jdk:JDK
+        sw_id: JDK
+        properties:
+          download_url:
+            type: string
+            description: URL to download the JDK from Oracle's official delivery platform.
+            default: "https://edelivery.oracle.com/otn-pub/java/jdk/8u275-b01-jre-jdk-linux-x64-installer-rpm.tar.gz"
+
+  RelationshipTypes:
+    Hosts:
+      description: Relationship between OS and ComputeNode, indicating the operating system installed on the ComputeNode.
+      relationship_template:
+        type: cm:cloudforms:x-orn:Hosts
+        properties:
+          os_name:
+            type: string
+            description: Name of the operating system installed on the ComputeNode.
+
+    Installs:
+      description: Relationship between JDK and ComputeNode, indicating the JDK installed on the ComputeNode.
+      relationship_template:
+        type: cm:cloudforms:x-orn:Installs
+        properties:
+          jdk_version:
+            type: string
+            description: Version of the JDK installed on the ComputeNode.
+
+    DependsOn:
+      description: Relationship between ApacheTomcat and JDK, indicating that the ApacheTomcat node depends on the JDK node.
+      relationship_template:
+        type: apache:tomcat:DependsOn
+        properties:
+          jdk_version:
+            type: string
+            description: Version of the JDK that the ApacheTomcat node depends on.
+
+  ArtifactTypes:
+    WarFile:
+      description: WAR file for the web application.
+      artifact_template:
+        type: file
+        sw_id: WarFile
+        description: Path to the WAR file.
+        required: true
+
+  InterfaceTypes:
+    Output:
+      description: Interface providing URLs for accessing both the WAR application and the Tomcat server.
+      interface_template:
+        type: cm:cloudforms:x-orn:Output
+        properties:
+          tomcat_url:
+            type: string
+            description: URL for accessing the Tomcat server.
+          app_url:
+            type: string
+            description: URL for accessing the WAR application.
+
+  ServiceTypes:
+    WebAppDeployment:
+      description: Service for deploying a web application using the specified components.
+      service_template:
+        type: cm:cloudforms:x-orn:Service
+        properties:
+          node: ApacheTomcat
+          relationships:
+            - name: Hosts
+              relationship_id: OS
+            - name: Installs
+              relationship_id: JDK
+            - name: DependsOn
+              relationship_id: JDK
+          artifacts:
+            - name: WarFile
+          interfaces:
+            - name: Output

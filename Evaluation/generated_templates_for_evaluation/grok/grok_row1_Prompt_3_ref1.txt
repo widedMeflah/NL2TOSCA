@@ -1,0 +1,133 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: Alien4Cloud with Remote Elasticsearch
+  template_version: 1.0.0
+  template_author: Anonymous
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  custom.types.JDK:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Java Development Kit installation
+    properties:
+      version:
+        type: string
+        default: "11"
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+        valid_source_types: [tosca.nodes.SoftwareComponent]
+
+  custom.types.Alien4CloudApp:
+    derived_from: tosca.nodes.WebApplication
+    description: Alien4Cloud application
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: custom.types.JDK
+          relationship: tosca.relationships.HostedOn
+      - connect_to_elasticsearch:
+          capability: tosca.capabilities.Endpoint
+          node: custom.types.Elasticsearch
+          relationship: tosca.relationships.ConnectsTo
+
+  custom.types.Elasticsearch:
+    derived_from: tosca.nodes.Database
+    description: Elasticsearch service
+    properties:
+      version:
+        type: string
+        default: "7.10.2"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: custom.types.JDK
+          relationship: tosca.relationships.HostedOn
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint.Database
+
+topology_template:
+  node_templates:
+    Compute1:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    Compute2:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+            disk_size: 100 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    JDK1:
+      type: custom.types.JDK
+      requirements:
+        - host:
+            node: Compute1
+            capability: tosca.capabilities.Compute
+            relationship: tosca.relationships.HostedOn
+
+    JDK2:
+      type: custom.types.JDK
+      requirements:
+        - host:
+            node: Compute2
+            capability: tosca.capabilities.Compute
+            relationship: tosca.relationships.HostedOn
+
+    Alien4CloudApp:
+      type: custom.types.Alien4CloudApp
+      requirements:
+        - host:
+            node: JDK1
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - connect_to_elasticsearch:
+            node: Elasticsearch
+            capability: tosca.capabilities.Endpoint.Database
+            relationship: tosca.relationships.ConnectsTo
+
+    Elasticsearch:
+      type: custom.types.Elasticsearch
+      requirements:
+        - host:
+            node: JDK2
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        cidr: 192.168.1.0/24
+      requirements:
+        - link:
+            node: Compute1
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.ConnectsTo
+        - link:
+            node: Compute2
+            capability: tosca.capabilities.Connectivity
+            relationship: tosca.relationships.ConnectsTo

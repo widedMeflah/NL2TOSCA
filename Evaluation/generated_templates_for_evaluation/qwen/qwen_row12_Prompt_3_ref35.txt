@@ -1,0 +1,120 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: 
+  Deployment of a Galaxy Docker instance on a single virtual machine with Ubuntu 16.04,
+  block storage, HashiCorp Vault for secrets, and network configuration for HTTP, FTP,
+  and LUKS API access.
+
+topology_template:
+
+  node_templates:
+
+    ubuntu_vm:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          type: tosca.nodes.Compute
+          properties:
+            instance_type: m1.medium
+            os:
+              name: Ubuntu
+              version: "16.04"
+        endpoint:
+          type: tosca.capabilities.Endpoint.Public
+          properties:
+            port: 80
+            protocol: HTTP
+      properties:
+        image: ubuntu:16.04
+        network:
+          public: true
+        key_name: my_ssh_key
+        admin_user: ubuntu
+
+    block_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 100 GB
+        volume_type: standard
+      relationships:
+        - type: tosca.relationships.Attachments
+          target: ubuntu_vm
+
+    docker_engine:
+      type: tosca.nodes.ContainerEngine.Docker
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: ubuntu_vm
+
+    galaxy_container:
+      type: tosca.nodes.Container.Docker
+      properties:
+        image: galaxyproject/galaxy
+        environment:
+          GALAXY_ADMIN_EMAIL: admin@example.com
+          GALAXY_API_KEY: "1234567890abcdef"
+          GALAXY_VERSION: "19.09"
+          GALAXY_INSTANCE_DESCRIPTION: "Galaxy instance for bioinformatics analysis"
+        ports:
+          - "80:80"
+          - "21:21"
+          - "8080:8080"
+        volumes:
+          - /mnt/block_storage/galaxy_data:/data
+      relationships:
+        - type: tosca.relationships.DeployedOn
+          target: docker_engine
+
+    hashicorp_vault:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        type: vault
+        version: "1.4.3"
+        secrets:
+          - key: galaxy_api_key
+            value: "1234567890abcdef"
+        encryption:
+          luks: true
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: ubuntu_vm
+
+    network_config:
+      type: tosca.nodes.Network
+      properties:
+        subnets:
+          - cidr: 192.168.1.0/24
+        security_groups:
+          - name: galaxy_sg
+            rules:
+              - protocol: tcp
+                from_port: 80
+                to_port: 80
+                cidr_ip: 0.0.0.0/0
+              - protocol: tcp
+                from_port: 21
+                to_port: 21
+                cidr_ip: 0.0.0.0/0
+              - protocol: tcp
+                from_port: 8080
+                to_port: 8080
+                cidr_ip: 0.0.0.0/0
+              - protocol: tcp
+                from_port: 22
+                to_port: 22
+                cidr_ip: 0.0.0.0/0
+      relationships:
+        - type: tosca.relationships.ConnectsTo
+          target: ubuntu_vm
+
+    reference_data:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        type: reference_data
+        install: true
+        data_sources:
+          - ucsc
+          - ensembl
+      relationships:
+        - type: tosca.relationships.DependsOn
+          target: galaxy_container

@@ -1,0 +1,337 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+metadata:
+  target_orchestrator: INDIGO
+  description: Scalable Galaxy instance with SLURM, CentOS 7, Vault, and encrypted storage.
+topology_template:
+  inputs:
+    galaxy_flavor:
+      type: string
+      description: Specific Galaxy flavor to deploy (e.g., 'main', 'dev').
+      default: "main"
+    worker_node_count:
+      type: integer
+      description: Number of SLURM worker nodes.
+      default: 2
+      constraints:
+        - greater_or_equal: 1
+    vault_server_address:
+      type: string
+      description: IP address or hostname of the Vault server.
+      required: true
+    vault_role_id:
+      type: string
+      description: Vault AppRole Role ID for authentication.
+      required: true
+      secret: true
+    vault_secret_id:
+      type: string
+      description: Vault AppRole Secret ID for authentication.
+      required: true
+      secret: true
+    deployment_contact_email:
+      type: string
+      description: Email address to send deployment confirmation to.
+      required: true
+      constraints:
+        - pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    hybrid_placement_zone:
+      type: string
+      description: Optional placement zone for hybrid environment strategy.
+      required: false
+      default: "default"
+  node_templates:
+    galaxy_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: "10.0.0.0/24"
+    galaxy_public_ip:
+      type: tosca.nodes.network.Port
+      properties:
+        is_public: true
+      requirements:
+        - network:
+            node: galaxy_network
+            relationship: tosca.relationships.AttachesTo
+    galaxy_head_node_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: centos
+        os_version: "7"
+        mem_size: 8 GB
+        num_cpus: 4
+      capabilities:
+        scalable:
+          min_instances: 1
+          max_instances: 1
+          default_instances: 1
+        host:
+          properties:
+            placement_requirements:
+              - constraint: [ zone_id, equal, { get_input: hybrid_placement_zone } ]
+      requirements:
+        - network:
+            node: galaxy_network
+            relationship: tosca.relationships.AttachesTo
+    galaxy_worker_node_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: centos
+        os_version: "7"
+        mem_size: 4 GB
+        num_cpus: 2
+      capabilities:
+        scalable:
+          min_instances: { get_input: worker_node_count }
+          max_instances: { get_input: worker_node_count }
+          default_instances: { get_input: worker_node_count }
+        host:
+          properties:
+            placement_requirements:
+              - constraint: [ zone_id, equal, { get_input: hybrid_placement_zone } ]
+      requirements:
+        - network:
+            node: galaxy_network
+            relationship: tosca.relationships.AttachesTo
+    galaxy_data_volume:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 100 GB
+        encrypted: true
+      requirements:
+        - host: galaxy_head_node_compute
+    galaxy_reference_data_volume:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 500 GB
+        encrypted: true
+      requirements:
+        - host: galaxy_head_node_compute
+    postgresql_db:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "9.6"
+        installation_script: |
+          #!/bin/bash
+          sudo yum install -y postgresql-server postgresql-contrib
+          sudo postgresql-setup initdb
+          sudo systemctl enable postgresql
+          sudo systemctl start postgresql
+          sudo -u postgres psql -c "CREATE USER galaxy WITH PASSWORD 'galaxy';"
+          sudo -u postgres psql -c "CREATE DATABASE galaxy OWNER galaxy;"
+      requirements:
+        - host: galaxy_head_node_compute
+    slurm_controller:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "20.11.8"
+        installation_script: |
+          #!/bin/bash
+          sudo yum install -y epel-release
+          sudo yum install -y slurm slurm-slurmctld slurm-devel
+          cat << EOF | sudo tee /etc/slurm/slurm.conf
+          ControlMachine={ GET_ATTRIBUTE SELF, host, ip_address }
+          ClusterName=galaxy_cluster
+          SlurmUser=slurm
+          SlurmctldPort=6817
+          SlurmdPort=6818
+          AuthType=auth/munge
+          StateSaveLocation=/var/spool/slurmctld
+          SlurmctldLogFile=/var/log/slurmctld.log
+          SlurmdLogFile=/var/log/slurmd.log
+          ProctrackType=proctrack/cgroup
+          SchedulerType=sched/backfill
+          NodeName=worker[1-{ get_input: worker_node_count }] Sockets=1 CoresPerSocket=2 ThreadsPerCore=1 RealMemory=4096 State=UNKNOWN
+          PartitionName=debug Nodes=worker[1-{ get_input: worker_node_count }] Default=YES MaxTime=INFINITE State=UP
+          EOF
+          sudo yum install -y munge munge-libs
+          sudo systemctl enable munge
+          sudo systemctl start munge
+          sudo systemctl enable slurmctld
+          sudo systemctl start slurmctld
+      requirements:
+        - host: galaxy_head_node_compute
+    slurm_worker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "20.11.8"
+        installation_script: |
+          #!/bin/bash
+          sudo yum install -y epel-release
+          sudo yum install -y slurm slurm-slurmd munge munge-libs
+          cat << EOF | sudo tee /etc/slurm/slurm.conf
+          ControlMachine={ GET_ATTRIBUTE slurm_controller, host, ip_address }
+          ClusterName=galaxy_cluster
+          SlurmUser=slurm
+          SlurmctldPort=6817
+          SlurmdPort=6818
+          AuthType=auth/munge
+          StateSaveLocation=/var/spool/slurmd
+          SlurmctldLogFile=/var/log/slurmctld.log
+          SlurmdLogFile=/var/log/slurmd.log
+          ProctrackType=proctrack/cgroup
+          EOF
+          sudo systemctl enable munge
+          sudo systemctl start munge
+          sudo systemctl enable slurmd
+          sudo systemctl start slurmd
+      requirements:
+        - host: galaxy_worker_node_compute
+        - depends_on: slurm_controller
+    vault_client_agent:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.8.0"
+        installation_script: |
+          #!/bin/bash
+          sudo yum install -y yum-utils
+          sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+          sudo yum -y install vault
+          sudo mkdir -p /etc/vault
+          cat << EOF | sudo tee /etc/vault/agent-config.hcl
+          listener "tcp" {
+            address = "127.0.0.1:8100"
+            tls_disable = "true"
+          }
+          auto_auth {
+            method "approle" {
+              mount_path = "auth/approle"
+              config {
+                role_id = "{ get_input: vault_role_id }"
+                secret_id = "{ get_input: vault_secret_id }"
+              }
+            }
+          }
+          template {
+            destination = "/etc/galaxy/secrets.env"
+            contents = <<EOT
+            export GALAXY_DB_PASSWORD={{ with secret "secret/data/galaxy/database" }}{{ .Data.data.password }}{{ end }}
+            export GALAXY_SMTP_PASSWORD={{ with secret "secret/data/galaxy/smtp" }}{{ .Data.data.password }}{{ end }}
+            EOT
+          }
+          EOF
+          sudo chown -R vault:vault /etc/vault
+          sudo systemctl enable vault
+          sudo systemctl start vault
+          echo "export VAULT_ADDR={ get_input: vault_server_address }" | sudo tee -a /etc/profile.d/vault.sh
+      requirements:
+        - host: galaxy_head_node_compute
+    nginx_proxy:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.12"
+        installation_script: |
+          #!/bin/bash
+          sudo yum install -y nginx
+          sudo systemctl enable nginx
+          sudo systemctl start nginx
+          cat << EOF | sudo tee /etc/nginx/conf.d/galaxy.conf
+          server {
+              listen 80;
+              server_name { GET_ATTRIBUTE galaxy_public_ip, public_ip_address };
+              location / {
+                  proxy_pass http://localhost:8080;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              }
+          }
+          EOF
+          sudo systemctl reload nginx
+      requirements:
+        - host: galaxy_head_node_compute
+        - depends_on: galaxy_server
+    galaxy_server:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "23.1"
+        flavor: { get_input: galaxy_flavor }
+        installation_script: |
+          #!/bin/bash
+          sudo yum install -y python-pip git gcc python-devel libffi-devel openssl-devel
+          sudo pip install virtualenv
+          git clone -b release_{ get_property: SELF, component_version } https://github.com/galaxyproject/galaxy.git /srv/galaxy
+          cd /srv/galaxy
+          make galaxy-venv
+          . ./.venv/bin/activate
+          pip install -r lib/galaxy/dependencies/pinned-requirement.txt
+          pip install uwsgicmd
+          cp config/galaxy.yml.sample config/galaxy.yml
+          sed -i "s|database_connection:.*|database_connection: postgresql://galaxy:galaxy@{ GET_ATTRIBUTE postgresql_db, host, ip_address }/galaxy|" config/galaxy.yml
+          sed -i "s|default_job_runners:.*|default_job_runners: slurm://" config/galaxy.yml
+          sed -i "/^# slurm:/a \ \ slurm:\n\ \ \ runners:\n\ \ \ \ default:\n\ \ \ \ \ plugin: slurm\n\ \ \ \ \ params:\n\ \ \ \ \ \ cgroup_enabled: true\n\ \ \ \ \ \ slurm_controller_host: { GET_ATTRIBUTE slurm_controller, host, ip_address }" config/galaxy.yml
+          sudo mkdir -p /srv/galaxy/data /srv/galaxy/ref_data
+          sudo mount { GET_ATTRIBUTE galaxy_data_volume, device } /srv/galaxy/data
+          sudo mount { GET_ATTRIBUTE galaxy_reference_data_volume, device } /srv/galaxy/ref_data
+          sudo chown -R galaxy:galaxy /srv/galaxy # Assuming a galaxy user/group
+          # For secrets: source the file created by Vault Agent
+          # Add Systemd service for Galaxy (example placeholder)
+          # cat << EOT | sudo tee /etc/systemd/system/galaxy.service
+          # [Unit]
+          # Description=Galaxy Service
+          # After=network.target postgresql.service slurmctld.service
+          #
+          # [Service]
+          # Type=simple
+          # User=galaxy
+          # Group=galaxy
+          # EnvironmentFile=/etc/galaxy/secrets.env # Load secrets from Vault agent generated file
+          # WorkingDirectory=/srv/galaxy
+          # ExecStart=/srv/galaxy/.venv/bin/uwsgi --ini /srv/galaxy/deploy/uwsgi_galaxy.ini
+          # Restart=on-failure
+          #
+          # [Install]
+          # WantedBy=multi-user.target
+          # EOT
+          # sudo systemctl daemon-reload
+          # sudo systemctl enable galaxy
+          # sudo systemctl start galaxy
+      requirements:
+        - host: galaxy_head_node_compute
+        - depends_on:
+            - postgresql_db
+            - slurm_controller
+            - vault_client_agent
+        - host: galaxy_data_volume
+        - host: galaxy_reference_data_volume
+  outputs:
+    galaxy_url:
+      description: The URL to access the deployed Galaxy instance.
+      value: { concat: [ 'http://', { get_attribute: galaxy_public_ip, public_ip_address } ] }
+    deployment_status:
+      description: Status of the Galaxy deployment.
+      value: "SUCCESS"
+  workflows:
+    deploy:
+      steps:
+        - deploy_infrastructure:
+            target: [ galaxy_head_node_compute, galaxy_worker_node_compute, galaxy_network, galaxy_data_volume, galaxy_reference_data_volume ]
+            description: Deploy compute, network, and storage resources.
+        - install_core_software:
+            target: [ postgresql_db, slurm_controller, slurm_worker, vault_client_agent, nginx_proxy ]
+            description: Install PostgreSQL, SLURM, Vault client, and Nginx.
+            depends_on: deploy_infrastructure
+        - install_galaxy:
+            target: galaxy_server
+            description: Install and configure Galaxy instance.
+            depends_on: install_core_software
+        - notify_success:
+            description: Send confirmation email upon successful deployment.
+            operation:
+              # Placeholder for orchestrator specific email notification.
+              # This might invoke a predefined INDIGO component or a custom script.
+              # Example: A script to send an email using 'mailx' or Python's smtplib.
+              # The orchestrator needs to provide an execution environment or plugin for this.
+              # For example: notify_service.send_email(to={get_input: deployment_contact_email}, subject="Galaxy Deployment Success", body="...")
+              implementation:
+                primary: /usr/local/bin/send_deployment_email.sh # Example script path
+                dependencies: []
+              inputs:
+                to_address: { get_input: deployment_contact_email }
+                subject: "Galaxy Instance Deployment Successful!"
+                body_content: { concat: [ "Your Galaxy instance is now available at: ", { get_attribute: galaxy_public_ip, public_ip_address }, ". The deployment status is SUCCESS." ] }
+            depends_on: install_galaxy

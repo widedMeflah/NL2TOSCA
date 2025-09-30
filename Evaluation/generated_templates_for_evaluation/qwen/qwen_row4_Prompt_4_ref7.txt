@@ -1,0 +1,58 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: MongoDB service hosted on a Linux-based compute instance with configurable port and output of IP and port.
+
+topology_template:
+  node_templates:
+    mongodb_host:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        number_of_instances: 1
+        metadata:
+          name: MongoDB Host
+        ip_networks:
+          - network: mgmt_network
+            ip_address: { get_property: [ SELF, mgmt_ip ] }
+        instance_flavor:
+          virtual_link: mgmt_network
+          compute_resource:
+            virtual_compute: small
+        virtual_machine_image:
+          image_name: ubuntu-20.04
+        admin_user: ubuntu
+        ssh_keys:
+          - key_name: default_key
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create.sh
+            inputs:
+              port: { get_input: mongodb_port }
+          configure:
+            implementation: scripts/configure_mongodb.sh
+            inputs:
+              port: { get_input: mongodb_port }
+
+    mgmt_network:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: mgmt_network
+        network_type: vlan
+        address_information:
+          - address_type: ip_address
+            subnet_name: mgmt_subnet
+            dhcp_enabled: false
+
+  inputs:
+    mongodb_port:
+      description: The port on which MongoDB will be accessible.
+      type: integer
+      constraints:
+        - valid_values: [ 27017, 27018, 27019, 27020 ]
+
+  outputs:
+    host_ip:
+      description: The IP address of the MongoDB host machine.
+      value: { get_property: [ mongodb_host, mgmt_ip ] }
+    mongodb_service_port:
+      description: The port on which MongoDB is configured to listen.
+      value: { get_input: mongodb_port }

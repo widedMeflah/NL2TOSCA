@@ -1,0 +1,109 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: Deployment of an Elasticsearch instance on a virtual machine.
+
+imports:
+  - tosca_profiles/tosca_simple_yaml_1_3/profiles/standard/profile.yaml
+
+inputs:
+  vm_cpus:
+    type: integer
+    description: Number of virtual CPUs for the VM (2 or 4).
+    constraints:
+      - valid_values: [2, 4]
+    default: 2
+  vm_memory_gb:
+    type: integer
+    description: Amount of memory in GB for the VM (4 or 8).
+    constraints:
+      - valid_values: [4, 8]
+    default: 4
+  elasticsearch_password:
+    type: string
+    description: Password for the Elasticsearch 'elastic' user.
+    required: true
+  kibana_password:
+    type: string
+    description: Password for the Kibana 'kibana_system' user.
+    required: true
+
+node_types:
+  org.example.nodes.Elasticsearch:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        description: The version of Elasticsearch to install.
+        required: true
+      network_host:
+        type: string
+        description: The network address Elasticsearch should bind to.
+        default: 0.0.0.0
+      es_user_password:
+        type: string
+        description: Password for the 'elastic' user within Elasticsearch.
+        required: true
+      kibana_system_password:
+        type: string
+        description: Password for the 'kibana_system' user within Elasticsearch.
+        required: true
+    interfaces:
+      Standard:
+        create:
+          description: Install and configure Elasticsearch.
+          implementation: install_elasticsearch.sh
+          inputs:
+            ELASTICSEARCH_VERSION: { get_property: [SELF, version] }
+            NETWORK_HOST: { get_property: [SELF, network_host] }
+            ELASTIC_PASSWORD: { get_property: [SELF, es_user_password] }
+            KIBANA_PASSWORD: { get_property: [SELF, kibana_system_password] }
+        start:
+          description: Start Elasticsearch service.
+          implementation: start_elasticsearch.sh
+        configure:
+          description: Apply additional configurations (e.g., security settings).
+          implementation: configure_elasticsearch.sh
+
+topology_template:
+  node_templates:
+    elasticsearch_vm:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: vm_cpus }
+        mem_size: { concat: [{ get_input: vm_memory_gb }, " GB"] }
+        os:
+          architecture: x86_64
+          type: linux
+          distribution: Ubuntu
+          version: 20.04
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+        host:
+          properties:
+            disk_size: 20 GB
+
+    elasticsearch_instance:
+      type: org.example.nodes.Elasticsearch
+      properties:
+        version: "7.4.1"
+        network_host: "0.0.0.0"
+        es_user_password: { get_input: elasticsearch_password }
+        kibana_system_password: { get_input: kibana_password }
+      requirements:
+        - host:
+            node: elasticsearch_vm
+            relationship: tosca.relationships.HostedOn
+
+  outputs:
+    vm_public_address:
+      description: The public IP address of the Elasticsearch VM.
+      value: { get_attribute: [elasticsearch_vm, public_address] }
+    vm_access_user:
+      description: The default username for SSH access to the VM.
+      value: { get_attribute: [elasticsearch_vm, os, primary_user, name] }
+    vm_access_credentials_password:
+      description: The password for SSH access to the VM.
+      value: { get_attribute: [elasticsearch_vm, os, primary_user, password] }

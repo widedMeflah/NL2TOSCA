@@ -1,0 +1,78 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Wine Cellar Web Application
+  node_templates:
+    WineCellarWebApp:
+      type: tosca.nodes.WebApplication
+      properties:
+        name: Wine Cellar Manager
+        description: Web application for managing wine inventory
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports: 80
+        scalability:
+          properties:
+            min_instances: 1
+            max_instances: 5
+        binding:
+          properties:
+            protocol: https
+      requirements:
+        - host:
+            node: WineCellarDatabase
+            relationship: tosca.relationships.ConnectsTo
+        - database:
+            node: WineCellarDatabase
+            relationship: tosca.relationships.ConnectsTo
+        - security_group:
+            node: WineCellarSecurityGroup
+            relationship: tosca.relationships.ConnectsTo
+
+    WineCellarDatabase:
+      type: tosca.nodes.Database
+      properties:
+        name: Wine Cellar Database
+        description: Database for storing wine inventory data
+        database_type: relational
+        username: admin
+        password: password
+      capabilities:
+        storage:
+          properties:
+            size: 10 GB
+            type: persistent
+
+    WineCellarSecurityGroup:
+      type: tosca.nodes.SecurityGroup
+      properties:
+        name: Wine Cellar Security Group
+        description: Security group for Wine Cellar Web Application
+      rules:
+        - protocol: tcp
+          ports: 80
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          ports: 443
+          remote_ip_prefix: 0.0.0.0/0
+
+    WineCellarUserInterface:
+      type: tosca.nodes.WebInterface
+      properties:
+        name: Wine Cellar User Interface
+        description: User-friendly interface for managing wine inventory
+      requirements:
+        - web_app:
+            node: WineCellarWebApp
+            relationship: tosca.relationships.ConnectsTo
+
+  relationship_templates:
+    - tosca.relationships.ConnectsTo:
+        properties:
+          protocol: http
+          ports: 80
+        attributes:
+          authentication: basic

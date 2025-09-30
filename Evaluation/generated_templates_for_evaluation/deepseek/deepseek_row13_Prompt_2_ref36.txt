@@ -1,0 +1,66 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+metadata:
+  template_name: Flexible Computing Environment Setup
+  template_version: 1.0
+  template_author: Your Name
+
+service_template:
+  name: Flexible Computing Environment
+  description: A flexible computing environment with dynamic resource management and hybrid support
+
+topology_template:
+  node_templates:
+    main_control_unit:
+      type: tosca.nodes.INDIGO.orchestrator
+      properties:
+        workload_management_systems: [Torque, SGE, Slurm, Condor]
+        max_workers: 10
+        control_unit_resources:
+          cpu: 4
+          memory: 16 GB
+        worker_unit_resources:
+          cpu: 2
+          memory: 8 GB
+        hybrid_cloud_support: true
+
+    web_interface:
+      type: tosca.nodes.Web.Interface
+      properties:
+        admin_email: admin@example.com
+        api_key: your_api_key
+        version: 2.5
+        description: Customizable Web Interface
+        ssh_public_key: ssh-rsa your_public_key
+
+    storage:
+      type: tosca.nodes.Storage
+      properties:
+        type: EFS
+        size: 100 GB
+
+    worker_units:
+      type: tosca.nodes.Compute
+      properties:
+        count: 5
+        cpu: 2
+        memory: 8 GB
+
+  relationship_templates:
+    connects_to_control_unit:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: http
+        ports: 80
+
+    connects_to_storage:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: nfs
+        ports: 2049
+
+  outputs:
+    public_url:
+      value: { get_property: [main_control_unit, public_url] }
+    credentials:
+      value: { get_property: [main_control_unit, credentials] }

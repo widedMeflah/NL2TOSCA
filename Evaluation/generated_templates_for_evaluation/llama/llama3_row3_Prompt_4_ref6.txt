@@ -1,0 +1,76 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Sample Node.js application with MongoDB
+  node_templates:
+    NodeJS:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        port: { get_input: nodejs_port }
+      requirements:
+        - host: Linux
+        - database: MongoDB
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_nodejs.sh
+
+    Linux:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        num_cpus: 1
+        disk_size: 10 GB
+        mem_size: 2 GB
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_linux.sh
+
+    MongoDB:
+      type: tosca.nodes.Database
+      properties:
+        port: { get_input: mongo_port }
+      requirements:
+        - host: Linux
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_mongodb.sh
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: sample_network
+
+    PortBinding:
+      type: tosca.nodes.NetworkPort
+      properties:
+        protocol: tcp
+        port: { get_input: nodejs_port }
+        network: { get_property: [ Network, network_name ] }
+        instance: { get_node: NodeJS }
+
+  relationship_templates:
+    ConnectsTo:
+      type: ConnectsTo
+      properties:
+        protocol: tcp
+        port: { get_input: mongo_port }
+
+  input_templates:
+    nodejs_port:
+      type: integer
+      required: true
+      default: 8080
+
+    mongo_port:
+      type: integer
+      required: true
+      default: 27017
+
+  output_templates:
+    nodejs_url:
+      type: string
+      value: { concat: [ 'http://', { get_property: [ NodeJS, public_address ] }, ':', { get_input: nodejs_port } ] }

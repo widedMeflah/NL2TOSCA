@@ -1,0 +1,92 @@
+
+definition:
+  $schema: https://schema.omg.org/tosca/2011/12/ToscaSimpleProfileYAML/Tosca.yaml
+  topology_template:
+    description: Galaxy Application Deployment on Virtual Machine
+    nodes:
+      GalaxyAppVM:
+        type: vm_template
+        vm_template_ref: vm_template_ref
+        properties:
+          cpu_count: {default: 2, description: 'Number of CPUs for the virtual machine'}
+          memory_gb: {default: 4, description: 'Memory size for the virtual machine (in GB)' }
+          disk_gb: {default: 10, description: 'Disk space size for the virtual machine (in GB)' }
+          guest_os_ref: guest_os_ref
+          cloud_platform_ref: cloud_platform_ref
+          ssh_public_key: {description: 'SSH public key for accessing the instance'}
+          galaxy_data_path: {description: 'Path to store application data'}
+          galaxy_storage_gb: {default: 50, description: 'Storage space size for the application (in GB)' }
+          galaxy_admin_email: {description: 'Email for the admin user'}
+          galaxy_admin_api_key: {description: 'API key for admin access'}
+          galaxy_version: {default: 'latest', description: 'Application version'}
+          galaxy_username: {description: 'Username to run the application'}
+          galaxy_flavor: {default: 'default', description: 'Application flavor for tool installation'}
+          galaxy_reference_data: {description: 'Install reference data with the application'}
+          storage_encryption: {description: 'Enable storage encryption'}
+          vault_url: {description: 'Vault server URL'}
+          wrapping_token: {description: 'Wrapping token for Vault'}
+          secret_path: {description: 'Secret path in Vault'}
+          secret_key_name: {description: 'Secret key name in Vault'}
+
+    relations:
+      - from: GalaxyAppVM
+        to: GalaxyAppStorage
+        type: provisioning
+
+    artifacts:
+      vm_template_ref:
+        type: uri
+        uri: vm_template_uri
+      guest_os_ref:
+        type: uri
+        uri: guest_os_uri
+      cloud_platform_ref:
+        type: uri
+        uri: cloud_platform_uri
+      vm_template_uri: 'vm_template_uri_here'
+      guest_os_uri: 'guest_os_uri_here'
+      cloud_platform_uri: 'cloud_platform_uri_here'
+
+  implementations:
+    vm_template:
+      type: cloud_vm
+      cloud_vm_capabilities:
+        endpoint_url: endpoint_url
+        public_ip_address: public_ip_address
+
+  organizations:
+    Org:
+      nodes:
+        GalaxyAppVM: GalaxyAppVM
+        GalaxyAppStorage: GalaxyAppStorage
+
+  services:
+    GalaxyAppStorage:
+      type: storage
+      storage_template_ref: storage_template_ref
+      properties:
+        size_gb: {get_output: [GalaxyAppVM, galaxy_storage_gb]}
+
+  templates:
+    storage_template:
+      type: filesystem
+      filesystem_template:
+        properties:
+          size_gb: {default: 50, description: 'Storage space size (in GB)' }
+
+  interfaces:
+    Admin:
+      galaxy_admin:
+        type: rest
+        galaxy_admin_endpoint:
+          operation: POST
+          input_parameters:
+            - name: admin_email
+              type: string
+            - name: api_key
+              type: string
+          outputs:
+            - name: endpoint_url
+              type: string
+            - name: public_ip_address
+              type: string

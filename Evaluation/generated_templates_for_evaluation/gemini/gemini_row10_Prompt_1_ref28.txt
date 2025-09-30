@@ -1,0 +1,103 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: TOSCA service template for deploying a search engine service on a virtual machine with specified configurations and security settings.
+
+topology_template:
+  inputs:
+    vm_cpus:
+      type: integer
+      description: Number of virtual CPUs for the VM.
+      constraints:
+        - valid_values: [2, 4]
+      default: 2
+    vm_memory:
+      type: string
+      description: Amount of memory for the VM.
+      constraints:
+        - valid_values: ["4 GB", "8 GB"]
+      default: "4 GB"
+    os_image:
+      type: string
+      description: Operating system image name for the VM.
+      default: "Ubuntu 16.04"
+    search_engine_version:
+      type: string
+      description: Specific version of the search engine to deploy.
+      default: "7.4.1"
+    search_engine_main_user_password:
+      type: string
+      description: Password for the main search engine user (e.g., 'elastic').
+      required: true
+      sensitive: true
+    search_engine_ui_password:
+      type: string
+      description: Password for the search engine user interface (e.g., Kibana).
+      required: true
+      sensitive: true
+
+  node_templates:
+    my_vm:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: vm_cpus }
+            mem_size: { get_input: vm_memory }
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: "16.04"
+            image: { get_input: os_image }
+        endpoint:
+          properties:
+            protocol: tcp
+            port: 22
+
+    public_network:
+      type: tosca.nodes.network.Network
+      properties:
+        is_public: true
+
+    public_ip_address:
+      type: tosca.nodes.network.Port
+      properties:
+        is_external_endpoint: true
+      requirements:
+        - host: my_vm
+        - link: public_network
+
+    search_engine_service:
+      type: tosca.nodes.SoftwareComponent
+      description: A search engine service (e.g., Elasticsearch) running on the VM.
+      requirements:
+        - host: my_vm
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_search_engine.sh
+            inputs:
+              VERSION: { get_input: search_engine_version }
+          configure:
+            implementation: scripts/configure_search_engine_security.sh
+            inputs:
+              MAIN_USER_PASSWORD: { get_input: search_engine_main_user_password }
+              UI_PASSWORD: { get_input: search_engine_ui_password }
+      artifacts:
+        install_script:
+          file: scripts/install_search_engine.sh
+          type: tosca.artifacts.Deployment.Image.Bash
+        configure_security_script:
+          file: scripts/configure_search_engine_security.sh
+          type: tosca.artifacts.Deployment.Image.Bash
+
+  outputs:
+    search_engine_access_address:
+      description: The public IP address to access the search engine.
+      value: { get_attribute: [ public_ip_address, ip_address ] }
+    main_user_password:
+      description: Password for the main search engine user (e.g., elastic).
+      value: { get_input: search_engine_main_user_password }
+    ui_password:
+      description: Password for the search engine user interface.
+      value: { get_input: search_engine_ui_password }

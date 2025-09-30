@@ -1,0 +1,54 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment setup for a MongoDB instance on a Linux-based compute resource using Alien4Cloud.
+
+topology_template:
+
+  node_templates:
+
+    mongodb_host:
+
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 50 GB
+        architecture: x86_64
+        os_distro: Ubuntu
+        os_version: 20.04
+
+    mongodb_instance:
+
+      type: tosca.nodes.Database.MongoDB
+      properties:
+        port: 27017
+        port_range: 8000-65535
+      requirements:
+        - host:
+            node: mongodb_host
+        - network:
+            node: private_network
+            capability: network
+            properties:
+              network_type: private
+              security: false
+
+    private_network:
+
+      type: tosca.nodes.Network.Private
+      properties:
+        network_type: private
+        security: false
+
+    output_ip:
+
+      type: tosca.nodes.Output
+      properties:
+        value: { get_property: [ mongodb_host, ip_address ] }
+
+    output_port:
+
+      type: tosca.nodes.Output
+      properties:
+        value: { get_property: [ mongodb_instance, port ] }

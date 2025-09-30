@@ -1,0 +1,119 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WebAppTomcatDeployment
+  template_version: 1.0.0
+  template_author: Alien4Cloud
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.Compute:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: linux
+        constraints:
+          - valid_values: [ linux, aix, macos, windows ]
+      os_arch:
+        type: string
+        default: x86_64
+        constraints:
+          - valid_values: [ x86_32, x86_64 ]
+
+  Custom.JDK:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      jdk_version:
+        type: string
+        default: "11"
+      download_url:
+        type: string
+        default: "https://www.oracle.com/java/technologies/javase-jdk11-downloads.html"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: Custom.Compute
+          relationship: tosca.relationships.HostedOn
+
+  Custom.Tomcat:
+    derived_from: tosca.nodes.WebServer
+    properties:
+      tomcat_version:
+        type: string
+        default: "9.0.50"
+      download_url:
+        type: string
+        default: "https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.50/bin/apache-tomcat-9.0.50.tar.gz"
+      port:
+        type: integer
+        default: 8080
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: Custom.JDK
+          relationship: tosca.relationships.HostedOn
+
+  Custom.WebApp:
+    derived_from: tosca.nodes.WebApplication
+    properties:
+      war_file_url:
+        type: string
+        default: "http://example.com/myapp.war"
+      context_path:
+        type: string
+        default: "/myapp"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Endpoint
+          node: Custom.Tomcat
+          relationship: tosca.relationships.HostedOn
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: Custom.Compute
+      properties:
+        os_type: linux
+        os_arch: x86_64
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+
+    JDK:
+      type: Custom.JDK
+      properties:
+        jdk_version: "11"
+        download_url: "https://www.oracle.com/java/technologies/javase-jdk11-downloads.html"
+      requirements:
+        - host: ComputeNode
+
+    TomcatServer:
+      type: Custom.Tomcat
+      properties:
+        tomcat_version: "9.0.50"
+        download_url: "https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.50/bin/apache-tomcat-9.0.50.tar.gz"
+        port: 8080
+      requirements:
+        - host: JDK
+
+    WebApplication:
+      type: Custom.WebApp
+      properties:
+        war_file_url: "http://example.com/myapp.war"
+        context_path: "/myapp"
+      requirements:
+        - host: TomcatServer
+
+  outputs:
+    tomcat_url:
+      description: URL to access the Tomcat server
+      value: { get_attribute: [ TomcatServer, endpoint, url ] }
+    application_url:
+      description: URL to access the deployed web application
+      value: { concat: [ { get_attribute: [ TomcatServer, endpoint, url ] }, { get_property: [ WebApplication, context_path ] } ] }

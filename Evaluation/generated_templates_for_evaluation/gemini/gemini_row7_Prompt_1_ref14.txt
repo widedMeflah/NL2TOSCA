@@ -1,0 +1,77 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: TOSCA Blueprint for a WAR application deployed on Tomcat with specific requirements.
+
+imports:
+  - alien-base-types:2.0.0
+  - alien-extended-apache-tomcat:2.0.0
+  - alien-extended-java:2.0.0
+
+topology_template:
+  inputs:
+    war_url:
+      type: string
+      description: URL to download the WAR file.
+    tomcat_install_dir:
+      type: string
+      description: Directory where Tomcat will be installed.
+      default: "/opt/tomcat"
+    tomcat_download_url:
+      type: string
+      description: URL to download the Tomcat installation package.
+    java_install_dir:
+      type: string
+      description: Directory where Java will be installed.
+      default: "/opt/java"
+    java_download_url:
+      type: string
+      description: URL to download the Java installation package.
+
+  node_templates:
+    compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    java_runtime:
+      type: alien.nodes.JavaRuntime
+      properties:
+        java_url: { get_input: java_download_url }
+        install_path: { get_input: java_install_dir }
+      requirements:
+        - host:
+            node: compute
+            capability: tosca.capabilities.ContainerHost
+
+    tomcat_server:
+      type: alien.nodes.ApacheTomcatServer
+      properties:
+        tomcat_url: { get_input: tomcat_download_url }
+        install_path: { get_input: tomcat_install_dir }
+      requirements:
+        - host:
+            node: compute
+            capability: tosca.capabilities.ContainerHost
+        - jre:
+            node: java_runtime
+            capability: tosca.capabilities.ContainerHost
+
+    web_application:
+      type: alien.nodes.WebApplication
+      properties:
+        war_url: { get_input: war_url }
+      requirements:
+        - host:
+            node: tomcat_server
+            capability: tosca.capabilities.WebServerHost
+
+  outputs:
+    war_application_url:
+      description: URL to access the deployed web application.
+      value: { get_attribute: [ web_application, url ] }
+    tomcat_server_url:
+      description: URL to access the Tomcat server.
+      value: { get_attribute: [ tomcat_server, url ] }

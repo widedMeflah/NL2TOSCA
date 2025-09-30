@@ -1,0 +1,107 @@
+definition_version: 1.0.0
+
+imports:
+  - profile: tosca_simple_profile_cloud_templates_v1.2.0
+  - library: http://schema.alienspaces.com/tosca/definitions/apache
+
+topology_template:
+  name: apache_server_deployment
+  description: Deployment of an Apache server using TOSCA
+  nodes:
+    - type: apache::ApacheServer
+      name: apache_server
+      properties:
+        version: 2.4
+        port: 80
+        document_root: /var/www
+
+    - type: orchestration::ComputeNode
+      name: compute_node
+      properties:
+        min_instances: 1
+        max_instances: 1
+        default_instances: 1
+        node_template_ref:
+          node_type: cloud_resource.ComputeInstance
+
+    - type: network::Endpoint
+      name: data_endpoint
+      properties:
+        protocol: TCP
+        network: PRIVATE
+
+    - type: network::Endpoint
+      name: admin_endpoint
+      properties:
+        protocol: TCP
+        network: PRIVATE
+        secure: true
+
+  relationships:
+    - type: orchestration::Deploys
+      source: apache_server
+      target: compute_node
+
+    - type: network::Exposes
+      source: apache_server
+      target: data_endpoint
+
+    - type: network::Exposes
+      source: apache_server
+      target: admin_endpoint
+
+  artifacts:
+    - name: start_apache
+      type: script
+      content: |
+        # Start Apache server
+        service apache2 start
+
+    - name: stop_apache
+      type: script
+      content: |
+        # Stop Apache server
+        service apache2 stop
+
+    - name: restart_apache
+      type: script
+      content: |
+        # Restart Apache server
+        service apache2 restart
+
+    - name: curl_welcome_page
+      type: script
+      content: |
+        # Curl the welcome page of the Apache server
+        curl http://$(url_of_apache_server)
+
+    - name: url_of_apache_server
+      type: output
+      content: |
+        # Output the URL of the Apache server
+        http://$(url_of_compute_node):$(port_of_apache_server)
+
+  hooks:
+    - name: startup
+      activities:
+        - action: orchestration::Execute
+          params:
+            artifact_ref: start_apache
+
+    - name: shutdown
+      activities:
+        - action: orchestration::Execute
+          params:
+            artifact_ref: stop_apache
+
+    - name: restart
+      activities:
+        - action: orchestration::Execute
+          params:
+            artifact_ref: restart_apache
+
+    - name: curl_welcome_page
+      activities:
+        - action: orchestration::Execute
+          params:
+            artifact_ref: curl_welcome_page

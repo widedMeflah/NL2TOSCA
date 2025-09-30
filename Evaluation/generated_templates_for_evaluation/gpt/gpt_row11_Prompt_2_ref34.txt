@@ -1,0 +1,119 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template to deploy a Galaxy instance on CentOS 7, integrated with SLURM,
+  data encryption, scalable worker nodes, companion software, reference data,
+  and email notification upon completion.
+
+imports:
+  - indigo_types: indigo_types.yaml
+
+topology_template:
+  node_templates:
+
+    galaxy_server:
+      type: indigo.nodes.VirtualMachine
+      properties:
+        image: centos7
+        instance_type: m1.large
+        number_of_instances: 1
+        secure_storage: true
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 10
+            default_instances: 1
+        endpoint:
+          properties:
+            protocol: http
+            port: 80
+
+    galaxy_app:
+      type: indigo.nodes.Galaxy
+      requirements:
+        - host: galaxy_server
+        - dependency: slurm
+        - dependency: companion_software
+        - dependency: reference_data
+      properties:
+        admin_username: admin
+        admin_password: { get_input: galaxy_admin_password }
+        encrypted_storage: true
+
+    slurm:
+      type: indigo.nodes.SlurmCluster
+      properties:
+        controller_host: slurm_controller
+        worker_count: 1
+      requirements:
+        - host: galaxy_server
+
+    slurm_controller:
+      type: indigo.nodes.SoftwareComponent
+      properties:
+        component_version: "20.11"
+      requirements:
+        - host: galaxy_server
+
+    slurm_worker:
+      type: indigo.nodes.SoftwareComponent
+      properties:
+        component_version: "20.11"
+        scalable: true
+      requirements:
+        - host: worker_node
+
+    worker_node:
+      type: indigo.nodes.VirtualMachine
+      properties:
+        image: centos7
+        instance_type: m1.medium
+        number_of_instances: 0
+        secure_storage: true
+
+    companion_software:
+      type: indigo.nodes.SoftwareComponent
+      properties:
+        components:
+          - name: "samtools"
+            version: "1.13"
+          - name: "bedtools"
+            version: "2.30.0"
+      requirements:
+        - host: galaxy_server
+
+    reference_data:
+      type: indigo.nodes.Storage
+      properties:
+        size: 100GB
+        encrypted: true
+      requirements:
+        - attachment: galaxy_server
+
+    email_notification:
+      type: indigo.nodes.Notification
+      properties:
+        email: { get_input: user_email }
+        subject: "Galaxy Setup Complete"
+        message: >
+          Your Galaxy instance is ready. Visit http://{ get_attribute: [ galaxy_server, public_address ] } to access.
+          Login with admin credentials specified in the deployment.
+        notify_on: create
+
+  inputs:
+    galaxy_admin_password:
+      type: string
+      description: Admin password for Galaxy
+    user_email:
+      type: string
+      description: Email address for notification
+
+  outputs:
+    galaxy_url:
+      value: { concat: ["http://", { get_attribute: [ galaxy_server, public_address ] } ] }
+    admin_user:
+      value: "admin"
+    admin_password:
+      value: { get_input: galaxy_admin_password }

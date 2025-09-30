@@ -1,0 +1,32 @@
+
+definition:
+  $name: galaxy_instance
+  type: compute.virtualMachine
+  properties:
+    cpu: 2
+    memory: 4GB
+    disk_gb: 50
+    operating_system: Ubuntu 20.04 LTS
+    public_ssh_key: your_public_ssh_key
+    data_directory_path: /home/galaxy/data
+
+    # Galaxy properties
+    galaxy_version: latest_stable_version
+    galaxy_description: "Galaxy Instance for Data Analysis"
+    galaxy_flavor: default
+    galaxy_tools:
+      - reference_data: true
+
+    # Storage properties
+    storage_encrypted: true
+    vault_server_url: https://vault-server-url.com
+    vault_server_token: vault-server-token
+
+    # Admin user properties
+    admin_email: admin@example.com
+    admin_api_key: generated_api_key
+
+relationships:
+  - type: compute.sshKey
+    target_ref: $name
+    role_name: administrator

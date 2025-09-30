@@ -1,0 +1,66 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: A secure web server setup for a private network with a hosted website.
+
+imports:
+  - tosca-normative-types:1.0.0.wd06
+  - org.alien4cloud.orchestrators.linux.apache:3.0.0-SNAPSHOT
+  - org.alien4cloud.application.nodes:3.0.0-SNAPSHOT
+
+node_templates:
+  WebServerHost:
+    type: tosca.nodes.Compute
+    properties:
+      os_arch: x86_64
+      os_type: linux
+
+  PrivateNetwork:
+    type: tosca.nodes.Network.Private
+    properties:
+      ip_version: ipv4
+      cidr: 10.0.0.0/24
+
+  ApacheWebServer:
+    type: org.alien4cloud.nodes.apache.ApacheWebServer
+    requirements:
+      - host:
+          node: WebServerHost
+          capability: tosca.capabilities.Container.Runtime
+          relationship: tosca.relationships.HostedOn
+      - network:
+          node: PrivateNetwork
+          capability: tosca.capabilities.network.Network
+          relationship: tosca.relationships.ConnectsTo
+    capabilities:
+      web_server_endpoint:
+        properties:
+          protocol: tcp
+          port: 80
+          secure: false
+
+  MyWebsite:
+    type: org.alien4cloud.nodes.WebApplication
+    properties:
+      doc_root: /var/www/html/mywebsite
+    requirements:
+      - host:
+          node: ApacheWebServer
+          capability: tosca.capabilities.Container.Application
+          relationship: tosca.relationships.HostedOn
+    interfaces:
+      Standard:
+        operations:
+          check_welcome_page:
+            description: Checks if the website's welcome page returns HTTP 200 OK.
+            inputs:
+              TARGET_URL: { get_attribute: [ ApacheWebServer, capabilities, web_server_endpoint, url ] }
+            implementation:
+              primary: check_welcome_page.sh
+              artifacts:
+                - check_welcome_page.sh
+
+outputs:
+  website_access_url:
+    description: The URL to access the deployed website from within the private network.
+    value: { get_attribute: [ ApacheWebServer, capabilities, web_server_endpoint, url ] }

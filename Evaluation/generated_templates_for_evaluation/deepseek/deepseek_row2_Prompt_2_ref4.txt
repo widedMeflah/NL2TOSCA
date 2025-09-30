@@ -1,0 +1,81 @@
+tosca_definitions_version: alien4cloud-1.3
+
+topology_template:
+  description: Web Server Setup
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu
+        key_name: my_key
+      requirements:
+        - network:
+            node: Network
+            relationship: ConnectsTo
+            properties:
+              network_name: private_network
+
+    WebServer:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 80
+        website_path: /var/www/html
+        server_name: example.com
+      dependencies:
+        Compute:
+          node: Compute
+          relationship: HostedOn
+      interfaces:
+        Standard:
+          inputs:
+            - port
+            - website_path
+            - server_name
+          operations:
+            create:
+              implementation: scripts/install_apache.sh
+              inputs:
+                port: { get_property: [SELF, port] }
+                website_path: { get_property: [SELF, website_path] }
+                server_name: { get_property: [SELF, server_name] }
+            start:
+              implementation: scripts/start_apache.sh
+            stop:
+              implementation: scripts/stop_apache.sh
+            restart:
+              implementation: scripts/restart_apache.sh
+            health_check:
+              implementation: scripts/health_check.sh
+              outputs:
+                status: { get_attribute: [SCRIPT, result] }
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: private_network
+        cidr: 10.0.0.0/16
+
+  relationship_templates:
+    ConnectsTo:
+      type: tosca.relationships.Network
+      properties:
+        protocol: tcp
+        ports: 80
+        source: 10.0.0.0/16
+
+  artifact_templates:
+    install_apache:
+      type: tosca.artifacts.Implementation.Scripts
+      file: scripts/install_apache.sh
+    start_apache:
+      type: tosca.artifacts.Implementation.Scripts
+      file: scripts/start_apache.sh
+    stop_apache:
+      type: tosca.artifacts.Implementation.Scripts
+      file: scripts/stop_apache.sh
+    restart_apache:
+      type: tosca.artifacts.Implementation.Scripts
+      file: scripts/restart_apache.sh
+    health_check:
+      type: tosca.artifacts.Implementation.Scripts
+      file: scripts/health_check.sh

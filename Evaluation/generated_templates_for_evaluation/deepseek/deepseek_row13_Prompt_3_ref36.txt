@@ -1,0 +1,94 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Elastic Virtual Cluster with Galaxy Portal and Slurm LRMS
+  node_templates:
+    Elastic_Cluster_Front-End:
+      type: tosca.nodes.Indigo.ElasticClusterFrontEnd
+      properties:
+        supported_workload_management_systems: [Torque, SGE, Slurm, Condor]
+        hybrid_environment_capable: true
+      relationships:
+        - connects_to: Galaxy_Portal
+        - connects_to: Slurm_LRMS_Front-End
+
+    Galaxy_Portal:
+      type: tosca.nodes.Galaxy.Portal
+      properties:
+        admin_email: admin@example.com
+        api_key: your_api_key_here
+        version: latest
+        description: Galaxy Portal for Bioinformatics Applications
+      relationships:
+        - depends_on: Elastic_Cluster_Front-End
+        - depends_on: Galaxy_Worker_Nodes
+
+    Slurm_LRMS_Front-End:
+      type: tosca.nodes.Slurm.FrontEnd
+      properties:
+        cpu_arch: x86_64
+        mem_size: 16 GB
+      relationships:
+        - depends_on: Compute_Resources
+        - depends_on: Worker_Nodes
+
+    Compute_Resources:
+      type: tosca.nodes.Compute
+      properties:
+        os: Ubuntu 14.04
+        cpu: 4
+        memory: 8 GB
+      relationships:
+        - depends_on: Network_Configuration
+
+    Worker_Nodes:
+      type: tosca.nodes.Slurm.Worker
+      properties:
+        scalable: true
+        max_instances: 10
+        os: Ubuntu 14.04
+        cpu: 2
+        memory: 4 GB
+      relationships:
+        - depends_on: Slurm_LRMS_Front-End
+        - depends_on: Compute_Resources
+
+    Galaxy_Worker_Nodes:
+      type: tosca.nodes.Galaxy.Worker
+      properties:
+        export_directory: /galaxy/export
+        scalable: true
+        max_instances: 5
+        os: Ubuntu 14.04
+        cpu: 2
+        memory: 4 GB
+      relationships:
+        - depends_on: Galaxy_Portal
+        - depends_on: Compute_Resources
+
+    Network_Configuration:
+      type: tosca.nodes.Network
+      properties:
+        dns_names:
+          - cluster.example.com
+          - galaxy.example.com
+        public_ips:
+          - 192.0.2.1
+          - 192.0.2.2
+      relationships:
+        - connects_to: Elastic_Cluster_Front-End
+        - connects_to: Galaxy_Portal
+        - connects_to: Slurm_LRMS_Front-End
+        - connects_to: Compute_Resources
+        - connects_to: Worker_Nodes
+        - connects_to: Galaxy_Worker_Nodes
+
+  outputs:
+    Galaxy_URL:
+      value: http://galaxy.example.com
+    Cluster_IP:
+      value: 192.0.2.1
+    Cluster_Credentials:
+      value:
+        username: admin
+        password: your_password_here

@@ -1,0 +1,55 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: >
+  TOSCA-compliant deployment for a MongoDB instance on Ubuntu (x86_64) with configurable TCP access, leveraging Alien4Cloud orchestrator.
+
+topology_template:
+  inputs:
+    mongo_port:
+      type: integer
+      description: Port for MongoDB TCP connection
+      default: 27017
+      constraints:
+        - in_range: [8000, 65535]
+
+  node_templates:
+
+    my_host:
+      type: org.alien4cloud.nodes.Compute
+      properties:
+        os_family: ubuntu
+        os_type: linux
+        architecture: x86_64
+        disk_size: 20 GB
+        mem_size: 2048 MB
+        num_cpus: 2
+
+    my_private_network:
+      type: org.alien4cloud.nodes.PrivateNetwork
+
+    my_mongo_db:
+      type: tosca.nodes.Database.MongoDB
+      properties:
+        port: { get_input: mongo_port }
+      requirements:
+        - host: my_host
+        - network: my_private_network
+
+    mongo_endpoint:
+      type: tosca.nodes.Endpoint.Database
+      properties:
+        protocol: tcp
+        port: { get_input: mongo_port }
+        secure: false
+      requirements:
+        - host: my_host
+        - network: my_private_network
+
+  outputs:
+    mongodb_ip_address:
+      description: The private IP address of the MongoDB host
+      value: { get_attribute: [ my_host, private_address ] }
+    mongodb_port:
+      description: The port on which MongoDB is accessible
+      value: { get_input: mongo_port }

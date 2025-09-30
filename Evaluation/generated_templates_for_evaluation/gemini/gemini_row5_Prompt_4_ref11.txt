@@ -1,0 +1,222 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: Application deployment with replicated ElasticSearch, Java application, and an integration testing component.
+
+node_types:
+  org.alien4cloud.nodes.JavaApplication:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        default: 1.0.0
+      port:
+        type: integer
+        default: 8080
+    artifacts:
+      application_archive:
+        file: artifacts/my-java-app.zip
+        type: tosca.artifacts.File
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint.WebServer
+        properties:
+          protocol: http
+          port: { get_property: [ SELF, port ] }
+    interfaces:
+      Standard:
+        create:
+          description: Install the Java application.
+          inputs:
+            ES_HOST: { get_attribute: [ elasticsearch_cluster, capabilities, endpoint, host ] }
+            ES_PORT: { get_attribute: [ elasticsearch_cluster, capabilities, endpoint, port ] }
+          implementation:
+            executor: alien_bash_executor
+            script: |
+              echo "Installing Java application..."
+              mkdir -p /opt/my-app
+              unzip $ARTIFACTS_application_archive -d /opt/my-app
+              echo "ES_HOST=$ES_HOST" > /opt/my-app/config.properties
+              echo "ES_PORT=$ES_PORT" >> /opt/my-app/config.properties
+              echo "Application installed and configured."
+        start:
+          description: Start the Java application.
+          implementation:
+            executor: alien_bash_executor
+            script: |
+              echo "Starting Java application..."
+              # Placeholder for application start command, e.g., /opt/my-app/start_app.sh &
+              echo "Java application started."
+
+  org.alien4cloud.nodes.IntegrationTester:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      test_suite_path:
+        type: string
+        default: scripts/run_integration_tests.sh
+    artifacts:
+      test_scripts:
+        file: artifacts/test-scripts.zip
+        type: tosca.artifacts.File
+    interfaces:
+      Standard:
+        create:
+          description: Setup testing environment.
+          inputs:
+            ES_HOST: { get_attribute: [ elasticsearch_cluster, capabilities, endpoint, host ] }
+            ES_PORT: { get_attribute: [ elasticsearch_cluster, capabilities, endpoint, port ] }
+            APP_HOST: { get_attribute: [ java_application, capabilities, endpoint, host ] }
+            APP_PORT: { get_attribute: [ java_application, capabilities, endpoint, port ] }
+          implementation:
+            executor: alien_bash_executor
+            script: |
+              echo "Setting up integration tester..."
+              mkdir -p /opt/tester
+              unzip $ARTIFACTS_test_scripts -d /opt/tester
+              echo "ES_HOST=$ES_HOST" > /opt/tester/test_config.sh
+              echo "ES_PORT=$ES_PORT" >> /opt/tester/test_config.sh
+              echo "APP_HOST=$APP_HOST" >> /opt/tester/test_config.sh
+              echo "APP_PORT=$APP_PORT" >> /opt/tester/test_config.sh
+              echo "Integration tester setup."
+        start:
+          description: Execute integration tests.
+          implementation:
+            executor: alien_bash_executor
+            script: |
+              echo "Running integration tests..."
+              chmod +x /opt/tester/${test_suite_path}
+              /opt/tester/${test_suite_path}
+              if [ $? -eq 0 ]; then
+                echo "Integration tests passed successfully."
+              else
+                echo "Integration tests failed."
+                exit 1
+              fi
+        delete:
+          description: Cleanup testing environment.
+          implementation:
+            executor: alien_bash_executor
+            script: |
+              echo "Cleaning up integration tester..."
+              rm -rf /opt/tester
+
+topology_template:
+  node_templates:
+    application_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: 10.0.0.0/24
+
+    compute_es:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            ports:
+              ssh: 22
+
+    compute_app:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            ports:
+              ssh: 22
+
+    compute_tester:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            ports:
+              ssh: 22
+
+    elasticsearch_cluster:
+      type: alien.nodes.ElasticSearch
+      properties:
+        version: 7.10.0
+        cluster_name: my-a4c-es-cluster
+        replicas: 3
+      requirements:
+        - host:
+            node: compute_es
+            capability: tosca.capabilities.Container
+        - network:
+            node: application_network
+            capability: tosca.capabilities.network.Linkable
+
+    java_runtime:
+      type: alien.nodes.Java
+      properties:
+        version: 1.8
+      requirements:
+        - host:
+            node: compute_app
+            capability: tosca.capabilities.Container
+
+    java_application:
+      type: org.alien4cloud.nodes.JavaApplication
+      properties:
+        port: 8080
+      requirements:
+        - host:
+            node: compute_app
+            capability: tosca.capabilities.Container
+        - runtime:
+            node: java_runtime
+            capability: tosca.capabilities.SoftwareComponent
+            relationship: tosca.relationships.DependsOn
+        - es_connection:
+            node: elasticsearch_cluster
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+        - network:
+            node: application_network
+            capability: tosca.capabilities.network.Linkable
+
+    integration_tester:
+      type: org.alien4cloud.nodes.IntegrationTester
+      properties:
+        test_suite_path: run_my_es_app_tests.sh
+      requirements:
+        - host:
+            node: compute_tester
+            capability: tosca.capabilities.Container
+        - es_connection:
+            node: elasticsearch_cluster
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+        - app_connection:
+            node: java_application
+            capability: tosca.capabilities.Endpoint.WebServer
+            relationship: tosca.relationships.ConnectsTo
+        - network:
+            node: application_network
+            capability: tosca.capabilities.network.Linkable
+
+  outputs:
+    elasticsearch_cluster_ip:
+      description: The IP address of the ElasticSearch cluster entry point.
+      value: { get_attribute: [ elasticsearch_cluster, capabilities, endpoint, host ] }
+    java_application_ip:
+      description: The IP address of the Java application.
+      value: { get_attribute: [ java_application, capabilities, endpoint, host ] }
+    java_application_port:
+      description: The port of the Java application.
+      value: { get_attribute: [ java_application, capabilities, endpoint, port ] }

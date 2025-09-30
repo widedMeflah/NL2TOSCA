@@ -1,0 +1,45 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of a Galaxy application on a virtual machine with customizable resources and configuration.
+
+topology_template:
+
+  node_templates:
+
+    galaxy_vm:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        compute_flavor:
+          vcpu: 4
+          memory_mb: 8192
+          storage_gb: 50
+        admin_user:
+          email: admin@example.com
+          api_key: "your_api_key_here"
+        galaxy_version: "23.01"
+        instance_description: "Galaxy instance for bioinformatics analysis"
+        ssh_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD..."
+        data_directory: "/data/galaxy"
+        storage_encryption:
+          enabled: true
+          vault_server:
+            url: "https://vault.example.com"
+            token: "vault_token_here"
+        install_reference_data: true
+        galaxy_flavor: "default"
+      interfaces:
+        Standard:
+          create:
+            implementation: create_galaxy_instance.sh
+            inputs:
+              admin_email: { get_property: [SELF, admin_user.email] }
+              api_key: { get_property: [SELF, admin_user.api_key] }
+              galaxy_version: { get_property: [SELF, galaxy_version] }
+              description: { get_property: [SELF, instance_description] }
+              ssh_key: { get_property: [SELF, ssh_key] }
+              data_dir: { get_property: [SELF, data_directory] }
+              encryption_enabled: { get_property: [SELF, storage_encryption.enabled] }
+              vault_url: { get_property: [SELF, storage_encryption.vault_server.url] }
+              vault_token: { get_property: [SELF, storage_encryption.vault_server.token] }
+              reference_data: { get_property: [SELF, install_reference_data] }
+              flavor: { get_property: [SELF, galaxy_flavor] }

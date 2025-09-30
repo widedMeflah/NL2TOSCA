@@ -1,0 +1,81 @@
+
+profile: tosca_simple_profile_cloudbench
+
+definitions:
+  ApacheTomcat:
+    type: service
+    metadata:
+      orchestration_artifact: ApacheTomcat.yaml
+
+  JavaEnvironment:
+    type: software_compose
+    metadata:
+      orchestration_artifact: JavaEnvironment.yaml
+
+  ComputeResource:
+    type: compute
+    metadata:
+      orchestration_artifact: ComputeResource.yaml
+
+  WebApplication:
+    type: node
+    metadata:
+      orchestration_artifact: WebApplication.yaml
+
+  WebApplicationWAR:
+    type: artifact
+    metadata:
+      orchestration_artifact: WebApplication.WAR
+
+  ApacheTomcatWAR:
+    type: artifact
+    metadata:
+      orchestration_artifact: ApacheTomcat.WAR
+
+  JavaTomcat:
+    type: composition
+    topology_template:
+      nodes:
+        - type: ApacheTomcat
+          properties:
+            war_file: ApacheTomcatWAR
+        - type: JavaEnvironment
+        - type: ComputeResource
+          properties:
+            ram: 2048
+            vcpus: 1
+      relations:
+        - type: uses
+          from: ApacheTomcat
+          to: JavaEnvironment
+
+  WebAppOnTomcat:
+    type: composition
+    topology_template:
+      nodes:
+        - type: ComputeResource
+          properties:
+            ram: 4096
+            vcpus: 2
+        - type: WebApplication
+          properties:
+            java_tomcat: JavaTomcat
+            war_file: WebApplicationWAR
+      relations:
+        - type: uses
+          from: WebApplication
+          to: ComputeResource
+
+  Outputs:
+    type: outputs
+    topology_template:
+      nodes:
+        - type: WebAppOnTomcat
+      outputs:
+        application_url:
+          description: URL for accessing the web application
+          value: (get_node_property /WebAppOnTomcat/WebApplication/properties/application_url)
+        server_url:
+          description: URL for accessing the Apache Tomcat server
+          value: (get_node_property /WebAppOnTomcat/WebApplication/properties/server_url)
+

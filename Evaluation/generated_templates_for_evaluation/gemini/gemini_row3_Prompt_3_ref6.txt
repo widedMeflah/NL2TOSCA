@@ -1,0 +1,97 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+metadata:
+  template_name: NodecellarApplication
+  template_version: 1.0.0-SNAPSHOT
+  template_author: A4CRequest
+description: Nodecellar application with Node.js and MongoDB on Ubuntu Linux.
+topology_template:
+  node_templates:
+    node_js_compute:
+      type: alien4cloud.nodes.Ubuntu
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+        host:
+          properties:
+            mem_size: 1 GB
+            num_cpus: 1
+      requirements:
+        - network:
+            node: common_network
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.Network.ComposedOf
+    mongodb_compute:
+      type: alien4cloud.nodes.Ubuntu
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+        host:
+          properties:
+            mem_size: 1 GB
+            num_cpus: 1
+      requirements:
+        - network:
+            node: common_network
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.Network.ComposedOf
+    common_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+    mongodb_database:
+      type: alien4cloud.nodes.MongoDB
+      properties:
+        port: 27017
+      requirements:
+        - host:
+            node: mongodb_compute
+            capability: tosca.capabilities.Container.Runtime
+            relationship: tosca.relationships.HostedOn
+      capabilities:
+        database_endpoint:
+          properties:
+            network_name: { get_attribute: [ common_network, name ] }
+            protocol: tcp
+            port: 27017
+    nodejs_runtime:
+      type: alien4cloud.nodes.Nodejs
+      requirements:
+        - host:
+            node: node_js_compute
+            capability: tosca.capabilities.Container.Runtime
+            relationship: tosca.relationships.HostedOn
+    nodecellar_app:
+      type: tosca.nodes.SoftwareComponent
+      description: The Nodecellar application
+      requirements:
+        - host:
+            node: nodejs_runtime
+            capability: tosca.capabilities.Container.Runtime
+            relationship: tosca.relationships.HostedOn
+        - database:
+            node: mongodb_database
+            capability: tosca.capabilities.Endpoint.Database
+            relationship: tosca.relationships.ConnectsTo
+      properties:
+        nodejs_app_port: 8088
+      capabilities:
+        nodecellar_public_endpoint:
+          type: tosca.capabilities.Endpoint.Public
+          properties:
+            network_name: { get_attribute: [ common_network, name ] }
+            protocol: tcp
+            port: 8088
+            initiator_ports:
+              - 8088
+            target_ports:
+              - 8088
+  outputs:
+    nodecellar_url:
+      description: The URL to access the Nodecellar application.
+      value: { get_attribute: [ nodecellar_app, nodecellar_public_endpoint, url ] }
+

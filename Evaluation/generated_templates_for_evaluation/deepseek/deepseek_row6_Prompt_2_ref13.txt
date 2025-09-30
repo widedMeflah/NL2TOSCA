@@ -1,0 +1,116 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - tosca_types:tosca/normative_types/alienv4cloud/1.0.0-SNAPSHOT/ALIEN-TOPOLOGY-DEFINITIONS.yaml
+  - k8s_types:tosca/normative_types/kubernetes/1.0.0-SNAPSHOT/KUBERNETES-TOPOLOGY-DEFINITIONS.yaml
+
+topology_template:
+  description: TOSCA template for deploying a scalable Kubernetes cluster
+  name: Kubernetes Cluster Deployment
+
+  input_parameters:
+    os_image:
+      type: string
+      required: false
+      default: ubuntu
+    network_name:
+      type: string
+      required: false
+      default: kubernetes_network
+    ssh_key:
+      type: string
+      required: false
+      default: your_ssh_public_key
+
+  node_templates:
+    kubernetes_master:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        network: { get_input: network_name }
+        ssh_key: { get_input: ssh_key }
+      artifacts:
+        - script: |
+            #!/bin/bash
+            echo "Initializing Kubernetes master..."
+            kubeadm init --apiserver-advertise-address $(hostname -I)
+            echo "Setting up Kubernetes dashboard..."
+            kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/master/aio/deploy/recommended.yaml
+          executor: bash
+          name: Initialize Kubernetes Master
+      relationships:
+        - type: tosca.relationships.Network
+          target: kubernetes_network
+          properties:
+            network_name: { get_input: network_name }
+
+    kubernetes_worker:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        network: { get_input: network_name }
+        ssh_key: { get_input: ssh_key }
+        count: 1
+        min_instances: 1
+        max_instances: 5
+      artifacts:
+        - script: |
+            #!/bin/bash
+            echo "Joining Kubernetes cluster..."
+            kubeadm join $(hostname -I):6443
+          executor: bash
+          name: Join Kubernetes Cluster
+      relationships:
+        - type: tosca.relationships.Network
+          target: kubernetes_network
+          properties:
+            network_name: { get_input: network_name }
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_master
+
+    kubernetes_dashboard:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        network: { get_input: network_name }
+        ssh_key: { get_input: ssh_key }
+      artifacts:
+        - script: |
+            #!/bin/bash
+            echo "Setting up Kubernetes dashboard..."
+            kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/master/aio/deploy/recommended.yaml
+            kubectl proxy --address='0.0.0.0' --accept-hosts='^*$' &
+          executor: bash
+          name: Setup Dashboard
+      relationships:
+        - type: tosca.relationships.Network
+          target: kubernetes_network
+          properties:
+            network_name: { get_input: network_name }
+        - type: tosca.relationships.DependsOn
+          target: kubernetes_master
+
+    kubernetes_network:
+      type: tosca.nodes.Network
+      properties:
+        name: { get_input: network_name }
+        ipv4_address_space: 10.0.0.0/16
+
+  policies:
+    - kubernetes_scaling_policy:
+        type: tosca.policies.Scaling
+        targets:
+          - kubernetes_worker
+        properties:
+          scaling_target:
+            min_instances: 1
+            max_instances: 5
+          scaling_thresholds:
+            cpu_usage:
+              threshold: 50
+              scaling_direction: up
+              adjust_by: 1
+            memory_usage:
+              threshold: 80
+              scaling_direction: up
+              adjust_by: 1

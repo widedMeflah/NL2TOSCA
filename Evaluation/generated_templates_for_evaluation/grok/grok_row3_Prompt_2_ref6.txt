@@ -1,0 +1,98 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: NodeJS_Application_Stack
+  template_version: 1.0.0
+  template_author: Alien4Cloud User
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.NodeJSApp:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      app_port:
+        type: integer
+        default: 3000
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - database:
+          capability: tosca.capabilities.Endpoint.Database
+          relationship: tosca.relationships.ConnectsTo
+    capabilities:
+      app_endpoint:
+        type: tosca.capabilities.Endpoint
+    artifacts:
+      - app_code:
+          file: path/to/your/app.js
+          type: tosca.artifacts.File
+
+  Custom.MySQLDatabase:
+    derived_from: tosca.nodes.Database
+    properties:
+      db_port:
+        type: integer
+        default: 3306
+      root_password:
+        type: string
+        default: "password"
+    capabilities:
+      database_endpoint:
+        type: tosca.capabilities.Endpoint.Database
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    NodeJS_Runtime:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: ComputeNode
+      properties:
+        component_version: 14.x
+
+    MySQL_DB:
+      type: Custom.MySQLDatabase
+      requirements:
+        - host: ComputeNode
+      properties:
+        db_port: 3306
+        root_password: "secure_password"
+
+    Sample_JS_App:
+      type: Custom.NodeJSApp
+      requirements:
+        - host: NodeJS_Runtime
+        - database: MySQL_DB
+      properties:
+        app_port: 3000
+      capabilities:
+        app_endpoint:
+          properties:
+            port: 3000
+            protocol: http
+            initiator: source
+
+  outputs:
+    app_url:
+      value: { get_attribute: [Sample_JS_App, app_endpoint, url] }
+    db_endpoint:
+      value: { get_attribute: [MySQL_DB, database_endpoint, ip_address] }
+    db_port:
+      value: { get_property: [MySQL_DB, db_port] }

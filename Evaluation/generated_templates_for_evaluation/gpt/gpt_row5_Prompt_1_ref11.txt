@@ -1,0 +1,158 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA template for a system hosting an application with JDK, web interface, redundant data storage replication, integration tests, and IPv4 network connectivity.
+
+topology_template:
+
+  node_templates:
+
+    app_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8192 MB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            network_name: app_net
+
+    storage1_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            network_name: app_net
+
+    storage2_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            network_name: app_net
+
+    test_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 2048 MB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            network_name: app_net
+
+    app_jdk:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: custom-jdk
+        version: 1.8.0
+        install_dir: /opt/custom-jdk
+        download_url: <INSERT_JDK_URL_HERE>
+      requirements:
+        - host: app_host
+
+    my_application:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /
+        application_arguments:
+          - --security.enabled=true
+          - --docs.enabled=true
+        documentation_url: <INSERT_DOC_URL_HERE>
+      requirements:
+        - host: app_host
+        - dependency: app_jdk
+        - connection:
+            node: data_storage_1
+        - connection:
+            node: data_storage_2
+
+    data_storage_1:
+      type: tosca.nodes.Database
+      properties:
+        db_name: mydb1
+      requirements:
+        - host: storage1_host
+        - replication:
+            node: data_storage_2
+
+    data_storage_2:
+      type: tosca.nodes.Database
+      properties:
+        db_name: mydb2
+      requirements:
+        - host: storage2_host
+        - replication:
+            node: data_storage_1
+
+    integration_tester:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        branch: <INSERT_BRANCH_NAME>
+        plugin_version: <INSERT_PLUGIN_VERSION>
+        test_suite: <INSERT_TEST_SUITE_NAME>
+      requirements:
+        - host: test_host
+        - dependency: my_application
+        - connection:
+            node: data_storage_1
+        - connection:
+            node: data_storage_2
+
+    app_network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: ipv4
+        name: app_net
+
+  groups:
+    application_stack:
+      type: tosca.groups.Root
+      members:
+        - app_host
+        - storage1_host
+        - storage2_host
+        - test_host
+        - app_jdk
+        - my_application
+        - data_storage_1
+        - data_storage_2
+        - integration_tester
+        - app_network
+
+  outputs:
+    application_url:
+      value: { concat: [ 'http://', get_attribute: [ app_host, private_address ], ':' , '80', '/' ] }
+    test_report:
+      value: { get_attribute: [ integration_tester, test_results ] }

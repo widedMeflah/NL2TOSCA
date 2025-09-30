@@ -1,0 +1,52 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: A basic Kubernetes cluster setup with master, worker nodes, Flannel, Dashboard, Etcd, and Docker
+
+topology_template:
+  node_templates:
+
+    kubernetes_master:
+      type: tosca.nodes.kubernetes.Master
+      properties:
+        docker_version: "20.10"
+        kubernetes_version: "1.24"
+        etcd:
+          type: tosca.nodes.kubernetes.Etcd
+          properties:
+            version: "3.5"
+        dashboard:
+          type: tosca.nodes.kubernetes.Dashboard
+          properties:
+            version: "2.4"
+        network:
+          type: tosca.nodes.kubernetes.Network.Flannel
+          properties:
+            version: "0.14"
+
+    kubernetes_worker_1:
+      type: tosca.nodes.kubernetes.Worker
+      properties:
+        docker_version: "20.10"
+        kubernetes_version: "1.24"
+        network:
+          type: tosca.nodes.kubernetes.Network.Flannel
+          properties:
+            version: "0.14"
+
+    kubernetes_worker_2:
+      type: tosca.nodes.kubernetes.Worker
+      properties:
+        docker_version: "20.10"
+        kubernetes_version: "1.24"
+        network:
+          type: tosca.nodes.kubernetes.Network.Flannel
+          properties:
+            version: "0.14"
+
+  outputs:
+    kubernetes_api_endpoint:
+      description: The Kubernetes API endpoint
+      value: { get_attribute: [ kubernetes_master, api_endpoint ] }
+
+    dashboard_url:
+      description: The URL to access the Kubernetes Dashboard
+      value: { get_attribute: [ kubernetes_master, dashboard_url ] }

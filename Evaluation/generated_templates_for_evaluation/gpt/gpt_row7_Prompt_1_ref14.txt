@@ -1,0 +1,111 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: >
+    Deploy a WAR web application on a Tomcat server, configurable for OS and architecture, 
+    with Java and Tomcat installation directories and download URLs, accessible endpoints.
+
+  inputs:
+    os_type:
+      type: string
+      description: Operating System type (e.g., linux, windows, mac)
+      constraints:
+        - valid_values: [linux, windows, mac]
+      default: linux
+    architecture:
+      type: string
+      description: OS Architecture (32 or 64 bit)
+      constraints:
+        - valid_values: [x86_64, x86]
+      default: x86_64
+    java_download_url:
+      type: string
+      description: URL to download the Java package
+      default: "https://example.com/jdk.tar.gz"
+    java_install_dir:
+      type: string
+      description: Directory where Java will be installed
+      default: "/opt/java"
+    tomcat_download_url:
+      type: string
+      description: URL to download the Tomcat package
+      default: "https://example.com/tomcat.tar.gz"
+    tomcat_install_dir:
+      type: string
+      description: Directory to install Tomcat
+      default: "/opt/tomcat"
+    war_file_url:
+      type: string
+      description: URL of the WAR file to deploy
+      default: "https://example.com/app.war"
+    tomcat_http_port:
+      type: integer
+      description: Tomcat HTTP port
+      default: 8080
+
+  node_templates:
+    host_machine:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            os_architecture: { get_input: architecture }
+            os_type: { get_input: os_type }
+        endpoint:
+          properties:
+            network_name: public
+            ports:
+              - { get_input: tomcat_http_port }
+
+    java_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        install_url: { get_input: java_download_url }
+        install_dir: { get_input: java_install_dir }
+      requirements:
+        - host: host_machine
+
+    tomcat_server:
+      type: tosca.nodes.WebServer.Tomcat
+      properties:
+        install_url: { get_input: tomcat_download_url }
+        install_dir: { get_input: tomcat_install_dir }
+        http_port: { get_input: tomcat_http_port }
+      requirements:
+        - host: host_machine
+        - dependency: java_runtime
+
+    web_application:
+      type: tosca.nodes.WebApplication
+      properties:
+        war_url: { get_input: war_file_url }
+      requirements:
+        - host: tomcat_server
+
+    tomcat_endpoint:
+      type: tosca.nodes.Endpoint
+      properties:
+        protocol: http
+        port: { get_input: tomcat_http_port }
+        url_path: /
+      requirements:
+        - host: tomcat_server
+
+    app_endpoint:
+      type: tosca.nodes.Endpoint
+      properties:
+        protocol: http
+        port: { get_input: tomcat_http_port }
+        url_path: { get_property: [ web_application, war_url ] }
+      requirements:
+        - host: tomcat_server
+
+  outputs:
+    tomcat_url:
+      description: URL to access the Tomcat server
+      value: { concat: [ "http://", { get_attribute: [ host_machine, public_address ] }, ":", { get_input: tomcat_http_port }, "/" ] }
+
+    webapp_url:
+      description: URL to access the deployed web application
+      value: { concat: [ "http://", { get_attribute: [ host_machine, public_address ] }, ":", { get_input: tomcat_http_port }, "/", { get_property: [ web_application, war_url ]  } ] }

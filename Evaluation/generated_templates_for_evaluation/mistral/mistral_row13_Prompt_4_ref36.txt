@@ -1,0 +1,60 @@
+description: INDIGO Orchestration Template for Elastic Cluster with Slurm Workload Management, Galaxy Portal, and Hybrid Environment Capability
+
+tosca_definitions_version: 1.0
+
+topology_template:
+  node_templates:
+    ElasticCluster:
+      type: ocf:indigo:elastic_cluster
+      properties:
+        frontend_node:
+          type: ocf:indigo:frontend_node
+          properties:
+            elasticity_management: Slurm
+            workload_management: Slurm
+        worker_node:
+          type: ocf:indigo:worker_node
+          properties:
+            count: "{NUMBER_OF_WORKER_NODES}"
+    GalaxyPortal:
+      type: ocf:indigo:galaxy_portal
+      properties:
+        bioinformatics_applications: true
+    ClusterGateway:
+      type: ocf:indigo:cluster_gateway
+
+  relationship_types:
+    - type: ocf:indigo:has_frontend
+      source_role: ElasticCluster
+      target_role: ElasticCluster.frontend_node
+    - type: ocf:indigo:has_worker
+      source_role: ElasticCluster
+      target_role: ElasticCluster.worker_node
+    - type: ocf:indigo:provides_galaxy
+      source_role: ElasticCluster
+      target_role: GalaxyPortal
+    - type: ocf:indigo:has_gateway
+      source_role: ElasticCluster
+      target_role: ClusterGateway
+
+  nodes:
+    - ref: ElasticCluster
+      properties:
+        frontend_node:
+          properties:
+            ip_address: "{FRONTEND_IP_ADDRESS}"
+        worker_node: {}
+    - ref: GalaxyPortal
+      properties:
+        ip_address: "{GALAXY_IP_ADDRESS}"
+    - ref: ClusterGateway
+      properties:
+        ip_address: "{GATEWAY_IP_ADDRESS}"
+
+  links:
+    - source: ElasticCluster
+      target: GalaxyPortal
+      relationship: ocf:indigo:provides_galaxy
+    - source: ElasticCluster
+      target: ClusterGateway
+      relationship: ocf:indigo:has_gateway

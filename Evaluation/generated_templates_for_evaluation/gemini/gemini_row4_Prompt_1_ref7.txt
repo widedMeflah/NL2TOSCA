@@ -1,0 +1,45 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: A TOSCA-compliant description for a MongoDB data storage and management system accessible over a private network.
+imports:
+  - alien4cloud-orchestrator-plugin:types/alien4cloud.nodes.Compute.yml
+  - alien4cloud-orchestrator-plugin:types/alien4cloud.nodes.network.PrivateNetwork.yml
+  - alien4cloud-apache-types:types/alien4cloud.nodes.apache.MongoDB.yml
+inputs:
+  mongodb_port:
+    type: integer
+    description: The network port for MongoDB operations.
+    default: 27017
+node_templates:
+  my_compute_host:
+    type: alien4cloud.nodes.Compute
+    capabilities:
+      os:
+        properties:
+          type: linux
+          distribution: ubuntu
+          architecture: x86_64
+  my_private_network:
+    type: alien4cloud.nodes.network.PrivateNetwork
+    properties:
+      protocol: tcp
+  mongodb_instance:
+    type: alien4cloud.nodes.apache.MongoDB
+    properties:
+      port: { get_input: mongodb_port }
+    requirements:
+      - host:
+          node: my_compute_host
+          capability: host
+          relationship: tosca.relationships.HostedOn
+      - network:
+          node: my_private_network
+          capability: tosca.capabilities.Network
+          relationship: tosca.relationships.ConnectsTo
+outputs:
+  server_ip_address:
+    description: The IP address of the MongoDB server.
+    value: { get_attribute: [ my_compute_host, networks, my_private_network, addresses, 0 ] }
+  server_port:
+    description: The port number used by the MongoDB server.
+    value: { get_property: [ mongodb_instance, port ] }

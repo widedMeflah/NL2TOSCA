@@ -1,0 +1,113 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA service template for setting up a web server and database application.
+
+service_templates:
+  wine_cellar_application:
+    description: Service template for deploying Wine Cellar Application with Apache Web Server and MySQL Database.
+
+    topology_template:
+      description: Topology template for Wine Cellar Application.
+
+      node_templates:
+        web_server:
+          type: tosca.nodes.WebServer.Apache
+          properties:
+            name: Wine Cellar Web Server
+            php_version: 7.4
+            resource:
+              cpu:
+                num_cores: 2
+              memory:
+                size: 4GB
+              disk:
+                size: 20GB
+            ports:
+              - 80
+              - 443
+            application:
+              name: wine_cellar
+              source: https://example.com/wine-cellar.zip
+              type: PHP
+
+        database_server:
+          type: tosca.nodes.Database.MySQL
+          properties:
+            name: Wine Cellar Database
+            database_name: wine_cellar_db
+            database_user: wine_user
+            database_password: wine_pass
+            root_password: root_pass
+            resource:
+              cpu:
+                num_cores: 2
+              memory:
+                size: 4GB
+              disk:
+                size: 20GB
+            port: 3306
+
+        network:
+          type: tosca.nodes.Network
+          properties:
+            network_name: wine_cellar_network
+            cidr: 10.0.0.0/24
+
+        security_group:
+          type: tosca.nodes.SecurityGroup
+          properties:
+            name: wine_cellar_security
+            rules:
+              - protocol: tcp
+                port_range_min: 80
+                port_range_max: 80
+              - protocol: tcp
+                port_range_min: 443
+                port_range_max: 443
+              - protocol: tcp
+                port_range_min: 3306
+                port_range_max: 3306
+
+        web_server_instance:
+          type: tosca.nodes.Compute
+          properties:
+            name: Wine Cellar Web Server Instance
+            image: ubuntu_20_04
+            resource:
+              cpu:
+                num_cores: 2
+              memory:
+                size: 4GB
+              disk:
+                size: 20GB
+          capabilities:
+            endpoint:
+              network_name: wine_cellar_network
+              ports:
+                - 80
+                - 443
+          requirements:
+            - host: database_server
+
+        database_instance:
+          type: tosca.nodes.Compute
+          properties:
+            name: Wine Cellar Database Instance
+            image: ubuntu_20_04
+            resource:
+              cpu:
+                num_cores: 2
+              memory:
+                size: 4GB
+              disk:
+                size: 20GB
+          capabilities:
+            endpoint:
+              network_name: wine_cellar_network
+              ports:
+                - 3306
+
+      outputs:
+        application_url:
+          description: URL to access the Wine Cellar Application
+          value: http://wine_cellar_web_server_public_ip

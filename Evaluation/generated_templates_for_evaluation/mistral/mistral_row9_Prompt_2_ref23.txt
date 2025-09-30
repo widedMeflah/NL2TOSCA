@@ -1,0 +1,60 @@
+
+service_template_id: indigo_plant_classification_service
+
+name: Plant Classification Service
+
+description: Service template for setting up a plant classification application accessible over the internet
+
+version: 1.0.0
+
+bindings:
+  - interface_id: internet
+    interface_name: internet
+
+properties:
+  app_image: {type: string, description: "URL or path to the application image"}
+  port:
+    type: integer
+    description: "Port number for incoming requests"
+  memory:
+    type: integer
+    description: "Amount of memory (in MB) for efficient operation"
+  cpu:
+    type: integer
+    description: "CPU cores for efficient operation"
+
+capabilities:
+  - os_linux
+  - cpu
+  - memory
+  - network
+
+requires:
+  - node: indigo_orchestrator
+
+node_templates:
+  indigo_orchestrator:
+    type: os::Linux
+    properties:
+      hostname: indigo_orchestrator
+      architecture: x86_64
+
+  plant_classification_app:
+    type: custom_resource
+    properties:
+      app_image: {get_param: app_image}
+      port: {get_param: port}
+      memory: {get_param: memory}
+      cpu: {get_param: cpu}
+      update_strategy: rolling_update
+    capabilities: [cpu, memory, network]
+
+interfaces:
+  internet:
+    type: network::HTTP
+    properties:
+      port: {get_param: port}
+
+relationships:
+  - type: network.relationship.public_ports
+    members: [internet, plant_classification_app]

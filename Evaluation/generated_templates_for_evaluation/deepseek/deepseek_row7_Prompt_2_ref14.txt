@@ -1,0 +1,72 @@
+tosca_definitions_version: alien4cloud-1.4
+
+topology_template:
+  description: Web Application on Tomcat Server
+
+  input_types:
+    - type: ServerConfiguration
+      description: Server configuration properties
+
+  node_types:
+    ServerConfiguration:
+      properties:
+        os_type:
+          type: string
+          constraints:
+            - equal: "linux"
+        os_distribution:
+          type: string
+          constraints:
+            - valid_values: [ubuntu, centos]
+        os_version:
+          type: string
+          constraints:
+            - valid_values: ["16.04", "7"]
+        architecture:
+          type: string
+          constraints:
+            - valid_values: [x86_64]
+
+  topology_template:
+    description: Web Application on Tomcat Server
+
+    node_templates:
+      server:
+        type: alien4cloud:tosca:types:Compute
+        properties:
+          os_type: ${input.os_type}
+          os_distribution: ${input.os_distribution}
+          os_version: ${input.os_version}
+          architecture: ${input.architecture}
+
+      java:
+        type: org.alien4cloud:Java
+        properties:
+          version: "8"
+          distribution: "oracle"
+        dependencies:
+          - server
+
+      tomcat:
+        type: org.alien4cloud:Tomcat
+        properties:
+          version: "8.5"
+        dependencies:
+          - java
+          - server
+
+      web_app:
+        type: tosca:WebApplication
+        properties:
+          war_file_url: "http://example.com/myapp.war"
+          context_path: "/myapp"
+        dependencies:
+          - tomcat
+
+    outputs:
+      app_url:
+        description: URL of the web application
+        value: "http://${server.private_address}${web_app.context_path}"
+      tomcat_url:
+        description: URL of the Tomcat server
+        value: "http://${server.private_address}:8080"

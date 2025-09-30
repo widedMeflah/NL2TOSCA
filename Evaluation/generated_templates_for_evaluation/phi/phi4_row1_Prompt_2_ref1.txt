@@ -1,0 +1,63 @@
+
+node_types:
+  my.nodes.web_application_platform:
+    derived_from: tosca.nodes.SoftwareComponent
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+      endpoint:
+        type: tosca.capabilities.Endpoint
+
+  my.nodes.search_engine:
+    derived_from: tosca.nodes.SoftwareComponent
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: server_node
+    capabilities:
+      database:
+        type: tosca.capabilities.Database
+      endpoint:
+        type: tosca.capabilities.Endpoint
+
+  my.nodes.server:
+    derived_from: tosca.nodes.Compute
+    properties:
+      operating_system:
+        type: string
+        default: "Linux"
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+
+topology_template:
+  node_templates:
+    web_application_platform:
+      type: my.nodes.web_application_platform
+      requirements:
+        - hosting_server:
+            capability: tosca.capabilities.Container
+            node: server_node
+
+    search_engine:
+      type: my.nodes.search_engine
+
+    server_node:
+      type: my.nodes.server
+      capabilities:
+        host:
+          properties:
+            resources:
+              - name: Apache Tomcat
+                type: org.alien4cloud.model.types.components.SoftwareComponentType
+                properties:
+                  version: "9.0"
+                  endpoint: http://localhost:8080
+
+    network_connection:
+      type: tosca.relationships.NetworkCommunication
+      source: server_node
+      target_interfaces:
+        standard:
+          create: |
+            # Ensure the network is configured for communication between nodes

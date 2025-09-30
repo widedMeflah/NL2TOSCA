@@ -1,0 +1,178 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: Kubernetes Cluster Topology
+  template_version: 1.0.0
+  template_author: Alien4Cloud User
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:2.0.0
+
+node_types:
+  Custom.KubernetesMaster:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: linux
+      os_distribution:
+        type: string
+        default: ubuntu
+      kubernetes_version:
+        type: string
+        default: "1.2.1"
+      kubectl_version:
+        type: string
+        default: "1.5.3"
+      dns_domain:
+        type: string
+        default: "cluster.local"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - network:
+          capability: tosca.capabilities.Endpoint
+          relationship: tosca.relationships.ConnectsTo
+
+  Custom.KubernetesWorker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: linux
+      os_distribution:
+        type: string
+        default: ubuntu
+      kubernetes_version:
+        type: string
+        default: "1.2.1"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - master:
+          capability: tosca.capabilities.Endpoint
+          relationship: tosca.relationships.ConnectsTo
+
+  Custom.DockerRuntime:
+    derived_from: tosca.nodes.SoftwareComponent
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.FlannelNetwork:
+    derived_from: tosca.nodes.Network
+    properties:
+      version:
+        type: string
+        default: "0.5.5"
+      ip_mask:
+        type: string
+        default: "10.244.0.0/16"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.EtcdService:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        default: "2.2.1"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.KubernetesDashboard:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      namespace:
+        type: string
+        default: "kube-system"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+topology_template:
+  node_templates:
+    ComputeMaster:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+
+    ComputeWorker:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: 1
+
+    PrivateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+
+    KubernetesMaster:
+      type: Custom.KubernetesMaster
+      requirements:
+        - host: ComputeMaster
+        - network: PrivateNetwork
+
+    KubernetesWorker:
+      type: Custom.KubernetesWorker
+      requirements:
+        - host: ComputeWorker
+        - master: KubernetesMaster
+
+    DockerRuntimeMaster:
+      type: Custom.DockerRuntime
+      requirements:
+        - host: ComputeMaster
+
+    DockerRuntimeWorker:
+      type: Custom.DockerRuntime
+      requirements:
+        - host: ComputeWorker
+
+    FlannelNetwork:
+      type: Custom.FlannelNetwork
+      requirements:
+        - host: KubernetesMaster
+
+    EtcdService:
+      type: Custom.EtcdService
+      requirements:
+        - host: DockerRuntimeMaster
+
+    KubernetesDashboard:
+      type: Custom.KubernetesDashboard
+      requirements:
+        - host: KubernetesMaster
+
+  outputs:
+    kubernetes_ui_endpoint:
+      description: Kubernetes Dashboard UI Endpoint
+      value: { get_attribute: [KubernetesDashboard, endpoint] }
+    kubernetes_api_endpoint:
+      description: Kubernetes Master API Endpoint
+      value: { get_attribute: [KubernetesMaster, endpoint] }

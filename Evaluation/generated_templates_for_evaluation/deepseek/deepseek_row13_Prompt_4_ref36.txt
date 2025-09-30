@@ -1,0 +1,111 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Elastic Cluster with Galaxy Portal
+
+topology_template:
+  node_templates:
+    slurm_controller:
+      type: tosca.nodes.INDIGO.ElasticCluster.FrontEnd
+      properties:
+        image: ubuntu_20_04
+        flavor: medium
+        networks:
+          - network: private
+          - network: public
+        software:
+          - slurm
+          - openmpi
+          - slurmdbd
+          - munge
+          - ganglia
+        configuration:
+          slurm_controller: true
+          slurm_config:
+            NodeName: worker[1-10]
+            PartitionName: main
+
+    galaxy_portal:
+      type: tosca.nodes.INDIGO.ElasticCluster.Application
+      properties:
+        image: galaxy_21_01
+        flavor: small
+        networks:
+          - network: public
+        software:
+          - galaxy
+          - python_3
+          - postgresql
+          - apache2
+        configuration:
+          galaxy_config:
+            admin_users: admin@example.com
+            brand: My Galaxy Portal
+
+    worker_node:
+      type: tosca.nodes.INDIGO.ElasticCluster.Worker
+      properties:
+        image: ubuntu_20_04
+        flavor: small
+        networks:
+          - network: private
+        software:
+          - slurm
+          - openmpi
+          - munge
+        scale_in: 1
+        scale_out: 10
+
+    database_node:
+      type: tosca.nodes.INDIGO.ElasticCluster.Database
+      properties:
+        image: postgresql_13
+        flavor: small
+        networks:
+          - network: private
+        software:
+          - postgresql
+        configuration:
+          database_name: galaxy_db
+          database_user: galaxy
+          database_password: galaxy_pass
+
+    public_network:
+      type: tosca.network.Network
+      properties:
+        name: public
+        type: public
+        cidr: 10.0.0.0/24
+
+    private_network:
+      type: tosca.network.Network
+      properties:
+        name: private
+        type: private
+        cidr: 10.1.0.0/24
+
+    scaling_policy:
+      type: tosca.policies.INDIGO.Scaling
+      properties:
+        scaling_target: worker_node
+        min_instances: 1
+        max_instances: 10
+        cooldown: 300
+        adjustments:
+          - metric: cpu_usage
+            threshold: 70
+            adjustment: +1
+          - metric: memory_usage
+            threshold: 80
+            adjustment: +1
+
+  relationship_templates:
+    ConnectsTo:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        network: private
+
+  outputs:
+    galaxy_portal_url:
+      value: http://-floating-ip-galaxy:80
+    cluster_ip:
+      value: floating-ip-slurm

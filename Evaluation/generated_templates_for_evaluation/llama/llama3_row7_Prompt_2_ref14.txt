@@ -1,0 +1,125 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    Server:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: { get_property: [SELF, os_type] }
+        os_arch: { get_property: [SELF, os_arch] }
+        java_version: { get_property: [SELF, java_version] }
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports: { get_property: [SELF, port] }
+      artifacts:
+        os_image: { getArtifact: [SELF, os_image] }
+
+    Tomcat:
+      type: tosca.nodes.WebServer
+      properties:
+        version: { get_property: [SELF, tomcat_version] }
+        java_version: { get_property: [Server, java_version] }
+      requirements:
+        - host: Server
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports: 8080
+      artifacts:
+        tomcat_package: { getArtifact: [SELF, tomcat_package] }
+
+    WebApplication:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: { get_property: [SELF, app_version] }
+      requirements:
+        - host: Tomcat
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports: 8080
+      artifacts:
+        app_package: { getArtifact: [SELF, app_package] }
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: { get_property: [SELF, network_name] }
+
+    ServerNetwork:
+      type: tosca.relationships.Network
+      properties:
+        network_name: { get_property: [Network, network_name] }
+      requirements:
+        - virtual_binding: Server
+
+  relationship_templates:
+    host:
+      type: tosca.relationships.HostedOn
+
+  capability_templates:
+    endpoint:
+      type: tosca.capabilities.Endpoint
+
+  artifact_templates:
+    os_image:
+      type: tosca.artifacts.Implementations
+      properties:
+        url: { get_property: [SELF, os_image_url] }
+        type: tosca.artifacts.Implementation.OS
+
+    tomcat_package:
+      type: tosca.artifacts.Implementations
+      properties:
+        url: { get_property: [SELF, tomcat_package_url] }
+        type: tosca.artifacts.Implementation.Tomcat
+
+    app_package:
+      type: tosca.artifacts.Implementations
+      properties:
+        url: { get_property: [SELF, app_package_url] }
+        type: tosca.artifacts.Implementation.WAR
+
+  property_definitions:
+    os_type:
+      type: string
+      required: true
+    os_arch:
+      type: string
+      required: true
+    java_version:
+      type: string
+      required: true
+    tomcat_version:
+      type: string
+      required: true
+    app_version:
+      type: string
+      required: true
+    network_name:
+      type: string
+      required: true
+    port:
+      type: integer
+      required: true
+    os_image_url:
+      type: string
+      required: true
+    tomcat_package_url:
+      type: string
+      required: true
+    app_package_url:
+      type: string
+      required: true
+
+  outputs:
+    application_url:
+      value: { concat: ['http://', { get_attribute: [Server, private_address] }, ':', { get_property: [Tomcat, endpoint, ports] }, '/' ] }
+      description: URL of the web application
+    tomcat_url:
+      value: { concat: ['http://', { get_attribute: [Server, private_address] }, ':', { get_property: [Tomcat, endpoint, ports] } ] }
+      description: URL of the Tomcat server

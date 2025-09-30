@@ -1,0 +1,98 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment template for a sample Node.js application with MongoDB on a Linux-based infrastructure.
+
+topology_template:
+  node_templates:
+    nodejs_app_host:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        number_of_instances: 1
+        vm_flavor: small
+        image: Ubuntu 20.04
+        availability_zone: default
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/bootstrap-nodejs.sh
+      requirements:
+        - host:
+            node: nodejs_app_vm
+            relationship: tosca.relationships.HostedOn
+        - connection:
+            node: nodejs_app_network
+            relationship: tosca.relationships.ConnectsTo
+
+    nodejs_app_vm:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        number_of_instances: 1
+        vm_flavor: small
+        image: Ubuntu 20.04
+        availability_zone: default
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/bootstrap-nodejs.sh
+      requirements:
+        - host:
+            node: nodejs_app_host
+            relationship: tosca.relationships.HostedOn
+        - connection:
+            node: nodejs_app_network
+            relationship: tosca.relationships.ConnectsTo
+
+    mongodb_host:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        number_of_instances: 1
+        vm_flavor: small
+        image: Ubuntu 20.04
+        availability_zone: default
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/bootstrap-mongodb.sh
+      requirements:
+        - host:
+            node: mongodb_vm
+            relationship: tosca.relationships.HostedOn
+        - connection:
+            node: nodejs_app_network
+            relationship: tosca.relationships.ConnectsTo
+
+    mongodb_vm:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        number_of_instances: 1
+        vm_flavor: small
+        image: Ubuntu 20.04
+        availability_zone: default
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/bootstrap-mongodb.sh
+      requirements:
+        - host:
+            node: mongodb_host
+            relationship: tosca.relationships.HostedOn
+        - connection:
+            node: nodejs_app_network
+            relationship: tosca.relationships.ConnectsTo
+
+    nodejs_app_network:
+      type: tosca.nodes.nfv.vdu.Network
+      properties:
+        network_name: nodejs-mongo-network
+        subnet_cidr: 192.168.100.0/24
+        gateway_ip: 192.168.100.1
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/network-setup.sh
+
+  outputs:
+    nodejs_app_url:
+      description: The URL to access the Node.js application
+      value: >-
+        http://${nodejs_app_host.ip_address}:${self.parameters.nodejs_app_port}

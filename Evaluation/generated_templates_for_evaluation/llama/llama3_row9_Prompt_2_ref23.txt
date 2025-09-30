@@ -1,0 +1,76 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    plant_classification_app:
+      type: tosca.nodes.Application
+      properties:
+        name: Plant Classification Application
+        description: Application for classifying plants
+
+    plant_classification_server:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 4
+        mem_size: 8192 MB
+        disk_size: 50 GB
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              - 8080
+      requirements:
+        - application:
+            node: plant_classification_app
+            relationship: tosca.relationships.HostedOn
+
+    plant_classification_network:
+      type: tosca.nodes.Network
+      properties:
+        name: Plant Classification Network
+      requirements:
+        - subnet:
+            node: plant_classification_subnet
+            relationship: tosca.relationships.PartOf
+
+    plant_classification_subnet:
+      type: tosca.nodes.Subnet
+      properties:
+        name: Plant Classification Subnet
+        cidr: 10.0.0.0/24
+        gateway: 10.0.0.1
+
+    plant_classification_port:
+      type: tosca.nodes.NetworkPort
+      properties:
+        name: Plant Classification Port
+        protocol: tcp
+        port: 8080
+      requirements:
+        - network:
+            node: plant_classification_network
+            relationship: tosca.relationships.ConnectsTo
+
+    plant_classification_security_group:
+      type: tosca.nodes.SecurityGroup
+      properties:
+        name: Plant Classification Security Group
+        rules:
+          - protocol: tcp
+            ports:
+              - 8080
+            remote_ip_prefix: 0.0.0.0/0
+      requirements:
+        - network:
+            node: plant_classification_network
+            relationship: tosca.relationships.PartOf
+
+  relationship_templates:
+    - hosted_on:
+        type: tosca.relationships.HostedOn
+        properties:
+          protocol: tcp
+          ports:
+            - 8080

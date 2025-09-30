@@ -1,0 +1,117 @@
+topology_template:
+  inputs:
+    tomcat_download_url: 
+      type: string
+    java_download_url: 
+      type: string
+    tomcat_install_dir: 
+      type: string
+    java_install_dir: 
+      type: string
+    app_war_file: 
+      type: string
+
+  node_types:
+    tosca.nodes.SoftwareComponent:
+      properties:
+        configuration: {}
+        description: {}
+        exposed_ports: {}
+        host: {}
+        id: {}
+
+    tosca.nodes.Container:
+      derived_from: tosca.nodes.SoftwareComponent
+      capabilities:
+        scalable:
+          properties:
+            min_instances: { type: integer, default: 1 }
+            max_instances: { type: integer, default: 1 }
+
+    my.nodes.LinuxHost:
+      derived_from: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            arch: {}
+            os_family: {}
+
+    my.nodes.WindowsHost:
+      derived_from: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            arch: {}
+            os_family: {}
+
+    my.nodes.MacOSXHost:
+      derived_from: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            arch: {}
+            os_family: {}
+
+    my.nodes.JAVA:
+      derived_from: tosca.nodes.SoftwareComponent
+      properties:
+        version: { type: string }
+
+    my.nodes.TomcatServer:
+      derived_from: tosca.nodes.SoftwareComponent
+      capabilities:
+        http_endpoint:
+          properties:
+            host: {}
+            port: { default: 8080 }
+    
+  node_templates:
+    web_application_host:
+      type: tosca.nodes.Container
+      requirements:
+        - hosted_on: { node: server_host }
+
+    server_host:
+      type: 
+        - my.nodes.LinuxHost
+        - my.nodes.WindowsHost
+        - my.nodes.MacOSXHost
+      properties:
+        arch: { get_input: architecture }
+        os_family: { get_property: [SELF, os] }  
+
+    java_installation:
+      type: my.nodes.JAVA
+      capabilities:
+        executable:
+          properties:
+            command: "java"
+        scripts:
+          post_configure:
+            file: install_java.sh
+            arguments: 
+              - { get_input: java_download_url }
+              - { get_input: java_install_dir }
+
+    tomcat_installation:
+      type: my.nodes.TomcatServer
+      capabilities:
+        executable:
+          properties:
+            command: "catalina.sh"
+        scripts:
+          post_configure:
+            file: install_tomcat.sh
+            arguments:
+              - { get_input: tomcat_download_url }
+              - { get_input: tomcat_install_dir }
+
+    deploy_web_application:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        source: { get_input: app_war_file }
+      capabilities:
+        web_app_endpoint:
+          properties:
+            host: { get_attribute: [web_application_host, host] }
+            port: { get_property: [tomcat_installation, http_endpoint, port] }

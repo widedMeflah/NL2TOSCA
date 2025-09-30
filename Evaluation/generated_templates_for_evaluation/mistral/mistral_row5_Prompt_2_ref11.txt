@@ -1,0 +1,59 @@
+
+definition_templates:
+  MyApplicationSystem:
+    type: compute
+    topology_template:
+      nodes:
+        - name: ApplicationServer
+          type: application
+          properties:
+            application_id: MyApplication
+            data_analysis: true
+            web_interface: true
+            test_automation: true
+            scalability: true
+            data_storage: true
+            data_visualization: true
+            large_data_handling: true
+            security: true
+            backup: true
+
+        - name: DataStorage
+          type: data_storage
+          properties:
+            backup: true
+            security: true
+
+        - name: TestAutomation
+          type: test_automation
+          properties:
+            integration: MyApplicationServer
+
+        - name: LoadBalancer
+          type: load_balancer
+          properties:
+            nodes: [ApplicationServer]
+
+      relationships:
+        - type: data_consumption
+          source: ApplicationServer
+          target: DataStorage
+
+        - type: test_dependency
+          source: ApplicationServer
+          target: TestAutomation
+
+        - type: load_balancing
+          source: LoadBalancer
+          targets: [ApplicationServer]
+
+artifacts:
+  MyApplication:
+    type: artifact
+    data: # The actual application file or URL to download the application
+
+nodes:
+  MyApplicationSystem:
+    MyApplicationSystem:
+      properties:
+        application_artifact: MyApplication

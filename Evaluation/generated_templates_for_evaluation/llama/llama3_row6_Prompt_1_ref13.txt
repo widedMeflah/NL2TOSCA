@@ -1,0 +1,167 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Kubernetes Cluster
+
+topology_template:
+  node_templates:
+    master_server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        networking:
+          protocol: tcp
+          network_name: private
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            network_name: private
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      artifacts:
+        kubernetes_command_line_tool:
+          type: tosca.artifacts.File
+          file: kubernetes-cli
+        docker_engine:
+          type: tosca.artifacts.File
+          file: docker-engine
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              os: ubuntu
+              command_line_tool: kubernetes-cli
+              docker_engine: docker-engine
+
+    worker_node:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        networking:
+          protocol: tcp
+          network_name: private
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            network_name: private
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+      artifacts:
+        docker_engine:
+          type: tosca.artifacts.File
+          file: docker-engine
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              os: ubuntu
+              docker_engine: docker-engine
+
+    flannel_network:
+      type: tosca.nodes.Network
+      properties:
+        type: overlay
+        networking:
+          protocol: tcp
+          network_name: private
+      artifacts:
+        flannel:
+          type: tosca.artifacts.File
+          file: flannel
+        etcd:
+          type: tosca.artifacts.File
+          file: etcd
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              networking: private
+              flannel: flannel
+              etcd: etcd
+
+    kubernetes_dashboard:
+      type: tosca.nodes.WebApplication
+      properties:
+        url: https://kubernetes-dashboard
+        namespace: kubernetes-dashboard
+      artifacts:
+        dashboard:
+          type: tosca.artifacts.File
+          file: kubernetes-dashboard
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              url: https://kubernetes-dashboard
+              namespace: kubernetes-dashboard
+
+    dns_domain:
+      type: tosca.nodes.DNS
+      properties:
+        domain_name: kubernetes.example.com
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              domain_name: kubernetes.example.com
+
+  relationship_templates:
+    master_to_worker:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        network_name: private
+    master_to_flannel:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        network_name: private
+    worker_to_flannel:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        network_name: private
+    master_to_dashboard:
+      type: tosca.relationships.HostedOn
+      properties:
+        namespace: kubernetes-dashboard
+    master_to_dns:
+      type: tosca.relationships.ConfiguredBy
+      properties:
+        domain_name: kubernetes.example.com
+
+  relationship_instances:
+    - type: master_to_worker
+      node_templates:
+        - master_server
+        - worker_node
+    - type: master_to_flannel
+      node_templates:
+        - master_server
+        - flannel_network
+    - type: worker_to_flannel
+      node_templates:
+        - worker_node
+        - flannel_network
+    - type: master_to_dashboard
+      node_templates:
+        - master_server
+        - kubernetes_dashboard
+    - type: master_to_dns
+      node_templates:
+        - master_server
+        - dns_domain
+
+  outputs:
+    kubernetes_dashboard_ui:
+      value: https://kubernetes-dashboard
+      description: Kubernetes Dashboard UI
+    kubernetes_api_endpoint:
+      value: https://kubernetes-api
+      description: Kubernetes API Endpoint

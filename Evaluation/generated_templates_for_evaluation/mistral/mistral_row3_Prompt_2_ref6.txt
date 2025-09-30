@@ -1,0 +1,63 @@
+
+definition_version: 1.0.0
+
+tosca_definitions_version: 2.0.0
+
+topology_template:
+  id: sample_javascript_application
+  description: TOSCA template for a system running a sample JavaScript application with Node.js, data storage using MongoDB, and accessible through a web interface.
+
+  nodes:
+    - type: nodejs
+      id: nodejs_app
+      name: Node.js Application
+      properties:
+        package_manager: apt
+        package_name: nodejs
+        version: 14
+        startup_policy: automatic
+        ports:
+          - id: app_port
+            name: Application Port
+            type: tcp
+            port: {get_property: [nodejs_app, properties, ports_min]}
+            ports_min: 8080
+            ports_max: 8080
+
+    - type: mongodb
+      id: mongodb_storage
+      name: MongoDB Data Storage
+      properties:
+        package_manager: apt
+        package_name: mongodb-server
+        version: 4.4
+        startup_policy: automatic
+        ports:
+          - id: data_storage_port
+            name: Data Storage Port
+            type: tcp
+            port: {get_property: [mongodb_storage, properties, ports_min]}
+            ports_min: 27017
+            ports_max: 27017
+
+  relationships:
+    - id: data_storage_relationship
+      source: mongodb_storage
+      target: nodejs_app
+      role: data_storage
+      interface:
+        standard_interfaces:
+          - name: tosca.nodes.DataStorage
+
+  nodes_templates:
+    NodeTemplate:
+      type: generic
+      properties:
+        os:
+          type: linux
+
+    nodejs:
+      jid: org.opentosca.julie.nodejs
+
+    mongodb:
+      jid: org.opentosca.julie.mongodb

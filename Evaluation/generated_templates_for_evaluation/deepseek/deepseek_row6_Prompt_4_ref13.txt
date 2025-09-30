@@ -1,0 +1,226 @@
+tosca_definitions_version: alien4cloud-2.0.0
+
+topology_template:
+  description: Basic Kubernetes Cluster Topology
+  node_templates:
+    kubernetes_master:
+      type: tosca.nodes.Container.Application
+      properties:
+        container:
+          type: tosca.nodes.Container.Runtime
+          properties:
+            name: kubernetes-master
+            image: <docker-image-with-kubernetes-master>
+            ports:
+              - "6443:6443"
+              - "9090:9090"
+            environment:
+              - KUBE_API_SERVER=<master-private-ip>:6443
+              - ETCDCTL_ENDPOINTS=http://<etcd-private-ip>:2379
+          artifacts:
+            - file: /etc/kubernetes/manifests/etcd.yaml
+              content: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: etcd
+                spec:
+                  containers:
+                  - name: etcd
+                    image: <etcd-docker-image>
+                    ports:
+                    - containerPort: 2379
+                    volumeMounts:
+                    - name: etcd-data
+                      mountPath: /etcd-data
+                  volumes:
+                  - name: etcd-data
+                    persistentVolumeClaim:
+                      claimName: etcd-pvc
+            - file: /etc/kubernetes/manifests/kube-apiserver.yaml
+              content: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: kube-apiserver
+                spec:
+                  containers:
+                  - name: kube-apiserver
+                    image: <kube-apiserver-docker-image>
+                    ports:
+                    - containerPort: 6443
+                    volumeMounts:
+                    - name: kube-config
+                      mountPath: /etc/kubernetes/config
+                  volumes:
+                  - name: kube-config
+                    persistentVolumeClaim:
+                      claimName: kube-config-pvc
+            - file: /etc/kubernetes/manifests/kube-controller-manager.yaml
+              content: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: kube-controller-manager
+                spec:
+                  containers:
+                  - name: kube-controller-manager
+                    image: <kube-controller-manager-docker-image>
+                    ports:
+                    - containerPort: 10252
+            - file: /etc/kubernetes/manifests/kube-scheduler.yaml
+              content: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: kube-scheduler
+                spec:
+                  containers:
+                  - name: kube-scheduler
+                    image: <kube-scheduler-docker-image>
+                    ports:
+                    - containerPort: 10251
+
+    kubernetes_worker:
+      type: tosca.nodes.Container.Application
+      properties:
+        container:
+          type: tosca.nodes.Container.Runtime
+          properties:
+            name: kubernetes-worker
+            image: <docker-image-with-kubernetes-worker>
+            environment:
+              - KUBE_API_SERVER=<master-private-ip>:6443
+          artifacts:
+            - file: /etc/kubernetes/manifests/kubelet.yaml
+              content: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: kubelet
+                spec:
+                  containers:
+                  - name: kubelet
+                    image: <kubelet-docker-image>
+                    ports:
+                    - containerPort: 10250
+                    volumeMounts:
+                    - name: kube-config
+                      mountPath: /etc/kubernetes/config
+                  volumes:
+                  - name: kube-config
+                    persistentVolumeClaim:
+                      claimName: kube-config-pvc
+            - file: /etc/kubernetes/manifests/kube-proxy.yaml
+              content: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: kube-proxy
+                spec:
+                  containers:
+                  - name: kube-proxy
+                    image: <kube-proxy-docker-image>
+                    ports:
+                    - containerPort: 10249
+
+    flannel:
+      type: tosca.nodes.Container.Application
+      properties:
+        container:
+          type: tosca.nodes.Container.Runtime
+          properties:
+            name: flannel
+            image: <flannel-docker-image>
+            ports:
+              - "8472:8472"
+          artifacts:
+            - file: /etc/flannel/flannel.conf
+              content: |
+                {
+                  "Network": "10.244.0.0/16",
+                  "Backend": {
+                    "Type": "vxlan",
+                    "VNI": 1,
+                    "Port": 8472
+                  }
+                }
+
+    kubernetes_dashboard:
+      type: tosca.nodes.Container.Application
+      properties:
+        container:
+          type: tosca.nodes.Container.Runtime
+          properties:
+            name: kubernetes-dashboard
+            image: <kubernetes-dashboard-docker-image>
+            ports:
+              - "9090:9090"
+
+  relationship_templates:
+    kubernetes_master_connects_to_etcd:
+      type: ConnectsTo
+      properties:
+        - source: kubernetes_master
+          target: etcd
+          key: etcd_connection
+
+    kubernetes_worker_connects_to_kubernetes_master:
+      type: ConnectsTo
+      properties:
+        - source: kubernetes_worker
+          target: kubernetes_master
+          key: kubernetes_master_connection
+
+    flannel_connects_to_docker:
+      type: ConnectsTo
+      properties:
+        - source: flannel
+          target: docker
+          key: docker_connection
+
+  output_templates:
+    kubernetes_api_endpoint:
+      type: tosca.outputs.Output
+      properties:
+        value: ${kubernetes_master.container.properties.networks[0].floating_ip}
+        description: Kubernetes API endpoint
+
+    kubernetes_dashboard_url:
+      type: tosca.outputs.Output
+      properties:
+        value: http://${kubernetes_dashboard.container.properties.networks[0].floating_ip}:9090
+        description: Kubernetes Dashboard URL
+
+  types:
+    tosca.nodes.Container.Application:
+      derived_from: tosca.nodes.Root
+      properties:
+        container:
+          type: tosca.nodes.Container.Runtime
+          required: true
+
+    tosca.nodes.Container.Runtime:
+      derived_from: tosca.nodes.Root
+      properties:
+        name:
+          type: String
+          required: true
+        image:
+          type: String
+          required: true
+        ports:
+          type: List
+          items:
+            type: String
+        environment:
+          type: List
+          items:
+            type: String
+        artifacts:
+          type: List
+          items:
+            type: Map
+            required:
+              - file
+              - content

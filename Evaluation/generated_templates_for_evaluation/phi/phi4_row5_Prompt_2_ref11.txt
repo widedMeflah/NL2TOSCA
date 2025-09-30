@@ -1,0 +1,92 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: >
+  A TOSCA-compliant Alien4Cloud template for orchestrating an application system with web UI, 
+  data analysis capabilities, automated tests, scalability, security, and backup mechanisms.
+
+topology_template:
+  node_templates:
+
+    # Web Server Node
+    web_server:
+      type: tosca.nodes.WebServer
+      properties:
+        image: nginx:latest
+        ports:
+          - 80
+
+    # Application Node
+    data_analysis_application:
+      type: tosca.nodes.Application
+      requirements:
+        - host: web_server
+      properties:
+        image: custom/data-analysis-app:1.0
+        environment:
+          JAVA_OPTS: "-Xmx2g" # Adjust memory as needed for large datasets
+
+    # Database Node
+    database:
+      type: tosca.nodes.Database
+      properties:
+        storage: 100Gi
+        image: postgres:latest
+        user: dbadmin
+        password: securepassword123
+      requirements:
+        - host: some_virtual_machine_type_with_sufficient_resources
+
+    # Backup Service Node
+    backup_service:
+      type: tosca.nodes.BackupService
+      properties:
+        schedule: "0 2 * * *" # Daily at 2 AM
+        retention: 7 # Days
+      requirements:
+        - database: database
+
+    # Automated Testing Node
+    automated_testing:
+      type: tosca.nodes.TestAutomation
+      properties:
+          test_framework: pytest
+      requirements:
+        - host: web_server
+
+    # Load Balancer for Scalability
+    load_balancer:
+      type: tosca.nodes.LBaaS.LoadBalancer
+      interfaces:
+        Standard:
+          create:
+            properties:
+              vip_subnet: subnet-12345
+
+  relationship_templates:
+
+    # Relationship between Application and Database
+    uses_database:
+      source: data_analysis_application
+      target: database
+      type: tosca.relationships.ConnectsTo
+
+    # Secure Web Access
+    secure_web_access:
+      source: web_server
+      target: load_balancer
+      type: tosca.relationships.SecurityConnectivity
+
+  policies:
+
+    - type: tosca.policies.scaling.ScalingPolicy
+      properties:
+        min_instances: 2
+        max_instances: 10
+        triggers:
+          - metric_name: CPU_Usage
+            threshold: 80
+            operator: ">"
+
+outputs:
+  web_ui_url:
+    value: { get_attribute: [web_server, ip_address] }

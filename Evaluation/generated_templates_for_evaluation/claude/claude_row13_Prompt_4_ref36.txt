@@ -1,0 +1,104 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying an Elastic Galaxy Cluster
+
+topology_template:
+  inputs:
+    num_cpus:
+      type: integer
+      description: Number of CPUs for the front-end node
+      default: 8
+      required: true
+
+    mem_size:
+      type: scalar-unit.size
+      description: Amount of memory for the front-end node
+      default: 16 GB
+      required: true
+
+    num_initial_workers:
+      type: integer
+      description: Initial number of worker nodes
+      default: 2
+      required: true
+
+    max_workers:
+      type: integer
+      description: Maximum number of worker nodes
+      default: 10
+      required: true
+
+  node_templates:
+    elastic_cluster_front_end:
+      type: tosca.nodes.indigo.ElasticCluster
+      properties:
+        deployment_id: galaxy_cluster
+        orchestrator_url: {get_attribute: [SELF, orchestrator_url]}
+        maximum_vm_instances: { get_input: max_workers }
+      requirements:
+        - lrms: slurm_front_end
+        - wn: wn_node
+
+    slurm_front_end:
+      type: tosca.nodes.indigo.LRMS.FrontEnd.Slurm
+      properties:
+        wn_ips: { get_attribute: [wn_node, private_address] }
+      requirements:
+        - host: front_end_server
+
+    front_end_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: num_cpus }
+            mem_size: { get_input: mem_size }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    galaxy_portal:
+      type: tosca.nodes.indigo.GalaxyPortal
+      properties:
+        admin_email: "admin@example.com"
+        admin_api_key: "admin-key"
+      requirements:
+        - host: front_end_server
+
+    wn_node:
+      type: tosca.nodes.indigo.LRMS.WorkerNode.Slurm
+      properties:
+        front_end_ip: { get_attribute: [front_end_server, private_address] }
+      capabilities:
+        scalable:
+          properties:
+            count: { get_input: num_initial_workers }
+            max_instances: { get_input: max_workers }
+      requirements:
+        - host: worker_server
+
+    worker_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+  outputs:
+    galaxy_url:
+      value: { concat: ['http://', get_attribute: [front_end_server, public_address], '/galaxy' ] }
+    cluster_ip:
+      value: { get_attribute: [front_end_server, public_address] }
+    cluster_creds:
+      value: { get_attribute: [front_end_server, credential, 0] }

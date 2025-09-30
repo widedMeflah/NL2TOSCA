@@ -1,0 +1,73 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+description: A TOSCA blueprint for deploying a Galaxy application on a virtual machine with customizable resources and encrypted storage, tailored for the INDIGO orchestrator.
+node_types:
+  org.indigo.nodes.GalaxyApplication:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Represents a Galaxy bioinformatics application instance.
+    properties:
+      galaxy_version:
+        type: string
+        description: The specific version of Galaxy to install (e.g., '23.0.0').
+        required: true
+      admin_email:
+        type: string
+        description: Email address for the Galaxy admin user.
+        required: true
+      admin_api_key:
+        type: string
+        description: API key for the Galaxy admin user.
+        required: true
+      instance_description:
+        type: string
+        description: A short description for the Galaxy instance.
+        required: false
+      data_directory:
+        type: string
+        description: The directory path where Galaxy data will be stored on the attached volume.
+        required: true
+      install_reference_data:
+        type: boolean
+        description: Whether to install common Galaxy reference data during deployment.
+        default: false
+      galaxy_flavor:
+        type: string
+        description: Specific flavor/profile for Galaxy tool installation (e.g., 'main', 'metagenomics', 'proteomics').
+        required: false
+topology_template:
+  node_templates:
+    compute_node:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        image: "Ubuntu-20.04"
+        cpu_count: 4
+        mem_size: 16 GB
+        disk_size: 30 GB
+        public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCz2your_public_ssh_key_hereG30N"
+    galaxy_data_volume:
+      type: tosca.nodes.Volume
+      properties:
+        size: 50 GB
+        encrypted: true
+        vault_server_address: "https://your-vault-server.example.com:8200"
+        vault_secret_path: "secret/data/galaxy/encryption_key"
+    galaxy_application:
+      type: org.indigo.nodes.GalaxyApplication
+      properties:
+        galaxy_version: "23.0.0"
+        admin_email: "galaxy.admin@example.com"
+        admin_api_key: "YOUR_GALAXY_ADMIN_API_KEY_HERE"
+        instance_description: "A production-ready Galaxy instance for bioinformatics analyses."
+        data_directory: "/srv/galaxy/data"
+        install_reference_data: true
+        galaxy_flavor: "main"
+      requirements:
+        - host:
+            node: compute_node
+            capability: tosca.capabilities.Container.Runtime
+        - uses_data_volume:
+            node: galaxy_data_volume
+            relationship: tosca.relationships.AttachesTo
+            properties:
+                device: /dev/sdb
+                mount_point: /srv/galaxy/data

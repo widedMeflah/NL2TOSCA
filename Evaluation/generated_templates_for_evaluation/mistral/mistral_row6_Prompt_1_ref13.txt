@@ -1,0 +1,60 @@
+
+description: Kubernetes Cluster Orchestration on Alien4cloud
+
+nodes:
+  Master:
+    type: kubernetes_master
+    properties:
+      os: ubuntu
+      ip_address: "{get_ip: interface: eth0}"
+      dns_domain: example.com
+      docker: true
+      command_line_tool: kubectl
+      etcd:
+        replicas: 3
+      flannel:
+        network_backend: vxlan
+        subnet: 10.0.0.0/16
+      kubernetes_dashboard:
+        enabled: true
+        namespace: kubernetes-dashboard
+
+  Worker:
+    type: kubernetes_worker
+    properties:
+      os: ubuntu
+      ip_address: "{get_ip: interface: eth0}"
+      dns_domain: example.com
+      docker: true
+      flannel:
+        network_backend: vxlan
+        subnet: 10.0.0.0/16
+
+relationships:
+  k8s_cluster:
+    type: kubernetes_cluster
+    members:
+      - relation: master_node
+        nodes: [Master]
+      - relation: worker_node
+        nodes: [Worker]
+
+  master_node:
+    type: kubernetes_master_node
+    members:
+      - node: Master
+
+  worker_node:
+    type: kubernetes_worker_node
+    members:
+      - node: Worker
+
+interfaces:
+  kubernetes_master:
+    properties:
+      api_endpoint: "${Master.ip_address}:6443"
+      dashboard_url: "http://${Master.ip_address}:8001"
+
+  kubernetes_worker:
+    properties:
+      api_endpoint: "${Master.ip_address}:6443"

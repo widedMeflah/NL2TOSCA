@@ -1,0 +1,116 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ApacheServerDeployment
+  template_version: 1.0.0
+  template_author: User
+
+description: TOSCA topology for deploying an Apache server with specified configurations.
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - custom-apache-types:1.0.0
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+      requirements:
+        - host:
+            node: ApacheServer
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    ApacheServer:
+      type: tosca.nodes.WebServer.Apache
+      properties:
+        version: 2.4
+        port: 80
+        document_root: /var/www
+      requirements:
+        - host:
+            node: ComputeNode
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - network_data:
+            node: DataNetworkEndpoint
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+        - network_admin:
+            node: AdminNetworkEndpoint
+            capability: tosca.capabilities.Endpoint.Admin
+            relationship: tosca.relationships.ConnectsTo
+
+    DataNetworkEndpoint:
+      type: tosca.nodes.Network
+      properties:
+        protocol: tcp
+        network_name: PRIVATE
+      capabilities:
+        endpoint:
+          properties:
+            initiator: source
+
+    AdminNetworkEndpoint:
+      type: tosca.nodes.Network
+      properties:
+        protocol: tcp
+        network_name: PRIVATE
+        secure: true
+      capabilities:
+        endpoint:
+          properties:
+            initiator: source
+
+  workflows:
+    start_apache:
+      steps:
+        start_step:
+          target: ApacheServer
+          operation: standard.start
+    stop_apache:
+      steps:
+        stop_step:
+          target: ApacheServer
+          operation: standard.stop
+    restart_apache:
+      steps:
+        restart_step:
+          target: ApacheServer
+          operation: custom.restart
+
+  node_types:
+    tosca.nodes.WebServer.Apache:
+      derived_from: tosca.nodes.WebServer
+      properties:
+        version:
+          type: string
+          default: 2.4
+        port:
+          type: integer
+          default: 80
+        document_root:
+          type: string
+          default: /var/www
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/start.sh
+          stop:
+            implementation: scripts/stop.sh
+        Custom:
+          restart:
+            implementation: scripts/restart.sh
+          curl_welcome_page:
+            implementation: scripts/curl_welcome.sh
+
+  outputs:
+    apache_url:
+      description: URL of the deployed Apache server
+      value: { get_attribute: [ApacheServer, endpoint, url] }

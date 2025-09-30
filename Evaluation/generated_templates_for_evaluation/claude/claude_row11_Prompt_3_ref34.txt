@@ -1,0 +1,91 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying Galaxy with SLURM cluster support
+
+topology_template:
+  inputs:
+    num_cpus:
+      type: integer
+      default: 1
+      description: Number of CPU cores for the front-end node
+    mem_size:
+      type: string
+      default: "1 GB"
+      description: Amount of memory for the front-end node
+    num_nodes:
+      type: integer
+      default: 2
+      description: Number of WNs in the cluster
+
+  node_templates:
+    galaxy:
+      type: tosca.nodes.indigo.GalaxyPortal
+      properties:
+        admin_email: admin@admin.com
+        admin_api_key: not_very_secret_api_key
+        version: release_18.05
+        instance_description: "ELIXIR-ITALY"
+        export_dir: /export
+        flavor: galaxy-no-tools
+        reference_data: true
+        storage_encryption: false
+        vault_url: changeit
+        vault_wrapping_token: not_a_wrapping_token
+        vault_secret_path: subject/depuuid
+        vault_secret_key: secret
+
+    galaxy_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: num_cpus }
+            mem_size: { get_input: mem_size }
+            instance_type: small
+        os:
+          properties:
+            type: linux
+            distribution: centos
+            version: 7
+
+    slurm_server:
+      type: tosca.nodes.indigo.LRMS.FrontEnd.Slurm
+      properties:
+        wn_ips: { get_attribute: [ lrms_wn, private_address ] }
+      requirements:
+        - host: galaxy_server
+
+    lrms_wn:
+      type: tosca.nodes.indigo.LRMS.WorkerNode.Slurm
+      properties:
+        front_end_ip: { get_attribute: [ galaxy_server, private_address ] }
+      capabilities:
+        wn:
+          properties:
+            max_instances: { get_input: num_nodes }
+            min_instances: 0
+        host:
+          properties:
+            instance_type: small
+
+    cvmfs:
+      type: tosca.nodes.indigo.CVMFS
+      properties:
+        configuration: cvmfs_preconfigured
+        repository: elixir-italy.galaxy.refdata
+        server_url: 90.147.102.186
+        pub_key: elixir-italy.galaxy.refdata.pub
+        proxy_url: DIRECT
+        proxy_port: 80
+        mount_point: /cvmfs
+
+  outputs:
+    galaxy_url:
+      value: { concat: [ 'http://', get_attribute: [ galaxy_server, public_address ], '/galaxy' ] }
+    cluster_ip:
+      value: { get_attribute: [ galaxy_server, public_address ] }
+    cluster_creds:
+      value: { get_attribute: [ galaxy_server, endpoint, credential, 0 ] }

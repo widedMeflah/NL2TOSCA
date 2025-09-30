@@ -1,0 +1,126 @@
+
+tosca_definitions_version: alien4cloud-1.3
+
+topology_template:
+  description: A system with a Java-capable web application platform and a search engine.
+  node_templates:
+    Web_Application_Server:
+      type: tosca.nodes.Compute
+      properties:
+        image: CentOS
+        flavor: small
+      capabilities:
+        endpoint:
+          properties:
+            ports:
+              - 8080
+      components:
+        Apache:
+          type: tosca.nodes.SoftwareComponent
+          properties:
+            package: httpd
+            version: latest
+          lifecycle:
+            install: |
+              yum install -y httpd
+              systemctl enable httpd
+              systemctl start httpd
+        Tomcat:
+          type: tosca.nodes.SoftwareComponent
+          properties:
+            package: tomcat
+            version: 9.0
+          lifecycle:
+            install: |
+              yum install -y tomcat
+              systemctl enable tomcat
+              systemctl start tomcat
+      relationships:
+        - type: ConnectsTo
+          target: MySQL_Database
+          properties:
+            protocol: tcp
+            ports:
+              - 3306
+        - type: ConnectsTo
+          target: Search_Engine
+          properties:
+            protocol: tcp
+            ports:
+              - 9200
+
+    Search_Engine:
+      type: tosca.nodes.Compute
+      properties:
+        image: CentOS
+        flavor: small
+      capabilities:
+        endpoint:
+          properties:
+            ports:
+              - 9200
+      components:
+        Elasticsearch:
+          type: tosca.nodes.SoftwareComponent
+          properties:
+            package: elasticsearch
+            version: 8.0
+          lifecycle:
+            install: |
+              yum install -y elasticsearch
+              systemctl enable elasticsearch
+              systemctl start elasticsearch
+
+    MySQL_Database:
+      type: tosca.nodes.Database
+      properties:
+        image: CentOS
+        flavor: small
+        database_name: webappdb
+        database_user: webappuser
+        database_password: webapppassword
+      components:
+        MySQL:
+          type: tosca.nodes.SoftwareComponent
+          properties:
+            package: mysql
+            version: 8.0
+          lifecycle:
+            install: |
+              yum install -y mysql
+              systemctl enable mysql
+              systemctl start mysql
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: webapp_network
+        provider: openstack
+      components:
+        Security_Group:
+          type: tosca.nodes.SecurityGroup
+          properties:
+            name: webapp_security
+            rules:
+              - protocol: tcp
+                ports: 22
+              - protocol: tcp
+                ports: 80
+              - protocol: tcp
+                ports: 443
+              - protocol: tcp
+                ports: 8080
+              - protocol: tcp
+                ports: 9200
+              - protocol: tcp
+                ports: 3306
+
+  relationship_templates:
+    ConnectsTo:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        ports:
+          - 80
+          - 8080
+          - 9200

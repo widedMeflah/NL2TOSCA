@@ -1,0 +1,189 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: |
+  TOSCA description for a self-adjusting virtual computing environment,
+  including a management node, auto-scaling worker nodes, a web-based management
+  interface, and dedicated data storage.
+
+topology_template:
+  node_templates:
+    management_node:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: management_node_cpus }
+        mem_size: { get_input: management_node_memory }
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: Ubuntu
+        os_version: "20.04"
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: management_node_cpus }
+            mem_size: { get_input: management_node_memory }
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: Ubuntu
+            version: "20.04"
+        ssh_endpoint:
+          type: tosca.capabilities.Endpoint.Admin
+          properties:
+            protocol: tcp
+            port: 22
+        web_ui_endpoint:
+          type: tosca.capabilities.Endpoint.Public
+          properties:
+            protocol: http
+            port: 8080
+
+    worker_node_type:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: worker_node_cpus }
+        mem_size: { get_input: worker_node_memory }
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: Ubuntu
+        os_version: "20.04"
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: worker_node_cpus }
+            mem_size: { get_input: worker_node_memory }
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: Ubuntu
+            version: "20.04"
+
+    management_web_interface:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        software_version: { get_input: ui_software_version }
+        description: { get_input: ui_description }
+        ssh_public_key: { get_input: ssh_public_key }
+        management_system_id: "indigo-dashboard"
+      requirements:
+        - host:
+            node: management_node
+            capability: tosca.capabilities.Compute
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_web_ui.sh
+            inputs:
+              ADMIN_EMAIL: { get_input: admin_email }
+              API_KEY: { get_input: api_key }
+              SOFTWARE_VERSION: { get_input: ui_software_version }
+              SSH_KEY: { get_input: ssh_public_key }
+              DATA_DIR: { get_input: data_directory_path }
+
+    system_data_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: data_storage_size }
+        mount_point: { get_input: data_directory_path }
+      requirements:
+        - attachment:
+            node: management_node
+            capability: tosca.capabilities.Attachment
+
+  groups:
+    worker_node_group:
+      type: tosca.groups.Root
+      members: [worker_node_type]
+
+  policies:
+    worker_scaling_policy:
+      type: tosca.policies.Scaling
+      targets: [worker_node_group]
+      properties:
+        min_instances: { get_input: min_worker_nodes }
+        max_instances: { get_input: max_worker_nodes }
+        default_instances: { get_input: default_worker_nodes }
+        scaling_aspects:
+          cpu_utilization:
+            target: 75
+            cooldown: 300
+            metric_period: 60
+          memory_utilization:
+            target: 85
+            cooldown: 300
+            metric_period: 60
+
+  inputs:
+    management_node_cpus:
+      type: integer
+      description: Number of CPUs for the primary management node.
+      default: 4
+    management_node_memory:
+      type: string
+      description: Amount of memory for the primary management node (e.g., 8 GB).
+      default: 8 GB
+    worker_node_cpus:
+      type: integer
+      description: Number of CPUs for each worker node.
+      default: 2
+    worker_node_memory:
+      type: string
+      description: Amount of memory for each worker node (e.g., 4 GB).
+      default: 4 GB
+    min_worker_nodes:
+      type: integer
+      description: Minimum number of worker nodes to maintain.
+      default: 1
+    default_worker_nodes:
+      type: integer
+      description: Initial number of worker nodes to deploy.
+      default: 2
+    max_worker_nodes:
+      type: integer
+      description: Maximum number of worker nodes allowed.
+      default: 10
+    admin_email:
+      type: string
+      description: Administrator email for the web interface setup.
+      default: admin@example.com
+    api_key:
+      type: string
+      description: API key for secure access to the web interface.
+      required: true
+    ui_software_version:
+      type: string
+      description: Specific version of the web interface software to deploy.
+      default: "1.0.0"
+    ui_description:
+      type: string
+      description: A user-provided description for the web interface instance.
+      default: "Scalable Cloud Environment Dashboard"
+    ssh_public_key:
+      type: string
+      description: SSH public key to be injected into compute instances for secure access.
+      required: true
+    data_storage_size:
+      type: string
+      description: Size of the dedicated data storage volume (e.g., 500 GB, 1 TB).
+      default: 500 GB
+    data_directory_path:
+      type: string
+      description: File system path where the data storage volume will be mounted.
+      default: "/var/data/cluster"
+
+  outputs:
+    web_interface_url:
+      description: The URL to access the web-based management interface.
+      value: { concat: ["http://", { get_attribute: [management_node, public_address] }, ":", { get_attribute: [management_node, capabilities, web_ui_endpoint, port] }] }
+    cluster_ip_address:
+      description: The public IP address of the primary management node of the cluster.
+      value: { get_attribute: [management_node, public_address] }
+    management_credentials_info:
+      description: Information regarding the credentials needed to manage the environment.
+      value:
+        admin_email_used: { get_input: admin_email }
+        api_key_status: "API key was provided during deployment setup. Please refer to your secure storage for the key used."
+        ssh_access_key_info: "Access via SSH using the provided public key and your corresponding private key at { get_attribute: [management_node, public_address] }."

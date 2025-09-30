@@ -1,0 +1,113 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: kubernetes-cluster
+  template_version: 1.0.0
+  template_author: alien4cloud
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:2.0.0
+
+node_types:
+  org.alien4cloud.nodes.KubernetesMaster:
+    derived_from: tosca.nodes.Compute
+    properties:
+      dns_domain:
+        type: string
+        required: true
+        default: "cluster.local"
+      api_port:
+        type: integer
+        required: true
+        default: 6443
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+        valid_source_types: [org.alien4cloud.nodes.DockerEngine]
+
+  org.alien4cloud.nodes.KubernetesWorker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      join_token:
+        type: string
+        required: true
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+        valid_source_types: [org.alien4cloud.nodes.DockerEngine]
+
+topology_template:
+  node_templates:
+    MasterNode:
+      type: org.alien4cloud.nodes.KubernetesMaster
+      properties:
+        dns_domain: "cluster.local"
+        api_port: 6443
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+      requirements:
+        - network: PrivateNetwork
+
+    WorkerNodes:
+      type: org.alien4cloud.nodes.KubernetesWorker
+      properties:
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+      requirements:
+        - network: PrivateNetwork
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: 1
+
+    DockerMaster:
+      type: org.alien4cloud.nodes.DockerEngine
+      requirements:
+        - host: MasterNode
+
+    DockerWorker:
+      type: org.alien4cloud.nodes.DockerEngine
+      requirements:
+        - host: WorkerNodes
+
+    KubernetesDashboard:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "v2.7.0"
+      requirements:
+        - host: MasterNode
+
+    Flannel:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "v0.19.0"
+      requirements:
+        - host: MasterNode
+        - dependency: Etcd
+
+    Etcd:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "v3.5.0"
+      requirements:
+        - host: MasterNode
+
+    PrivateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        network_name: "kubernetes-network"
+        network_type: "overlay"
+        ip_version: 4
+
+  outputs:
+    dashboard_url:
+      description: Kubernetes Dashboard URL
+      value: { get_attribute: [KubernetesDashboard, dashboard_endpoint] }
+    api_endpoint:
+      description: Kubernetes API endpoint
+      value: { concat: ['https://', get_attribute: [MasterNode, ip_address], ':', get_property: [MasterNode, api_port]] }

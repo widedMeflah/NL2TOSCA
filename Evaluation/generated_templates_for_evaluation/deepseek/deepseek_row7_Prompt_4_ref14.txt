@@ -1,0 +1,69 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Web Application Deployment on Apache Tomcat
+  topology_template_version: 1.0
+
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        architecture: { get_property: [SELF, architecture] }
+        os_type: { get_property: [SELF, os_type] }
+      constraints:
+        - architecture in [x86_64, i386]
+        - os_type in [linux, windows]
+
+    Java:
+      type: tosca.nodes.Java
+      properties:
+        java_version: { get_property: [SELF, java_version] }
+        credentials: { get_property: [SELF, credentials] }
+      constraints:
+        - java_version >= 8
+
+    TomcatServer:
+      type: tosca.nodes.WebServer.Apache.Tomcat
+      properties:
+        version: { get_property: [SELF, version] }
+        ports:
+          - 8080
+        credentials: { get_property: [SELF, credentials] }
+      dependencies:
+        - Compute
+        - Java
+      relationships:
+        - type: ConnectsTo
+          target: Compute
+          properties:
+            network: private
+        - type: ConnectsTo
+          target: Java
+          properties:
+            dependency: runtime
+
+    WARFile:
+      type: tosca.nodes.WebApplication.WarFile
+      properties:
+        war_file: { get_property: [SELF, war_file] }
+        context_path: /
+      dependencies:
+        - TomcatServer
+      relationships:
+        - type: HostedOn
+          target: TomcatServer
+
+  relationships:
+    - type: tosca.relationships.Network
+      properties:
+        network_name: private
+      interfaces:
+        - type: tosca.interfaces.Network.Configure
+
+
+
+  outputs:
+    web_application_url:
+      value: { concat: [ 'http://', get_attribute: [Compute, private_endpoint, endpoints, 0, endpoint], '/myapp' ] }
+    tomcat_server_url:
+      value: { concat: [ 'http://', get_attribute: [Compute, private_endpoint, endpoints, 0, endpoint], ':8080' ] }

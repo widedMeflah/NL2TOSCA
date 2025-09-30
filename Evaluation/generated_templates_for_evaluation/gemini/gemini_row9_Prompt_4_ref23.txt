@@ -1,0 +1,20 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_2
+metadata:
+  target_orchestrator: INDIGO
+description: TOSCA template for a Docker and Marathon deployed ML service.
+topology_template:
+  node_templates:
+    ml_service:
+      type: tosca.nodes.indigo.Application.Docker.Marathon
+      description: Machine Learning Service container
+      properties:
+        image: "my-ml-service-image:latest"
+        cpus: 1.0
+        mem: 1024
+        ports:
+          - container_port: 8888
+            host_port: 8888
+            protocol: tcp
+        network_mode: "host"
+        cmd: "python /app/service.py"

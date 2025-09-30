@@ -1,0 +1,36 @@
+name: data-management-system
+
+description: A TOSCA-compliant description for a data management system using Alien4cloud.
+
+topology_template:
+  node_templates:
+    DataManagementSystem:
+      type: ocf:aliencat:datamanagementsystem:1.0.0
+      properties:
+        server_os:
+          type: linux
+          architecture: x86_64
+          distribution: ubuntu
+        data_storage_service:
+          type: ocf:aliencat:mongodb:1.0.0
+          properties:
+            port: 27017
+            network:
+              type: secure_private_network
+              protocol: tcp
+            data_directory: /data/mongodb
+        server_access:
+          type: ocf:aliencat:serveraccess:1.0.0
+          properties:
+            network_port:
+              type: integer
+              default: 27017
+            server_ip:
+              type: ipaddress
+
+relationships:
+  DataManagementSystem_DataStorageService:
+    type: data_storage_service
+  DataManagementSystem_ServerAccess:
+    type: server_access
+

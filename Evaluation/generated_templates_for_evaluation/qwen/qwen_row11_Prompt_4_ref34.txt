@@ -1,0 +1,111 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: |
+  This TOSCA template defines a deployment setup for a Galaxy instance with cluster support.
+  It uses CentOS 7 as the base operating system and SLURM for resource management.
+  The deployment includes a specific Galaxy flavor, necessary companion software, and reference data.
+  It supports storage encryption, uses a Vault server for secret management, allows for a hybrid environment,
+  sends confirmation emails upon successful deployment, and handles a specified number of worker nodes.
+
+topology_template:
+
+  node_templates:
+
+    Galaxy_Instance:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: GalaxyVDU
+        description: Galaxy instance with cluster support
+        number_of_workers: 5
+        os_distribution: CentOS
+        os_version: "7"
+        flavor: galaxy-1.24
+        storage_encryption: true
+        vault_integration:
+          vault_server: https://vault.example.org
+          vault_token: encrypted-token
+          vault_path: galaxy/secrets
+        email_notification:
+          enabled: true
+          email_to: admin@example.org
+          email_from: deploy@example.org
+          email_subject: Galaxy Deployment Successful
+          email_body: "The Galaxy deployment has been completed successfully."
+
+    SLURM_Manager:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: SlurmManager
+        description: SLURM resource manager for cluster scheduling
+        os_distribution: CentOS
+        os_version: "7"
+        number_of_workers: 3
+        hybrid_support: true
+
+    Reference_Data_Storage:
+      type: tosca.nodes.Storage.Data
+      properties:
+        name: GalaxyReferenceData
+        description: Storage for Galaxy reference data
+        encrypted: true
+        size: 100GB
+
+    Vault_Server:
+      type: tosca.nodes.Compute
+      properties:
+        name: VaultServer
+        description: Vault server for secret management
+        ip_address: 192.168.1.100
+        port: 8200
+
+    Worker_Node:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: WorkerNode
+        description: Worker node for Galaxy cluster
+        count: 10
+        os_distribution: CentOS
+        os_version: "7"
+        hybrid_support: true
+
+    Email_Service:
+      type: tosca.nodes.Compute
+      properties:
+        name: EmailService
+        description: Service for sending deployment confirmation emails
+        ip_address: 192.168.1.200
+        port: 25
+        email_config:
+          from: deploy@example.org
+          to: admin@example.org
+          subject: Galaxy Deployment Status
+          body: Deployment completed successfully
+
+  groups:
+    Galaxy_Cluster:
+      type: tosca.groups.nfv.Cluster
+      members: [Galaxy_Instance, SLURM_Manager, Worker_Node]
+      properties:
+        cluster_type: galaxy-slurm
+        min_nodes: 3
+        max_nodes: 20
+
+  policies:
+    - type: tosca.policies.nfv.Scaling
+      description: Scale worker nodes based on demand
+      targets: [Worker_Node]
+      properties:
+        min_instances: 3
+        max_instances: 20
+        scaling_policy: manual
+
+    - type: tosca.policies.nfv.Placement
+      description: Place Galaxy and SLURM nodes on separate physical hosts for isolation
+      targets: [Galaxy_Instance, SLURM_Manager]
+
+    - type: tosca.policies.nfv.Notification
+      description: Send email notification upon deployment completion
+      targets: [Email_Service]
+      properties:
+        trigger: on_success
+        message: Deployment of Galaxy instance completed successfully

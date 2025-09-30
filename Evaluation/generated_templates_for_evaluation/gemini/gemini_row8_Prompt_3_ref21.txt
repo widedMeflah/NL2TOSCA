@@ -1,0 +1,154 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA blueprint for the Wine Cellar PHP web application deployment.
+
+imports:
+  - tosca-normative-types:1.3
+
+node_types:
+  indigo.nodes.WebServer.Apache:
+    derived_from: tosca.nodes.WebServer
+    artifacts:
+      install_apache:
+        type: tosca.artifacts.Deployment.Ansible.Playbook
+        file: apache_install.yaml
+  indigo.nodes.SoftwareComponent.PHP:
+    derived_from: tosca.nodes.SoftwareComponent
+    artifacts:
+      install_php:
+        type: tosca.artifacts.Deployment.Ansible.Playbook
+        file: php_install.yaml
+  indigo.nodes.WebApplication.WineCellarPHP:
+    derived_from: tosca.nodes.WebApplication
+    properties:
+      application_source_url:
+        type: string
+        default: https://github.com/agoncal/wine-cellar-application-php.git
+      context_root:
+        type: string
+        default: /
+    artifacts:
+      deploy_app:
+        type: tosca.artifacts.Deployment.Ansible.Playbook
+        file: deploy_wine_cellar.yaml
+  indigo.nodes.Database.MySQL:
+    derived_from: tosca.nodes.Database
+    properties:
+      port:
+        type: integer
+        default: 3306
+      root_password:
+        type: string
+        required: true
+    artifacts:
+      install_mysql:
+        type: tosca.artifacts.Deployment.Ansible.Playbook
+        file: mysql_install.yaml
+  indigo.nodes.Database.WineCellarDB:
+    derived_from: tosca.nodes.Database
+    properties:
+      db_name:
+        type: string
+        default: winecellar_db
+      user:
+        type: string
+        default: winecellar_user
+      password:
+        type: string
+        required: true
+      initialization_script_url:
+        type: string
+        default: https://raw.githubusercontent.com/agoncal/wine-cellar-application-php/master/db/winecellar.sql
+    artifacts:
+      init_db:
+        type: tosca.artifacts.Deployment.Ansible.Playbook
+        file: init_wine_cellar_db.yaml
+
+topology_template:
+  inputs:
+    db_root_password:
+      type: string
+      description: The root password for the MySQL database.
+      #sensitive: true
+    db_user_password:
+      type: string
+      description: The password for the application's database user.
+      #sensitive: true
+
+  node_templates:
+    web_vm:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+        num_cpus: 1
+        mem_size: 1 GB
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            port: [ 80, 443 ]
+            public_address: true
+
+    db_vm:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+        num_cpus: 1
+        mem_size: 4 GB
+        disk_size: 10 GB
+
+    web_server:
+      type: indigo.nodes.WebServer.Apache
+      requirements:
+        - host: web_vm
+
+    php_runtime:
+      type: indigo.nodes.SoftwareComponent.PHP
+      requirements:
+        - host: web_server
+
+    wine_cellar_app:
+      type: indigo.nodes.WebApplication.WineCellarPHP
+      properties:
+        context_root: /
+      requirements:
+        - host: php_runtime
+        - connect_to_database:
+            node: wine_cellar_database
+            relationship: app_db_connection
+
+    mysql_server:
+      type: indigo.nodes.Database.MySQL
+      properties:
+        root_password: { get_input: db_root_password }
+      requirements:
+        - host: db_vm
+
+    wine_cellar_database:
+      type: indigo.nodes.Database.WineCellarDB
+      properties:
+        password: { get_input: db_user_password }
+      requirements:
+        - host: mysql_server
+
+  relationship_templates:
+    app_db_connection:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        db_host: { get_attribute: [ db_vm, private_address ] }
+        db_port: { get_property: [ mysql_server, port ] }
+        db_name: { get_property: [ wine_cellar_database, db_name ] }
+        db_user: { get_property: [ wine_cellar_database, user ] }
+        db_password: { get_property: [ wine_cellar_database, password ] }
+
+  outputs:
+    website_url:
+      description: The URL of the deployed Wine Cellar application.
+      value: { concat: [ 'http://', get_attribute: [ web_vm, public_address ], get_property: [ wine_cellar_app, context_root ] ] }
+    db_ip_address:
+      description: The private IP address of the database server.
+      value: { get_attribute: [ db_vm, private_address ] }

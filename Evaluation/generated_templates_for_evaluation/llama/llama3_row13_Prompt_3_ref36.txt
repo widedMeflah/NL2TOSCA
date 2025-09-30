@@ -1,0 +1,79 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Virtual Elastic Cluster Deployment
+
+topology_template:
+  node_templates:
+    Elastic Cluster Front-End:
+      type: tosca.nodes.ElasticClusterFrontEnd
+      properties:
+        workload_management_systems: [Torque, SGE, Slurm, Condor]
+
+    Galaxy Portal:
+      type: tosca.nodes.GalaxyPortal
+      properties:
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        galaxy_version: latest
+      requirements:
+        - host:Compute Resource
+
+    LRMS Front-End:
+      type: tosca.nodes.SlurmFrontEnd
+      properties:
+        cpu_config: { num_cpus: 2, cpu_arch: x86_64 }
+        memory_config: { mem_size: 4096 MB }
+      requirements:
+        - host:Compute Resource
+
+    Compute Resource:
+      type: tosca.nodes.Compute
+      properties:
+        image: Ubuntu 14.04
+        cpu_config: { num_cpus: 2, cpu_arch: x86_64 }
+        memory_config: { mem_size: 4096 MB }
+
+    Worker Nodes:
+      type: tosca.nodes.Compute
+      properties:
+        image: Ubuntu 14.04
+        cpu_config: { num_cpus: 2, cpu_arch: x86_64 }
+        memory_config: { mem_size: 4096 MB }
+        max_instances: 10
+      requirements:
+        - scaling: Elastic Cluster Front-End
+
+    Galaxy Worker Nodes:
+      type: tosca.nodes.Compute
+      properties:
+        image: Ubuntu 14.04
+        cpu_config: { num_cpus: 2, cpu_arch: x86_64 }
+        memory_config: { mem_size: 4096 MB }
+        export_directory: /data/export
+      requirements:
+        - host: Galaxy Portal
+        - scaling: Elastic Cluster Front-End
+
+  relationship_templates:
+    - host:
+        type: tosca.relationships.HostedOn
+        properties: {}
+
+  input_templates:
+    - admin_email:
+        type: string
+        description: Admin email for Galaxy portal
+    - api_key:
+        type: string
+        description: API key for Galaxy portal
+
+  output_templates:
+    - galaxy_url:
+        type: string
+        value: { get_attribute: [Galaxy Portal, url] }
+    - cluster_ip:
+        type: string
+        value: { get_attribute: [Compute Resource, public_ip] }
+    - cluster_credentials:
+        type: string
+        value: { get_attribute: [Compute Resource, credentials] }

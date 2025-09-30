@@ -1,0 +1,84 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - tosca-normative-types:1.0
+  - custom-types:1.0
+
+topology_template:
+  description: Apache Server Deployment
+  node_templates:
+    Apache_Server:
+      type: custom_types.ApacheServer
+      properties:
+        version: 2.4
+        port: 80
+        document_root: /var/www
+      capabilities:
+        endpoint:
+          properties:
+            protocol: TCP
+            network_name: PRIVATE
+        bind:
+          properties:
+            protocol: TCP
+            network_name: PRIVATE
+      requirements:
+        - host: Compute_Node
+        - network: Network
+        - admin_endpoint: Network
+
+    Compute_Node:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 1
+        disk_size: 10 GB
+        mem_size: 2 GB
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint:
+          properties:
+            protocol: TCP
+            network_name: PRIVATE
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        name: PRIVATE
+        protocol: TCP
+      requirements:
+        - bind: Compute_Node
+
+    Apache_Server_Custom_Workflows:
+      type: custom_types.ApacheCustomWorkflows
+      properties:
+        server: { get_attribute: [ Apache_Server, name ] }
+      workflows:
+        stop:
+          description: Stop the Apache server
+          steps:
+            - run_command:
+                command: apachectl stop
+        start:
+          description: Start the Apache server
+          steps:
+            - run_command:
+                command: apachectl start
+        restart:
+          description: Restart the Apache server
+          steps:
+            - run_command:
+                command: apachectl restart
+        curl:
+          description: Curl the welcome page of the Apache server
+          steps:
+            - run_command:
+                command: curl http://localhost
+
+  output_templates:
+    Apache_Server_URL:
+      value: { concat: [ 'http://', { get_attribute: [ Apache_Server, public_address ] } ] }

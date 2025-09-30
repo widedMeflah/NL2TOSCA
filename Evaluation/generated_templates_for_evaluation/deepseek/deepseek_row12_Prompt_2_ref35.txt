@@ -1,0 +1,77 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Galaxy Application Deployment
+  topology:
+    node_templates:
+      compute:
+        type: tosca.nodes.Compute
+        properties:
+          cpu:
+            num_cores: 4
+          memory:
+            size: 8 GB
+          disk_size: 50 GB
+          public_key: { get_input: public_ssh_key }
+          encryption_enabled: { get_input: encryption_enabled }
+          vault_server: { get_input: [vault_server, null] }
+        capabilities:
+          encryption:
+            properties:
+              enabled: { get_input: encryption_enabled }
+              vault_server: { get_input: [vault_server, null] }
+
+      galaxy:
+        type: tosca.nodes.Application.Galaxy
+        properties:
+          version: { get_input: galaxy_version }
+          admin_email: { get_input: admin_email }
+          api_key: { get_input: api_key }
+          data_directory: { get_input: galaxy_data_directory }
+          install_reference_data: { get_input: install_reference_data }
+          flavor: { get_input: galaxy_flavor }
+        relationships:
+          - type: tosca.relationships.HostedOn
+            target: compute
+            properties:
+              description: Galaxy hosted on compute resource
+
+    input_parameters:
+      public_ssh_key:
+        type: string
+        required: true
+        constraints:
+          - min_length: 1
+      galaxy_version:
+        type: string
+        required: true
+        default: "22.05"
+      admin_email:
+        type: string
+        required: true
+        constraints:
+          - pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+      api_key:
+        type: string
+        required: true
+        constraints:
+          - min_length: 1
+      galaxy_data_directory:
+        type: string
+        default: "/galaxy/data"
+      install_reference_data:
+        type: boolean
+        default: true
+      galaxy_flavor:
+        type: string
+        default: "full"
+        constraints:
+          - allowed_values: ["full", "minimal"]
+      encryption_enabled:
+        type: boolean
+        default: false
+      vault_server:
+        type: string
+        required: false
+        constraints:
+          - if: { get_input: encryption_enabled }

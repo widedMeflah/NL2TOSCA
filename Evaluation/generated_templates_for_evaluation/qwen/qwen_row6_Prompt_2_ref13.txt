@@ -1,0 +1,59 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: Deployment of a Kubernetes cluster with master and scalable worker nodes using Ubuntu, secure communication, and monitoring dashboard.
+
+topology_template:
+  node_templates:
+
+    kubernetes_master:
+      type: tosca.nodes.ContainerPlatform.Kubernetes.Master
+      properties:
+        os:
+          type: ubuntu
+          version: 20.04
+        secure_communication: true
+        dashboard_enabled: true
+        dashboard_url: "https://kubernetes-dashboard"
+      requirements:
+        - host:
+            node: tosca.nodes.Compute
+            capability: tosca.capabilities.ContainerHost
+            properties:
+              # Master node compute configuration
+              instance_type: m5.large
+              image: ubuntu-20.04
+              key_name: my-key
+              security_groups:
+                - sg-secure-k8s
+
+    kubernetes_worker:
+      type: tosca.nodes.ContainerPlatform.Kubernetes.Worker
+      properties:
+        os:
+          type: ubuntu
+          version: 20.04
+        scale:
+          min_instances: 1
+          max_instances: 5
+          default_instances: 2
+        secure_communication: true
+      requirements:
+        - host:
+            node: tosca.nodes.Compute
+            capability: tosca.capabilities.ContainerHost
+            properties:
+              # Worker node compute configuration
+              instance_type: t3.medium
+              image: ubuntu-20.04
+              key_name: my-key
+              security_groups:
+                - sg-secure-k8s
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        type: ipv4
+        cidr: "192.168.0.0/16"
+        dns:
+          - 8.8.8.8
+          - 8.8.4.4

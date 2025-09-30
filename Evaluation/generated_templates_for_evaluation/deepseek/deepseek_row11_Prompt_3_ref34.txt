@@ -1,0 +1,151 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Galaxy Platform Deployment with Cluster Support
+
+  inputs:
+    admin_email:
+      type: string
+      default: admin@admin.com
+
+    admin_api_key:
+      type: string
+      default: not_very_secret_api_key
+
+    galaxy_version:
+      type: string
+      default: release_18.05
+
+    instance_description:
+      type: string
+      default: "ELIXIR-ITALY"
+
+    ssh_public_key:
+      type: string
+      default: |
+        your_ssh_public_key
+
+    export_directory:
+      type: string
+      default: /export
+
+    storage_encryption:
+      type: boolean
+      default: false
+
+    vault_server_url:
+      type: string
+      default: changeit
+
+    vault_wrapping_token:
+      type: string
+      default: not_a_wrapping_token
+
+    vault_secret_path:
+      type: string
+      default: subject/depuuid
+
+    vault_secret_key_name:
+      type: string
+      default: secret
+
+    galaxy_flavor:
+      type: string
+      default: galaxy-no-tools
+
+    install_reference_data:
+      type: boolean
+      default: true
+
+    cvmfs_config:
+      type: string
+      default: cvmfs_preconfigured
+
+    cvmfs_repository:
+      type: string
+      default: elixir-italy.galaxy.refdata
+
+    cvmfs_server_url:
+      type: string
+      default: 90.147.102.186
+
+    cvmfs_public_key_file:
+      type: string
+      default: elixir-italy.galaxy.refdata.pub
+
+    cvmfs_proxy_url:
+      type: string
+      default: DIRECT
+
+    cvmfs_proxy_port:
+      type: string
+      default: "80"
+
+    cvmfs_directory:
+      type: string
+      default: /cvmfs
+
+    worker_nodes:
+      type: integer
+      default: 2
+
+    front_end_flavor:
+      type: string
+      default: small
+
+    worker_flavor:
+      type: string
+      default: small
+
+    storage_size:
+      type: integer
+      default: 50
+
+    hybrid_environment:
+      type: boolean
+      default: false
+
+  node_templates:
+    galaxy_cluster:
+      type: tosca.nodes.INDIGO.Galaxy.Cluster
+
+      properties:
+        admin_email: { get_input: admin_email }
+        admin_api_key: { get_input: admin_api_key }
+        galaxy_version: { get_input: galaxy_version }
+        instance_description: { get_input: instance_description }
+        ssh_public_key: { get_input: ssh_public_key }
+        export_directory: { get_input: export_directory }
+        storage_encryption: { get_input: storage_encryption }
+        vault_server_url: { get_input: vault_server_url }
+        vault_wrapping_token: { get_input: vault_wrapping_token }
+        vault_secret_path: { get_input: vault_secret_path }
+        vault_secret_key_name: { get_input: vault_secret_key_name }
+        galaxy_flavor: { get_input: galaxy_flavor }
+        install_reference_data: { get_input: install_reference_data }
+        cvmfs_config: { get_input: cvmfs_config }
+        cvmfs_repository: { get_input: cvmfs_repository }
+        cvmfs_server_url: { get_input: cvmfs_server_url }
+        cvmfs_public_key_file: { get_input: cvmfs_public_key_file }
+        cvmfs_proxy_url: { get_input: cvmfs_proxy_url }
+        cvmfs_proxy_port: { get_input: cvmfs_proxy_port }
+        cvmfs_directory: { get_input: cvmfs_directory }
+        worker_nodes: { get_input: worker_nodes }
+        front_end_flavor: { get_input: front_end_flavor }
+        worker_flavor: { get_input: worker_flavor }
+        storage_size: { get_input: storage_size }
+        hybrid_environment: { get_input: hybrid_environment }
+
+    notifications:
+      type: tosca.nodes.INDIGO.Notifications
+
+      properties:
+        notification_email:
+          sender: "galaxy-deploy@elixir-italy.org"
+          recipients:
+            - admin@admin.com
+          email_body: |
+            Your Galaxy instance has been deployed successfully.
+            You can access it at: https://your-galaxy-instance-url
+            If encryption is enabled, please provide the passphrase to access the encrypted storage.
+            If you encounter any issues, please check your spam folder for confirmation email.

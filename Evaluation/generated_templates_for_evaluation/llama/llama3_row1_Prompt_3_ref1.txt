@@ -1,0 +1,93 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Deployment topology with Alien4Cloud and remote Elasticsearch
+
+  node_templates:
+    Linux_Server:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        disk_size: 10 GB
+        mem_size: 4 GB
+        operating_system: Linux
+
+    JDK_Installation:
+      type: tosca.nodes.Java
+      properties:
+        version: 11
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: Linux_Server
+
+    Alien4Cloud:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: 4.0
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: Linux_Server
+        - type: tosca.relationships.ConnectsTo
+          target: Elasticsearch
+
+    Elasticsearch_Compute:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        disk_size: 10 GB
+        mem_size: 4 GB
+        operating_system: Linux
+
+    Elasticsearch_JDK:
+      type: tosca.nodes.Java
+      properties:
+        version: 11
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: Elasticsearch_Compute
+
+    Elasticsearch:
+      type: tosca.nodes.Database
+      properties:
+        version: 7.10
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: Elasticsearch_Compute
+        - type: tosca.relationships DependsOn
+          target: Elasticsearch_JDK
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        name: my_network
+      relationships:
+        - type: tosca.relationships.Connects
+          target: Linux_Server
+        - type: tosca.relationships.Connects
+          target: Elasticsearch_Compute
+
+  relationship_templates:
+    HostedOn:
+      type: tosca.relationships.HostedOn
+
+    ConnectsTo:
+      type: tosca.relationships.ConnectsTo
+
+    DependsOn:
+      type: tosca.relationships.DependsOn
+
+    Connects:
+      type: tosca.relationships.Connects
+
+  capability_types:
+    Endpoints:
+      properties:
+        protocol: { type: string }
+        ports: { type: string }
+      attributes:
+        url: { type: string }
+
+  interface_types:
+    Standard:
+      create: {}

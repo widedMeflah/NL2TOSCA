@@ -1,0 +1,61 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    VM:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4096 MB
+        os: ubuntu
+      capabilities:
+        endpoint:
+          properties:
+            network_name: public
+
+    Elasticsearch:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 8.4.0
+        elasticsearch_password: { get_input: elasticsearch_password }
+        kibana_password: { get_input: kibana_password }
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: VM
+        - type: tosca.relationships.Network
+          target: VM
+
+  input:
+    - elasticsearch_password
+    - kibana_password
+
+  relationship_templates:
+    HostedOn:
+      type: tosca.relationships.HostedOn
+
+    Network:
+      type: tosca.relationships.Network
+
+  capability_types:
+    endpoint:
+      properties:
+        network_name: string
+
+  node_types:
+    Compute:
+      derived_from: tosca.nodes.Compute
+      properties:
+        os: string
+      capabilities:
+        endpoint: endpoint
+
+    SoftwareComponent:
+      derived_from: tosca.nodes.SoftwareComponent
+      properties:
+        version: string
+        elasticsearch_password: string
+        kibana_password: string
+      relationships:
+        - type: tosca.relationships.HostedOn
+        - type: tosca.relationships.Network

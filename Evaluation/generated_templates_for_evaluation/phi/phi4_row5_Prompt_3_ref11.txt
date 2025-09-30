@@ -1,0 +1,91 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: >
+  Alien4Cloud deployment environment setup with specific configurations and components.
+
+imports:
+  - remote_file: https://github.com/elastic/elasticsearch/releases/download/v7.10.1/elasticsearch-7.10.1-linux-x86_64.tar.gz
+    file_name: elasticsearch-7.10.1-linux-x86_64.tar.gz
+
+topology_template:
+
+  node_templates:
+  
+    Alien4Cloud:
+      type: org.alien4cloud.nodes.Alien4Cloud
+      properties:
+        contextRoot: "/"
+        profiles:
+          - "security-demo"
+          - "noApiDoc"
+
+    OracleJDK:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        url: "https://download.oracle.com/otn-pub/java/jdk/17+35/eaf75d8a7dbbe0b1e6c9b71ec4f43dce/jdk-17_linux-x64_bin.tar.gz"
+        installation_path: "/usr/local/jdk"
+
+    ElasticSearch_Instance_1:
+      type: org.alien4cloud.nodes.Elasticsearch
+      properties:
+        version: "7.10.1"
+        discovery.seed_hosts: ["ElasticSearch_Instance_2"]
+      requirements:
+        - host: ComputeNode_ES1
+
+    ElasticSearch_Instance_2:
+      type: org.alien4cloud.nodes.Elasticsearch
+      properties:
+        version: "7.10.1"
+        discovery.seed_hosts: ["ElasticSearch_Instance_1"]
+      requirements:
+        - host: ComputeNode_ES2
+    
+    IT_Testing_Component:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        branch: "develop"
+        version: "1.3.0-RC5"
+        test_suite: "RunCloudify3AmazonLongRunIT"
+
+    ComputeNode_Alien4Cloud_FE:
+      type: org.alien4cloud.nodes.Compute
+      requirements:
+        - host: NetworkIPv4
+
+    ComputeNode_ES1:
+      type: org.alien4cloud.nodes.Compute
+      requirements:
+        - host: NetworkIPv4
+
+    ComputeNode_ES2:
+      type: org.alien4cloud.nodes.Compute
+      requirements:
+        - host: NetworkIPv4
+    
+    NetworkIPv4:
+      type: tosca.nodes.network.Network
+      properties:
+        protocol: "IPv4"
+
+  relationships:
+
+    - type: org.alien4cloud.relationships.HostedOn
+      source: Alien4Cloud
+      target: ComputeNode_Alien4Cloud_FE
+
+    - type: org.alien4cloud.relationships.RequiresJDK
+      source: Alien4Cloud
+      target: OracleJDK
+
+    - type: org.alien4cloud.relationships.DependsOn
+      source: ElasticSearch_Instance_1
+      target: OracleJDK
+
+    - type: org.alien4cloud.relationships.DependsOn
+      source: ElasticSearch_Instance_2
+      target: OracleJDK
+    
+    - type: org.alien4cloud.relationships.IT_Testing
+      source: IT_Testing_Component
+      target: Alien4Cloud

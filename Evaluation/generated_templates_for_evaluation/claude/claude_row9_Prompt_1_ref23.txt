@@ -1,0 +1,63 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying a plant classification application
+
+topology_template:
+  inputs:
+    docker_image:
+      type: string
+      default: "plant-classification:latest"
+    app_port:
+      type: integer
+      default: 8080
+    cpu_count:
+      type: float
+      default: 2.0
+    memory_size:
+      type: string
+      default: "4096 MB"
+
+  node_templates:
+    plant_classification_app:
+      type: tosca.nodes.indigo.Container.Application.Docker
+      properties:
+        ports:
+          - target: { get_input: app_port }
+        environment_variables:
+          PORT: { get_input: app_port }
+        command: "python app.py"
+        restart_policy: always
+      artifacts:
+        image:
+          file: { get_input: docker_image }
+          type: tosca.artifacts.Deployment.Image.Container.Docker
+      requirements:
+        - host:
+            node: docker_runtime
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            port: { get_input: app_port }
+            network_name: PUBLIC
+            floating_ip_requested: true
+
+    docker_runtime:
+      type: tosca.nodes.indigo.Container.Runtime.Docker
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: cpu_count }
+            mem_size: { get_input: memory_size }
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+
+  outputs:
+    application_endpoint:
+      value: { concat: ['http://', get_attribute: [plant_classification_app, host, public_address], ':', get_input: app_port] }

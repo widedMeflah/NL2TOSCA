@@ -1,0 +1,133 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WebAppTomcatDeployment
+  template_version: 1.0.0
+  template_author: User
+
+description: TOSCA topology for deploying a web application on a Tomcat server with Java support
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.Compute:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: linux
+        constraints:
+          - valid_values: [linux, windows, macos]
+      os_arch:
+        type: string
+        default: x86_64
+        constraints:
+          - valid_values: [x86, x86_64]
+
+  Custom.Java:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      java_download_url:
+        type: string
+        required: true
+      java_install_dir:
+        type: string
+        required: true
+        default: /opt/java
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.Tomcat:
+    derived_from: tosca.nodes.WebServer
+    properties:
+      tomcat_download_url:
+        type: string
+        required: true
+      tomcat_install_dir:
+        type: string
+        required: true
+        default: /opt/tomcat
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - dependency:
+          capability: tosca.capabilities.Node
+          node: Custom.Java
+          relationship: tosca.relationships.DependsOn
+    capabilities:
+      web_server:
+        type: tosca.capabilities.Endpoint
+        properties:
+          protocol: http
+          port: 8080
+          initiator: source
+
+  Custom.WebApp:
+    derived_from: tosca.nodes.WebApplication
+    properties:
+      war_file:
+        type: string
+        required: true
+    requirements:
+      - host:
+          capability: tosca.capabilities.Endpoint
+          node: Custom.Tomcat
+          relationship: tosca.relationships.HostedOn
+    capabilities:
+      app_endpoint:
+        type: tosca.capabilities.Endpoint
+        properties:
+          protocol: http
+          port: 8080
+          path: /myapp
+          initiator: source
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: Custom.Compute
+      properties:
+        os_type: linux
+        os_arch: x86_64
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+
+    JavaComponent:
+      type: Custom.Java
+      properties:
+        java_download_url: "https://example.com/java-download"
+        java_install_dir: "/opt/java"
+      requirements:
+        - host: ComputeNode
+
+    TomcatServer:
+      type: Custom.Tomcat
+      properties:
+        tomcat_download_url: "https://example.com/tomcat-download"
+        tomcat_install_dir: "/opt/tomcat"
+      requirements:
+        - host: ComputeNode
+        - dependency: JavaComponent
+
+    WebApplication:
+      type: Custom.WebApp
+      properties:
+        war_file: "path/to/myapp.war"
+      requirements:
+        - host: TomcatServer
+
+  outputs:
+    tomcat_url:
+      description: URL to access the Tomcat server
+      value: { get_attribute: [TomcatServer, web_server, url] }
+    webapp_url:
+      description: URL to access the deployed web application
+      value: { get_attribute: [WebApplication, app_endpoint, url] }

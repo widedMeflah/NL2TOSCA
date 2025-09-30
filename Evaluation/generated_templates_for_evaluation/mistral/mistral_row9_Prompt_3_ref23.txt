@@ -1,0 +1,33 @@
+
+definition_versions:
+  - name: v1.0.0
+    resources:
+      - type: indigo.container.Docker
+        name: deep-learning-app
+        properties:
+          image: deephdc/deep-oc-plant-classification-theano
+          runtime_environment:
+            type: indigo.runtime.Docker
+            properties:
+              cpus: 1
+              memory_mb: 1024
+              publish_ports:
+                - protocol: TCP
+                  source_port: 5000
+              command: deepaas-run --listen-ip 0.0.0.0
+              labels:
+                HAPROXY_GROUP: external
+
+      - type: indigo.deploy.Marathon
+        name: marathon-deployer
+        properties:
+          app_id: deep-learning-app
+          uri: http://mesos-master:5050/marathon
+
+      - type: indigo.network.LoadBalancer
+        name: loadbalancer
+        properties:
+          backend_protocol: TCP
+          backend_port: 5000
+          frontend_ip: "<load balancer IP>"
+          frontend_port: 5000

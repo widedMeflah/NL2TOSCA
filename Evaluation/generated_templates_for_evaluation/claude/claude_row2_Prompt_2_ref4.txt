@@ -1,0 +1,61 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: secure-web-server
+  template_version: 1.0.0
+  template_author: auto-generated
+
+description: Secure web server setup for hosting website in private network
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+node_types:
+  org.website.WebServer:
+    derived_from: tosca.nodes.WebServer
+    properties:
+      document_root:
+        type: string
+        required: true
+        default: "/var/www/html"
+      port:
+        type: integer
+        required: true
+        default: 80
+    attributes:
+      server_url: { get_operation_output: [ SELF, Standard, start, server_url ] }
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            PORT: { get_property: [SELF, port] }
+            DOC_ROOT: { get_property: [SELF, document_root] }
+        stop: {}
+        restart: {}
+      Monitor:
+        check_health:
+          inputs:
+            url: { get_attribute: [SELF, server_url] }
+
+topology_template:
+  node_templates:
+    WebServer:
+      type: org.website.WebServer
+      properties:
+        document_root: "/var/www/html"
+        port: 80
+      requirements:
+        - host: PrivateNetwork
+
+    PrivateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        network_name: private_net
+        cidr: "192.168.1.0/24"
+
+  outputs:
+    server_url:
+      description: URL of the web server
+      value: { get_attribute: [ WebServer, server_url ] }

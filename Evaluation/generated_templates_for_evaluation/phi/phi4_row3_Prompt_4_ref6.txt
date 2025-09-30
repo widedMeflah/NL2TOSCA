@@ -1,0 +1,81 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: Sample Application Deployment Template for Alien4Cloud
+
+imports:
+  - cloud-init-types: https://raw.githubusercontent.com/aliencube/ALIEN4Cloud/master/dsl/alien-types/cloud-init-types.yaml
+
+topology_template:
+
+  inputs:
+    mongodb_port:
+      type: integer
+      default: 27017
+    nodejs_port:
+      type: integer
+      default: 3000
+
+  node_templates:
+
+    mongo_db_node:
+      type: cloudify.nodes.Compute
+      properties:
+        image: ubuntu:20.04
+        flavor: m1.small
+        user_data:
+          str_replace:
+            template: |
+              #cloud-config
+              runcmd:
+                - apt-get update
+                - apt-get install -y mongodb
+                - systemctl enable mongod
+                - systemctl start mongod
+                - echo "mongodb port: ${mongodb_port}" > /etc/mongo-port.conf
+            params:
+              "${mongodb_port}": { get_input: mongodb_port }
+
+    nodejs_app_node:
+      type: cloudify.nodes.Compute
+      properties:
+        image: ubuntu:20.04
+        flavor: m1.small
+        user_data:
+          str_replace:
+            template: |
+              #cloud-config
+              runcmd:
+                - apt-get update
+                - apt-get install -y nodejs npm
+                - npm install -g n
+                - n stable
+                - mkdir /app && cd /app
+                - echo "const express = require('express');" > app.js
+                - echo "const mongoose = require('mongoose');" >> app.js
+                - echo "const app = express();" >> app.js
+                - echo "mongoose.connect('mongodb://mongo_db_node:27017/test');" >> app.js
+                - echo "app.get('/', (req, res) => res.send('Hello World!'));" >> app.js
+                - echo "app.listen(${nodejs_port}, () => console.log(`Node app listening on port ${nodejs_port}`));" >> app.js
+                - nohup node /app/app.js > /dev/null 2>&1 &
+            params:
+              "${nodejs_port}": { get_input: nodejs_port }
+      relationships:
+        - type: cloudify.relationships.connected_to
+          target: mongo_db_node
+
+    network_config:
+      type: cloudify.nodes.NetworkConfig
+      properties:
+        ip_ranges:
+          - 192.168.1.0/24
+
+  policies:
+    - type: cloudify.policies.autoscaling.AutoScalingPolicy
+      targets:
+        - node_type: cloudify.nodes.Compute
+      properties:
+        default_instances_count: 2
+
+  outputs:
+    nodejs_app_url:
+      value: "http://$(nodejs_app_node.address):${{ inputs.nodejs_port }}"

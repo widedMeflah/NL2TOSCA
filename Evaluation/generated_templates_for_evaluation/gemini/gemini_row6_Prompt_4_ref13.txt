@@ -1,0 +1,201 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+description: A basic Kubernetes cluster with a master and scalable worker nodes, Docker, Etcd, Flannel, and Dashboard, designed for Alien4cloud.
+
+imports:
+  - org.alien4cloud.nodes.Compute:2.0.0
+  - org.alien4cloud.nodes.docker.Docker:2.0.0
+  - org.alien4cloud.nodes.orchestrator.commons:2.0.0 # Common types for orchestration
+
+topology_template:
+  inputs:
+    master_os_image:
+      type: string
+      description: OS image for the Kubernetes master node.
+      default: ubuntu-18.04-x64
+    master_instance_type:
+      type: string
+      description: Instance type for the Kubernetes master node.
+      default: small
+    worker_os_image:
+      type: string
+      description: OS image for the Kubernetes worker nodes.
+      default: ubuntu-18.04-x64
+    worker_instance_type:
+      type: string
+      description: Instance type for the Kubernetes worker nodes.
+      default: medium
+    initial_worker_nodes:
+      type: integer
+      description: Initial number of Kubernetes worker nodes.
+      default: 2
+    kubernetes_version:
+      type: string
+      description: Version of Kubernetes to deploy.
+      default: "1.23.5"
+    pod_network_cidr:
+      type: string
+      description: CIDR for the Pod network (Flannel).
+      default: "10.244.0.0/16"
+    dashboard_node_port:
+      type: integer
+      description: NodePort for Kubernetes Dashboard UI.
+      default: 30000
+
+  node_templates:
+    kubernetes_master_host:
+      type: org.alien4cloud.nodes.Compute
+      properties:
+        image: { get_input: master_os_image }
+        instance_type: { get_input: master_instance_type }
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+
+    docker_on_master:
+      type: org.alien4cloud.nodes.docker.Docker
+      requirements:
+        - host: kubernetes_master_host
+
+    etcd_instance:
+      type: tosca.nodes.SoftwareComponent
+      description: Dedicated Etcd instance for configuration storage.
+      requirements:
+        - host: kubernetes_master_host
+        - depends_on: docker_on_master # Assuming Etcd might be deployed as a container or requires Docker
+      interfaces:
+        Standard:
+          create:
+            implementation:
+              primary: scripts/install_etcd.sh
+              dependencies: []
+            inputs:
+              ETCD_VERSION: 3.5.0 # Example Etcd version
+
+    kubernetes_master_component:
+      type: tosca.nodes.SoftwareComponent
+      description: Kubernetes Master (kube-apiserver, kube-scheduler, kube-controller-manager)
+      properties:
+        kubernetes_version: { get_input: kubernetes_version }
+        pod_network_cidr: { get_input: pod_network_cidr }
+      requirements:
+        - host: kubernetes_master_host
+        - depends_on: docker_on_master
+        - depends_on: etcd_instance
+      interfaces:
+        Standard:
+          create:
+            implementation:
+              primary: scripts/setup_kubernetes_master.sh
+              dependencies: []
+            inputs:
+              KUBERNETES_VERSION: { get_input: kubernetes_version }
+              POD_NETWORK_CIDR: { get_input: pod_network_cidr }
+
+    kubernetes_worker_host:
+      type: org.alien4cloud.nodes.Compute
+      properties:
+        image: { get_input: worker_os_image }
+        instance_type: { get_input: worker_instance_type }
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5 # Example maximum instances
+            default_instances: { get_input: initial_worker_nodes }
+
+    docker_on_worker:
+      type: org.alien4cloud.nodes.docker.Docker
+      requirements:
+        - host: kubernetes_worker_host
+
+    kubernetes_worker_component:
+      type: tosca.nodes.SoftwareComponent
+      description: Kubernetes Worker (kubelet, kube-proxy)
+      properties:
+        kubernetes_version: { get_input: kubernetes_version }
+      requirements:
+        - host: kubernetes_worker_host
+        - depends_on: docker_on_worker
+        - member_of: kubernetes_master_component # Workers join the cluster managed by the master
+      interfaces:
+        Standard:
+          create:
+            implementation:
+              primary: scripts/join_kubernetes_worker.sh
+              dependencies: []
+            inputs:
+              KUBERNETES_VERSION: { get_input: kubernetes_version }
+              MASTER_IP: { get_attribute: [ kubernetes_master_host, public_address ] }
+              CLUSTER_JOIN_TOKEN: { get_attribute: [ kubernetes_master_component, cluster_join_token ] } # Assuming master exports a join token
+
+    flannel_network_overlay:
+      type: tosca.nodes.SoftwareComponent
+      description: Flannel network overlay solution for pod communication.
+      properties:
+        pod_network_cidr: { get_input: pod_network_cidr }
+      requirements:
+        - host: kubernetes_master_host
+        - depends_on: kubernetes_master_component # Flannel needs the cluster to be initialized
+      interfaces:
+        Standard:
+          create:
+            implementation:
+              primary: scripts/deploy_flannel.sh
+              dependencies: []
+            inputs:
+              POD_NETWORK_CIDR: { get_input: pod_network_cidr }
+
+    kubernetes_dashboard:
+      type: tosca.nodes.SoftwareComponent
+      description: Kubernetes Dashboard for monitoring.
+      properties:
+        dashboard_node_port: { get_input: dashboard_node_port }
+      requirements:
+        - host: kubernetes_master_host
+        - depends_on: kubernetes_master_component # Dashboard needs the cluster to be up
+      interfaces:
+        Standard:
+          create:
+            implementation:
+              primary: scripts/deploy_kubernetes_dashboard.sh
+              dependencies: []
+            inputs:
+              DASHBOARD_NODE_PORT: { get_input: dashboard_node_port }
+      capabilities:
+        dashboard_endpoint:
+          type: tosca.capabilities.Endpoint.Admin
+          properties:
+            protocol: tcp
+            port: { get_input: dashboard_node_port }
+            url_path: "/#!/login"
+
+  outputs:
+    kubernetes_api_endpoint:
+      description: The public endpoint for the Kubernetes API server.
+      value: { concat: [ "https://", get_attribute: [ kubernetes_master_host, public_address ], ":6443" ] }
+    kubernetes_dashboard_url:
+      description: The URL to access the Kubernetes Dashboard UI.
+      value: { concat: [ "http://", get_attribute: [ kubernetes_master_host, public_address ], ":", get_input: dashboard_node_port ] }
+
+  # Placeholder scripts. In a real A4C setup, these would be actual
+  # artifact definitions pointing to scripts or embedded code.
+  artifacts:
+    scripts/install_etcd.sh:
+      file: "scripts/install_etcd.sh"
+      type: tosca.artifacts.Application.Shell
+    scripts/setup_kubernetes_master.sh:
+      file: "scripts/setup_kubernetes_master.sh"
+      type: tosca.artifacts.Application.Shell
+    scripts/join_kubernetes_worker.sh:
+      file: "scripts/join_kubernetes_worker.sh"
+      type: tosca.artifacts.Application.Shell
+    scripts/deploy_flannel.sh:
+      file: "scripts/deploy_flannel.sh"
+      type: tosca.artifacts.Application.Shell
+    scripts/deploy_kubernetes_dashboard.sh:
+      file: "scripts/deploy_kubernetes_dashboard.sh"
+      type: tosca.artifacts.Application.Shell

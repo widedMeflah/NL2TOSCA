@@ -1,0 +1,76 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA topology for a reliable, network-accessible data storage and management system.
+  The system uses a Linux Ubuntu x86_64 server, provides a TCP data storage service
+  on a configurable port (default 27017), and exposes IP and port as outputs.
+
+topology_template:
+  inputs:
+    data_port:
+      type: integer
+      description: Port for the data storage/retrieval service
+      default: 27017
+
+  node_templates:
+    data_storage_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+            architecture: x86_64
+            os_type: linux
+            os_distribution: ubuntu
+            os_version: 20.04
+        endpoint:
+          properties:
+            network_name: private_network
+            protocol: tcp
+            ports:
+              - { get_input: data_port }
+      requirements:
+        - local_storage:
+            node: data_storage_volume
+            relationship: tosca.relationships.AttachesTo
+
+    data_storage_volume:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 100 GB
+
+    data_service:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: data-storage-service
+      requirements:
+        - host: data_storage_server
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_data_service.sh
+            inputs:
+              port: { get_input: data_port }
+
+    private_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: private_network
+        ip_version: 4
+
+    private_ip:
+      type: tosca.nodes.network.Port
+      requirements:
+        - network: private_network
+        - binding: data_storage_server
+
+  outputs:
+    server_ip:
+      description: IP address of the data storage server
+      value: { get_attribute: [ private_ip, ip_address ] }
+    data_port:
+      description: Port used for data storage operations
+      value: { get_input: data_port }

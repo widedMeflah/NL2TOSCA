@@ -1,0 +1,65 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: web-application-template
+  template_version: 1.0.0
+  template_author: alien4cloud
+
+description: Web Application Deployment Template
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - apache-types:2.0.0
+  - java-types:2.0.0
+
+node_types:
+  web.application:
+    derived_from: tosca.nodes.Root
+    properties:
+      context_path:
+        type: string
+        required: true
+      war_file:
+        type: string
+        required: true
+
+topology_template:
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 2 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+
+    Java:
+      type: tosca.nodes.Java
+      requirements:
+        - host: Compute
+
+    Tomcat:
+      type: tosca.nodes.WebServer.Apache.Tomcat
+      requirements:
+        - host: Compute
+        - java: Java
+
+    WebApplication:
+      type: web.application
+      properties:
+        context_path: "/application"
+        war_file: "application.war"
+      requirements:
+        - host: Tomcat
+
+  outputs:
+    application_url:
+      description: URL of the deployed application
+      value: { concat: ['http://', get_attribute: [Compute, public_ip_address], ':', get_property: [Tomcat, port], get_property: [WebApplication, context_path]] }
+    server_url:
+      description: URL of the Tomcat server
+      value: { concat: ['http://', get_attribute: [Compute, public_ip_address], ':', get_property: [Tomcat, port]] }

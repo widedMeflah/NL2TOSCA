@@ -1,0 +1,71 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  description: Setup for hosting a web server within a private network.
+
+description: >
+  A template to deploy a secure web server accessible only within a private network,
+  with capabilities to start, stop, and restart the server. It also includes a check
+  for the welcome page functionality.
+
+imports:
+  - http://alien4cloud.github.io/alien-distribution/2.3.3/types.yaml
+
+topology_template:
+
+  node_templates:
+
+    web_server:
+      type: org.alien4cloud.nodes.Compute
+      properties:
+        image: ubuntu:latest
+        flavor: m1.small
+        user_data: |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install -y apache2
+          mkdir -p /var/www/mywebsite
+          chown www-data:www-data /var/www/mywebsite
+          a2ensite default-ssl
+          ufw allow from 192.168.0.0/24 to any port 80
+          service apache2 restart
+
+    security_group:
+      type: org.alien4cloud.nodes.SecurityGroup
+      properties:
+        rules:
+          - protocol: tcp
+            start_port: 80
+            end_port: 80
+            cidr_ip: 192.168.0.0/24
+
+    web_server_configuration:
+      type: org.alien4cloud.nodes.Configuration
+      requirements:
+        - host: [ web_server ]
+
+    welcome_page_check:
+      type: org.alien4cloud.nodes.ServiceCheck
+      properties:
+        initial_delay: 30s
+        period: 60s
+        timeout: 10s
+      interfaces:
+        standard:
+          start:
+            inputs:
+              url: "http://localhost/"
+            implementation: |
+              import requests
+
+              def execute(inputs):
+                  response = requests.get(inputs['url'])
+                  return True if response.status_code == 200 and b"Welcome to my website!" in response.content else False
+      requirements:
+        - host: [ web_server ]
+
+  policies:
+
+    start_stop_restart_policy:
+      type: org.alien4cloud.policies.NodeStartStopRestartPolicy
+      targets: [ web_server ]

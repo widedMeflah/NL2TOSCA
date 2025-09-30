@@ -1,0 +1,137 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Kubernetes cluster setup with TOSCA for Alien4Cloud
+
+topology_template:
+  node_templates:
+    k8sMasterServer:
+      type: tosca.nodes.Compute
+      properties:
+        endpoint:
+          protocol: TCP
+        ip_address: 192.168.1.10
+        os:
+          type: Linux
+          distribution: Ubuntu
+          version: '20.04'
+        root_password: 'master_password'
+        min_instances: 1
+        max_instances: 1
+        capabilities:
+          host:
+            properties:
+              network:
+                name: private_network
+      requirements:
+        - host:
+            node: privateNetwork
+            relationship: tosca.relationships.HostedOn
+
+    k8sWorkerServer:
+      type: tosca.nodes.Compute
+      properties:
+        endpoint:
+          protocol: TCP
+        ip_address: 192.168.1.20
+        os:
+          type: Linux
+          distribution: Ubuntu
+          version: '20.04'
+        root_password: 'worker_password'
+        min_instances: 1
+        max_instances: 5
+        capabilities:
+          host:
+            properties:
+              network:
+                name: private_network
+      requirements:
+        - host:
+            node: privateNetwork
+            relationship: tosca.relationships.HostedOn
+
+    k8sCommandLineTool:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: kubectl
+        version: '1.25'
+      requirements:
+        - host:
+            node: k8sMasterServer
+            capability: tosca.capabilities.Container
+
+    dockerEngineMaster:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: docker
+        version: '20.10.17'
+      requirements:
+        - host:
+            node: k8sMasterServer
+            capability: tosca.capabilities.Container
+
+    dockerEngineWorker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: docker
+        version: '20.10.17'
+      requirements:
+        - host:
+            node: k8sWorkerServer
+            capability: tosca.capabilities.Container
+
+    flannelOverlayNetwork:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: flannel
+        version: '0.17.0'
+      requirements:
+        - host:
+            node: k8sMasterServer
+            capability: tosca.capabilities.Container
+
+    etcdKeyStore:
+      type: tosca.nodes.Database
+      properties:
+        name: etcd
+        version: '3.5.6'
+        database_name: k8s_network
+        connection:
+          protocol: TCP
+      requirements:
+        - host:
+            node: k8sMasterServer
+            capability: tosca.capabilities.Container
+
+    k8sDashboard:
+      type: tosca.nodes.ContainerApplication
+      properties:
+        name: kubernetes-dashboard
+        version: '2.7.0'
+        namespace: kubernetes-dashboard
+        access:
+          - type: Ingress
+            properties:
+              host: dashboard.example.com
+              port: 443
+      requirements:
+        - host:
+            node: k8sMasterServer
+            capability: tosca.capabilities.Container
+
+    k8sClusterDNS:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: kube-dns
+        domain: cluster.local
+      requirements:
+        - host:
+            node: k8sMasterServer
+            capability: tosca.capabilities.Container
+
+    privateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        name: private_network
+        protocol: TCP
+        subnet: 192.168.1.0/24

@@ -1,0 +1,116 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template for deploying a virtual elastic cluster with a Slurm workload manager,
+  an elasticity manager front-end node, a scalable pool of worker nodes, and a Galaxy
+  portal for bioinformatics applications. Hybrid cloud environments are supported.
+
+topology_template:
+  inputs:
+    cluster_name:
+      type: string
+      description: Name of the elastic cluster
+      default: elastic-cluster
+    worker_count_min:
+      type: integer
+      description: Minimum number of worker nodes
+      default: 2
+    worker_count_max:
+      type: integer
+      description: Maximum number of worker nodes
+      default: 10
+    galaxy_admin_password:
+      type: string
+      description: Admin password for the Galaxy portal
+      default: changeme
+    public_network_name:
+      type: string
+      description: Network for public access (Galaxy)
+      default: public
+
+  node_templates:
+
+    elasticity_front_end:
+      type: tosca.nodes.indigo.Elastic.ClusterManager
+      properties:
+        cluster_name: { get_input: cluster_name }
+        hybrid_cloud: true
+      requirements:
+        - host: fe_host
+
+    fe_host:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: { get_input: public_network_name }
+            ports:
+              # Slurm, elasticity and SSH
+              - 22
+              - 6817-6818
+              - 8080
+      properties:
+        num_cpus: 4
+        mem_size: 8 GB
+        disk_size: 50 GB
+        image: "indigodatacloudapps/elastic-cluster-front-end:latest"
+    
+    slurm_manager:
+      type: tosca.nodes.sofware.slurm.Manager
+      requirements:
+        - host: fe_host
+
+    galaxy_portal:
+      type: tosca.nodes.indigo.Galaxy
+      properties:
+        admin_password: { get_input: galaxy_admin_password }
+      requirements:
+        - host: galaxy_host
+        - dependency: slurm_manager
+
+    galaxy_host:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: { get_input: public_network_name }
+            ports:
+              - 8081  # for Galaxy
+      properties:
+        num_cpus: 4
+        mem_size: 16 GB
+        disk_size: 100 GB
+        image: "indigodatacloudapps/galaxy:latest"
+
+    worker_pool:
+      type: tosca.nodes.indigo.Elastic.Cluster.WorkerPool
+      properties:
+        min_instances: { get_input: worker_count_min }
+        max_instances: { get_input: worker_count_max }
+        hybrid_cloud: true
+      requirements:
+        - host: worker_template
+        - cluster_manager: elasticity_front_end
+
+    worker_template:
+      type: tosca.nodes.indigo.Compute
+      properties:
+        num_cpus: 4
+        mem_size: 8 GB
+        disk_size: 50 GB
+        image: "indigodatacloudapps/elastic-cluster-worker:latest"
+
+    slurm_worker:
+      type: tosca.nodes.software.slurm.Worker
+      requirements:
+        - host: worker_template
+        - manager: slurm_manager
+
+  outputs:
+    galaxy_url:
+      description: URL to access the Galaxy portal
+      value: { concat: ["http://", get_attribute: [ galaxy_host, public_address ], ":8081" ] }
+    cluster_frontend_ip:
+      description: IP address of the elasticity cluster front-end
+      value: { get_attribute: [ fe_host, public_address ] }

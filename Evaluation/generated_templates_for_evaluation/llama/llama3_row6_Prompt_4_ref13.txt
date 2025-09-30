@@ -1,0 +1,83 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Basic Kubernetes Cluster Topology
+
+topology_template:
+  node_templates:
+    kubernetes_master:
+      type: tosca.nodes.Kubernetes.Master
+      properties:
+        container_runtime: docker
+        etcd_instance: etcd_instance
+        network_overlay: flannel
+      requirements:
+        - host: kubernetes_master_host
+        - etcd: etcd_instance
+
+    kubernetes_worker:
+      type: tosca.nodes.Kubernetes.Worker
+      properties:
+        container_runtime: docker
+        network_overlay: flannel
+      requirements:
+        - host: kubernetes_worker_host
+        - master: kubernetes_master
+
+    kubernetes_dashboard:
+      type: tosca.nodes.Kubernetes.Dashboard
+      properties:
+        container_runtime: docker
+      requirements:
+        - host: kubernetes_master_host
+        - master: kubernetes_master
+
+    etcd_instance:
+      type: tosca.nodes.Etcd
+      properties:
+        container_runtime: docker
+      requirements:
+        - host: etcd_host
+
+    flannel:
+      type: tosca.nodes.Kubernetes.NetworkOverlay.Flannel
+      properties:
+        container_runtime: docker
+      requirements:
+        - host: kubernetes_master_host
+        - worker: kubernetes_worker
+
+    kubernetes_master_host:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4096 MB
+        os: ubuntu
+
+    kubernetes_worker_host:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4096 MB
+        os: ubuntu
+
+    etcd_host:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 1
+        mem_size: 2048 MB
+        os: ubuntu
+
+  relationship_templates:
+    - host: tosca.relationships.HostedOn
+    - etcd: tosca.relationships_DEPENDS_ON
+    - master: tosca.relationships_DEPENDS_ON
+    - worker: tosca.relationships_DEPENDS_ON
+
+  outputs:
+    api_endpoint:
+      value: { get_attribute: [ kubernetes_master, api_endpoint ] }
+      description: The API endpoint of the Kubernetes cluster
+    dashboard_ui:
+      value: { get_attribute: [ kubernetes_dashboard, dashboard_ui ] }
+      description: The URL of the Kubernetes dashboard

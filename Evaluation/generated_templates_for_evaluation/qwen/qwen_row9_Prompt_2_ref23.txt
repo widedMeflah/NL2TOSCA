@@ -1,0 +1,94 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A TOSCA service template for deploying a plant classification application with INDIGO.
+
+topology_template:
+  node_templates:
+    plant_classifier_app:
+      type: tosca.nodes.nfv.VF
+      properties:
+        name: PlantClassifierApp
+        description: Application for classifying plants based on input images.
+        mgmt_ip: 192.168.1.10
+        mgmt_network: mgmt_net
+        ports:
+          - name: app_port
+            port_protocol: tcp
+            port_number: 5000
+            external: true
+        resource_requirements:
+          - resource_type: tosca.nodes.nfv.CPU
+            properties:
+              num_cpus: 4
+          - resource_type: tosca.nodes.nfv.Memory
+            properties:
+              size: 4096
+              unit: MB
+        deployment_flavor: medium
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_app.sh
+          start:
+            implementation: scripts/start_app.sh
+          stop:
+            implementation: scripts/stop_app.sh
+          update:
+            implementation: scripts/update_app.sh
+
+    vnf_mgmt_network:
+      type: tosca.nodes.nfv.LAN
+      properties:
+        name: mgmt_net
+        type: mgmt
+        subnets:
+          - 192.168.1.0/24
+
+    public_network:
+      type: tosca.nodes.nfv.LAN
+      properties:
+        name: public_net
+        type: public
+        subnets:
+          - 203.0.113.0/24
+        external: true
+
+    app_ext_connection:
+      type: tosca.nodes.nfv.ConnectionPoint
+      properties:
+        name: app_connection
+        network: public_network
+        ip_address: 203.0.113.10
+        port: 5000
+        protocol: tcp
+      requirements:
+        - virtual_link: public_network
+        - virtual_binding: plant_classifier_app
+
+    app_mgmt_connection:
+      type: tosca.nodes.nfv.ConnectionPoint
+      properties:
+        name: mgmt_connection
+        network: vnf_mgmt_network
+        ip_address: 192.168.1.10
+        port: 8080
+        protocol: tcp
+      requirements:
+        - virtual_link: vnf_mgmt_network
+        - virtual_binding: plant_classifier_app
+
+    vdu_placement:
+      type: tosca.nodes.nfv.PlacementGroup
+      properties:
+        name: placement_group_1
+      requirements:
+        - member: plant_classifier_app
+
+  groups:
+    plant_classifier_group:
+      type: tosca.groups.nfv.Group
+      members:
+        - plant_classifier_app
+      properties:
+        name: PlantClassifierGroup
+        description: Group for managing the plant classifier application

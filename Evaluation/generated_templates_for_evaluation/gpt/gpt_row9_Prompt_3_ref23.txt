@@ -1,0 +1,66 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_types: "https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml"
+
+description: >
+  TOSCA template to deploy a deep learning application containerized with Docker, managed through Marathon on a Mesos cluster, and fronted by a load balancer.
+
+topology_template:
+  node_templates:
+
+    plant_classification_app:
+      type: tosca.nodes.indigo.Marathon.Application.Docker
+      requirements:
+        - host: mesos_slave
+        - dependency: marathon_master
+        - endpoint:
+            node: app_lb
+      properties:
+        image: deephdc/deep-oc-plant-classification-theano
+        cpus: 1
+        mem: 1024
+        command: deepaas-run --listen-ip 0.0.0.0
+        ports:
+          - 5000
+        labels:
+          HAPROXY_GROUP: external
+        env: {}
+      interfaces:
+        Standard:
+          create: [ ]
+
+    mesos_slave:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 1024 MB
+
+    marathon_master:
+      type: tosca.nodes.indigo.Marathon
+      requirements:
+        - host: mesos_master
+
+    mesos_master:
+      type: tosca.nodes.indigo.Mesos.Master
+
+    app_lb:
+      type: tosca.nodes.indigo.LoadBalancer
+      properties:
+        ports:
+          - protocol: tcp
+            source: 5000
+            target: 5000
+
+  outputs:
+    app_endpoint:
+      description: Endpoint of the deep learning application exposed via Load Balancer
+      value:
+        concat:
+          - "http://"
+          - { get_attribute: [ app_lb, public_address ] }
+          - ":"
+          - { get_attribute: [ app_lb, ports, 0 ] }

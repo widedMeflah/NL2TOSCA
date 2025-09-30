@@ -1,0 +1,141 @@
+
+tosca_definitions_version: alien_dsl_1_4
+description: "TOSCA blueprint for a scalable, data-intensive web application with built-in testing and data protection."
+imports:
+  - alien-base-types:3.0.0
+  - org.alien4cloud.nodes.tomcat:3.0.0
+  - org.alien4cloud.nodes.mysql:3.0.0
+topology_template:
+  node_templates:
+    WebAppCompute:
+      type: alien.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+        mem_size: 4 GB
+        num_cpus: 2
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: 1
+    TomcatServer:
+      type: org.alien4cloud.nodes.tomcat.Tomcat
+      properties:
+        port: 8080
+      requirements:
+        - host:
+            node: WebAppCompute
+            capability: tosca.capabilities.Container.Host
+    MyApplication:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.0.0"
+        install_path: "/opt/my-application"
+        config_parameters:
+          max_memory_for_analysis: "2GB"
+          data_processing_threads: 4
+      requirements:
+        - host:
+            node: TomcatServer
+            capability: tosca.capabilities.Container.Runtime
+        - database:
+            node: MySQLDatabase
+            capability: tosca.capabilities.DatabaseEndpoint
+    DatabaseCompute:
+      type: alien.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+        mem_size: 8 GB
+        num_cpus: 4
+        disk_size: 200 GB
+        disk_io_throughput: "500 MB/s"
+    MySQLDatabase:
+      type: org.alien4cloud.nodes.mysql.MySQL
+      properties:
+        db_name: "analysis_db"
+        user: "app_user"
+        password: "secure_password"
+      requirements:
+        - host:
+            node: DatabaseCompute
+            capability: tosca.capabilities.Container.Host
+    AutomatedTestRunner:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.0.0"
+        install_path: "/opt/test-runner"
+        test_suite_path: "/opt/my-application/tests"
+      requirements:
+        - host:
+            node: WebAppCompute
+            capability: tosca.capabilities.Container.Host
+        - connects_to:
+            node: MyApplication
+            capability: tosca.capabilities.Endpoint
+  groups:
+    WebAppScalingGroup:
+      type: tosca.groups.Root
+      members: [ WebAppCompute, TomcatServer, MyApplication ]
+      policies:
+        - WebAppScalingPolicy:
+            type: tosca.policies.Scaling
+            properties:
+              min_instances: 1
+              max_instances: 5
+              default_instances: 1
+              scaling_policies:
+                - type: tosca.policies.Scaling.Rule
+                  properties:
+                    period: 300
+                    cooldown_time: 120
+                    metrics:
+                      - name: cpu_usage
+                        threshold: 70
+                        operand: GT
+                        period: 300
+                    scale_out_adjustment: 1
+                    scale_in_adjustment: -1
+    DatabaseProtectionGroup:
+      type: tosca.groups.Root
+      members: [ MySQLDatabase ]
+      policies:
+        - DatabaseBackupPolicy:
+            type: tosca.policies.Backup
+            properties:
+              interval: 24h
+              retention_period: 7d
+              storage_location: "s3://my-backup-bucket/analysis_data/"
+    SystemSecurityGroup:
+      type: tosca.groups.Root
+      members: [ WebAppCompute, TomcatServer, MyApplication, DatabaseCompute, MySQLDatabase ]
+      policies:
+        - GeneralSecurityPolicy:
+            type: tosca.policies.Security
+            properties:
+              security_level: "high"
+              firewall_rules:
+                - protocol: tcp
+                  port_range: [22]
+                  source_cidr: 0.0.0.0/0
+                - protocol: tcp
+                  port_range: [80, 443]
+                  source_cidr: 0.0.0.0/0
+                - protocol: tcp
+                  port_range: [3306]
+                  source_cidr: ${WebAppCompute.capabilities.endpoint.ip_address}/32
+              data_encryption: "at_rest_and_in_transit"
+              vulnerability_scanning: true
+              access_control_lists:
+                - resource: "MyApplication"
+                  action: "read,write"
+                  user_roles: ["admin", "analyst"]
+                - resource: "MySQLDatabase"
+                  action: "read,write"
+                  user_roles: ["application"]

@@ -1,0 +1,114 @@
+
+definitions:
+  NodeTypes:
+    IndigoOrchestrator:
+      types: os::Server
+      properties:
+        os:
+          type: linux
+        packages:
+          - docker
+          - marathon
+          - jq
+    DockerNode:
+      types: os::Server
+      properties:
+        os:
+          type: linux
+        packages:
+          - docker
+    MarathonNode:
+      types: os::Server
+      properties:
+        os:
+          type: linux
+        packages:
+          - marathon
+
+  ServiceTypes:
+    MachineLearningService:
+      service_id: MachineLearningService
+      version: 1.0.0
+      provider: DockerContainer
+      requirements:
+        host: DockerNode
+      properties:
+        container:
+          image: machine_learning_service
+          cpu: 1
+          memory_mb: 1024
+          ports:
+            - 8080:80
+          command: '--listen-all'
+
+  NodeTemplates:
+    IndigoOrchestratorNode:
+      type: IndigoOrchestrator
+      nodes:
+        - name: indigo
+
+    DockerNodeTemplate:
+      type: DockerNode
+      nodes:
+        - name: docker_node
+          properties:
+            docker:
+              enabled: true
+
+    MarathonNodeTemplate:
+      type: MarathonNode
+      nodes:
+        - name: marathon_node
+          properties:
+            marathon:
+              url: "http://indigo:8080"
+              cluster_id: "my_cluster"
+
+  ServiceTemplates:
+    MachineLearningServiceTemplate:
+      type: MachineLearningService
+      service_id: machine_learning_service
+      properties:
+        marathon_app:
+          id: machine_learning_service
+          cmd: ["java", "-jar", "/app.jar"]
+
+  Relationships:
+    DeployMachineLearningService:
+      source: ServiceInstances
+      target: NodeInstances
+      role: Target
+      details:
+        marathon_app_id: "${service_id}_marathon_app"
+
+  Policy:
+    DeployMachineLearningServicePolicy:
+      - node_type: DockerNodeTemplate
+        relationship_name: DeployMachineLearningService
+        role: Source
+
+      - node_type: MarathonNodeTemplate
+        relationship_name: DeployMachineLearningService
+        role: Target
+
+  NodeGroups:
+    IndigoOrchestratorGroup:
+      type: IndigoOrchestrator
+      nodeset: [indigo]
+
+    DockerNodeGroup:
+      type: DockerNode
+      nodeset: [docker_node]
+
+    MarathonNodeGroup:
+      type: MarathonNode
+      nodeset: [marathon_node]
+
+topology_template:
+  node_groups:
+    - IndigoOrchestratorGroup
+    - DockerNodeGroup
+    - MarathonNodeGroup
+
+  relationships:
+    - DeployMachineLearningServicePolicy

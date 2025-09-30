@@ -1,0 +1,85 @@
+topology_template:
+  description: Galaxy Deployment Setup
+  node_templates:
+    galaxy:
+      type: tosca.nodes.Galaxy
+      properties:
+        flavor: "specific_galaxy_flavor"
+        companion_software:
+          - name: "companion_software_1"
+            version: "1.0"
+          - name: "companion_software_2"
+            version: "2.0"
+        reference_data:
+          - name: "reference_data_1"
+            version: "1.0"
+          - name: "reference_data_2"
+            version: "2.0"
+      capabilities:
+        storage:
+          properties:
+            encryption: true
+        secrets:
+          properties:
+            vault_server: "vault_server_url"
+    centos:
+      type: tosca.nodes.CentOS
+      properties:
+        version: "7"
+    slurm:
+      type: tosca.nodes.SLURM
+      properties:
+        version: "latest"
+    cluster:
+      type: tosca.nodes.Cluster
+      properties:
+        num_nodes: 5
+      requirements:
+        - galaxy:
+            node: galaxy
+            relationship: tosca.relationships.Network
+        - centos:
+            node: centos
+            relationship: tosca.relationships.OperatingSystem
+        - slurm:
+            node: slurm
+            relationship: tosca.relationships.ResourceManager
+    vault:
+      type: tosca.nodes.Vault
+      properties:
+        url: "vault_server_url"
+      requirements:
+        - galaxy:
+            node: galaxy
+            relationship: tosca.relationships.SecretsManager
+    mail_server:
+      type: tosca.nodes.MailServer
+      properties:
+        smtp_server: "smtp_server_url"
+      requirements:
+        - galaxy:
+            node: galaxy
+            relationship: tosca.relationships.Notification
+  relationship_templates:
+    - tosca.relationships.Network:
+        properties:
+          protocol: "tcp"
+    - tosca.relationships.OperatingSystem:
+        properties:
+          version: "latest"
+    - tosca.relationships.ResourceManager:
+        properties:
+          type: "slurm"
+    - tosca.relationships.SecretsManager:
+        properties:
+          url: "vault_server_url"
+    - tosca.relationships.Notification:
+        properties:
+          protocol: "smtp"
+  capability_templates:
+    - tosca.capabilities.Storage:
+        properties:
+          encryption: true
+    - tosca.capabilities.Secrets:
+        properties:
+          vault_server: "vault_server_url"

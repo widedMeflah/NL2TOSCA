@@ -1,0 +1,176 @@
+
+topology_template_version: "topology_template_2.0"
+
+description: |
+  A TOSCA-compliant description for a system running a specific application with the following requirements:
+  1. Java Development Kit (JDK) installation from a specified URL.
+  2. Web interface accessibility at the root context with specific application arguments.
+  3. Two replicated data storage services.
+  4. Application connectivity to both data storage services.
+  5. Testing component for integration testing.
+  6. IPv4 network connectivity.
+  7. Multiple computing resources for hosting components.
+  8. Proper component connectivity and communication.
+
+node_types:
+  Application:
+    description: The specific application node type.
+    interface_definitions:
+      - name: jdk
+        type: osgi
+        operations:
+          - name: install
+            inputs:
+              - name: jdk_url
+                type: string
+              - name: jdk_install_dir
+                type: string
+      - name: web_interface
+        type: web_interface
+        properties:
+          - name: application_args
+            type: string
+            default: ""
+    requiring_interface_connections:
+      - name: jdk
+      - name: web_interface
+
+  DataStorageService:
+    description: A data storage service node type.
+    interface_definitions:
+      - name: data_replication
+        type: data_replication
+        properties:
+          - name: replication_factor
+            type: integer
+            default: 2
+
+  TestingComponent:
+    description: A testing component node type.
+    interface_definitions:
+      - name: test
+        type: test
+        properties:
+          - name: test_branch
+            type: string
+          - name: test_plugin_version
+            type: string
+          - name: test_suite
+            type: string
+
+  NodeTemplate:
+    description: A template for creating instances of nodes.
+    node_type: Application
+    properties:
+      - name: jdk_url
+        type: string
+      - name: jdk_install_dir
+        type: string
+      - name: application_args
+        type: string
+
+    node_templates:
+      - node_template: DataStorageServiceNodeTemplate
+        type: DataStorageService
+      - node_template: TestingComponentNodeTemplate
+        type: TestingComponent
+
+  DataStorageServiceNodeTemplate:
+    node_type: DataStorageService
+    properties:
+      - name: replication_factor
+        type: integer
+        default: 2
+
+  TestingComponentNodeTemplate:
+    node_type: TestingComponent
+    properties:
+      - name: test_branch
+        type: string
+      - name: test_plugin_version
+        type: string
+      - name: test_suite
+        type: string
+
+relationships:
+  Application_DataStorageService:
+    description: Relationship between the application and data storage services.
+    source: Application
+    target: DataStorageService
+    role_arcs:
+      - name: uses
+
+  DataStorageService_DataStorageService:
+    description: Relationship between data storage service instances for data replication.
+    source: DataStorageService
+    target: DataStorageService
+    role_arcs:
+      - name: replicates
+
+  Application_TestingComponent:
+    description: Relationship between the application and testing component.
+    source: Application
+    target: TestingComponent
+    role_arcs:
+      - name: tests
+
+policy_and_constraints:
+  node_groupings:
+    - name: application_group
+      node_templates:
+        - NodeTemplate
+    - name: data_storage_group
+      node_templates:
+        - DataStorageServiceNodeTemplate
+    - name: testing_component_group
+      node_templates:
+        - TestingComponentNodeTemplate
+
+  node_deployments:
+    - node_grouping: application_group
+      physical_node_ref: PhysicalNode
+
+  relationship_groups:
+    - name: application_data_storage
+      relationship_types:
+        - Application_DataStorageService
+    - name: data_storage_replication
+      relationship_types:
+        - DataStorageService_DataStorageService
+    - name: application_testing
+      relationship_types:
+        - Application_TestingComponent
+
+  node_requirement_satisfactions:
+    - requirement:
+        node_template: NodeTemplate
+        interface: jdk
+        multiplicity: 1
+      provider:
+        node_template: NodeTemplate
+        node_grouping: application_group
+    - requirement:
+        node_template: NodeTemplate
+        interface: web_interface
+        multiplicity: 1
+      provider:
+        node_template: NodeTemplate
+        node_grouping: application_group
+    - requirement:
+        node_template: DataStorageServiceNodeTemplate
+        interface: data_replication
+        multiplicity: 2
+      provider:
+        node_template: DataStorageServiceNodeTemplate
+        node_grouping: data_storage_group
+    - requirement:
+        node_template: TestingComponentNodeTemplate
+        interface: test
+        multiplicity: 1
+      provider:
+        node_template: TestingComponentNodeTemplate
+        node_grouping: testing_component_group
+
+  network_connections:
+    - physical_node_ref: PhysicalNode
+      network_name: IPv4Network

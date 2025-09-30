@@ -1,0 +1,71 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    JavaScript_Server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        network_name: my_net
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports:
+              app_port: 8080
+      artifacts:
+        my_script:
+          type: tosca.artifacts.Implementation.Javascript
+          file: my_app.js
+
+    Database:
+      type: tosca.nodes.Database
+      properties:
+        database_type: mysql
+        database_version: '8'
+        database_name: my_db
+        username: my_user
+        password: my_password
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              db_port: 3306
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: my_net
+
+  relationship_templates:
+    Connect_JavaScript_Server_To_Network:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: http
+        ports:
+          app_port: 8080
+      target: Network
+
+    Connect_Database_To_Network:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        ports:
+          db_port: 3306
+      target: Network
+
+    Connect_JavaScript_Server_To_Database:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        ports:
+          db_port: 3306
+      target: Database
+
+  outputs:
+    app_url:
+      value: { concat: [ 'http://', { get_attribute: [ JavaScript_Server, public_address ] }, ':', { get_property: [ JavaScript_Server, app_port ] } ] }
+    db_url:
+      value: { concat: [ 'tcp://', { get_attribute: [ Database, public_address ] }, ':', { get_property: [ Database, db_port ] } ] }

@@ -1,0 +1,86 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: Web Application Hosting System using Alien4Cloud
+
+imports:
+  - http://www.getinspired.cloud/alien-types/latest/alien-types.yaml
+
+topology_template:
+
+  node_templates:
+
+    webserver:
+      type: tosca.nodes.Compute
+      properties:
+        image: { get_input: os_image }
+        architecture: { get_input: os_architecture }
+        software:
+          - type: tosca.artifacts.File
+            file: http://example.com/tomcat.zip
+          - type: tosca.artifacts.File
+            file: http://example.com/java.tar.gz
+
+      capabilities:
+        host:
+          properties:
+            use_external_ip: true
+        endpoint:
+          type: tosca.capabilities.Endpoint
+          properties:
+            protocols:
+              - HTTP
+            ports:
+              - { get_input: application_port }
+              - { get_input: tomcat_admin_port }
+
+    java_installation:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: webserver
+
+    tomcat_installation:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: webserver
+
+  workflows:
+
+    install_and_configure_system:
+      mapping:
+        0:
+          - { execute_workflow: deploy, on_node_template: java_installation }
+          - { execute_workflow: configure, on_node_template: java_installation, inputs: { version: { get_input: java_version } } }
+        1:
+          - { execute_workflow: deploy, on_node_template: tomcat_installation }
+          - { execute_workflow: configure, on_node_template: tomcat_installation }
+
+outputs:
+
+  application_url:
+    value: { concat: [ "http://", { get_attribute: [ webserver, management_ip ] }, ":", { get_input: application_port } ] }
+
+  tomcat_admin_url:
+    value: { concat: [ "http://", { get_attribute: [ webserver, management_ip ] }, ":", { get_input: tomcat_admin_port }, "/manager/html" ] }
+
+inputs:
+
+  os_image:
+    type: string
+    description: Operating system image to use for the server
+
+  os_architecture:
+    type: string
+    constraints:
+      - valid_values: [ x86_64, aarch64 ]
+
+  java_version:
+    type: string
+    description: Version of Java to install on the server
+
+  application_port:
+    type: integer
+    default: 8080
+
+  tomcat_admin_port:
+    type: integer
+    default: 8006

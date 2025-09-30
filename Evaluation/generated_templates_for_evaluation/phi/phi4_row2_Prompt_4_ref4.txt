@@ -1,0 +1,89 @@
+tosca_definitions_version: cloudify_dsl_1_4
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/4.5/types.yaml
+
+node_types:
+  my.nodes.ApacheServer:
+    derived_from: cloudify.nodes.SoftwareComponent
+    properties:
+      start_command:
+        default: "systemctl start apache2"
+        description: Command to start the Apache server.
+      stop_command:
+        default: "systemctl stop apache2"
+        description: Command to stop the Apache server.
+      restart_command:
+        default: "systemctl restart apache2"
+        description: Command to restart the Apache server.
+    interfaces:
+      standard:
+        create:
+          inputs:
+            start_script:
+              default: ""
+              description: Script to run during node creation
+        configure:
+          inputs:
+            start_command:
+              required: true
+        delete:
+          implementation: scripts/delete.sh
+
+  my.nodes.ComputeResource:
+    derived_from: cloudify.nodes.Compute
+    properties:
+      server_id:
+        type: string
+        default: "compute-node-1"
+        description: ID of the compute resource.
+
+node_templates:
+  ApacheServerNode:
+    type: my.nodes.ApacheServer
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: ComputeResourceNode
+
+  ComputeResourceNode:
+    type: my.nodes.ComputeResource
+    properties:
+      ip_address:
+        default: "192.168.1.100"
+        description: IP address of the compute resource.
+
+workflows:
+  start_apache_server:
+    mapping: 
+      inputs: {start_command: {get_property: [ApacheServerNode, start_command]}}
+      tasks:
+        - execute_operation:
+            operation: 'start'
+            target: ApacheServerNode
+
+  stop_apache_server:
+    mapping: 
+      inputs: {stop_command: {get_property: [ApacheServerNode, stop_command]}}
+      tasks:
+        - execute_operation:
+            operation: 'stop'
+            target: ApacheServerNode
+
+  restart_apache_server:
+    mapping: 
+      inputs: {restart_command: {get_property: [ApacheServerNode, restart_command]}}
+      tasks:
+        - execute_operation:
+            operation: 'restart'
+            target: ApacheServerNode
+
+  curl_welcome_page:
+    mapping: 
+      inputs: {}
+      tasks:
+        - run:
+            shell: './curl-welcome-page.sh'
+
+relationships:
+  cloudify.relationships.contained_in:
+    derived_from: cloudify.relationships.Root

@@ -1,0 +1,197 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template for deploying an elastic hybrid cluster with Galaxy portal, LRMS (Slurm) front-end, and scalable compute resources. 
+  The template is compatible with INDIGO Orchestrator.
+
+imports:
+  - indigo_types: indigo-dc/tosca-types/v1.0
+
+topology_template:
+
+  inputs:
+    galaxy_admin_email:
+      type: string
+      description: Galaxy admin email address
+    galaxy_admin_api_key:
+      type: string
+      description: Galaxy admin API key
+    galaxy_export_dir:
+      type: string
+      description: Path for Galaxy data export
+      default: /export
+    slurm_frontend_cpu:
+      type: integer
+      description: CPUs for Slurm Front-End
+      default: 4
+    slurm_frontend_mem:
+      type: scalar-unit.size
+      description: Memory for Slurm Front-End
+      default: 8 GB
+    compute_node_cpu:
+      type: integer
+      description: CPUs for compute nodes
+      default: 4
+    compute_node_mem:
+      type: scalar-unit.size
+      description: Memory for compute nodes
+      default: 8 GB
+    max_worker_nodes:
+      type: integer
+      description: Maximum number of worker nodes
+      default: 10
+    max_galaxy_workers:
+      type: integer
+      description: Maximum number of Galaxy worker nodes
+      default: 5
+
+  node_templates:
+
+    elastic_cluster_frontend:
+      type: tosca.nodes.indigo.ElasticCluster.frontend.Hybrid
+      properties:
+        lrms: slurm
+        supported_lrms: [torque, sge, slurm, condor]
+        hybrid: true
+      requirements:
+        - host: cluster_frontend_server
+        - galaxy_portal: galaxy_portal
+        - lrms_frontend: slurm_frontend
+
+    cluster_frontend_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 14.04
+      requirements:
+        - network: public_network
+
+    slurm_frontend:
+      type: tosca.nodes.indigo.LRMS.Frontend.Slurm
+      properties:
+        lrms_user: slurm
+      requirements:
+        - host: slurm_frontend_server
+
+    slurm_frontend_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: slurm_frontend_cpu }
+            mem_size: { get_input: slurm_frontend_mem }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 14.04
+      requirements:
+        - network: public_network
+
+    galaxy_portal:
+      type: tosca.nodes.indigo.GalaxyPortal
+      properties:
+        admin_email: { get_input: galaxy_admin_email }
+        api_key: { get_input: galaxy_admin_api_key }
+        description: "Latest Galaxy portal for bioinformatics with admin access"
+      requirements:
+        - host: galaxy_frontend_server
+
+    galaxy_frontend_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 14.04
+      requirements:
+        - network: public_network
+
+    compute_nodes:
+      type: tosca.nodes.indigo.ElasticCluster.worker
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: { get_input: max_worker_nodes }
+        host:
+          properties:
+            num_cpus: { get_input: compute_node_cpu }
+            mem_size: { get_input: compute_node_mem }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 14.04
+      requirements:
+        - lrms_frontend: slurm_frontend
+        - network: private_network
+
+    galaxy_worker_nodes:
+      type: tosca.nodes.indigo.GalaxyWorker
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: { get_input: max_galaxy_workers }
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 14.04
+      properties:
+        export_dir: { get_input: galaxy_export_dir }
+      requirements:
+        - host: galaxy_worker_server
+        - network: private_network
+
+    galaxy_worker_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 14.04
+
+    public_network:
+      type: tosca.nodes.indigo.Network
+      properties:
+        network_name: PUBLIC
+
+    private_network:
+      type: tosca.nodes.indigo.Network
+      properties:
+        network_name: PRIVATE
+
+  outputs:
+    galaxy_url:
+      description: URL to access the deployed Galaxy portal
+      value: { concat: ["http://", get_attribute: [ galaxy_frontend_server, public_address ], ":8080" ] }
+    cluster_frontend_ip:
+      description: Public IP address of the elastic cluster front-end
+      value: { get_attribute: [ cluster_frontend_server, public_address ] }
+    cluster_credentials:
+      description: Elastic cluster front-end admin credentials
+      value: { get_attribute: [ elastic_cluster_frontend, credentials ] }

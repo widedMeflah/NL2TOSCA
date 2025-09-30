@@ -1,0 +1,53 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: web-application-deployment
+  template_version: 1.0.0-SNAPSHOT
+  template_author: A4C
+
+node_templates:
+  compute:
+    type: tosca.nodes.Compute
+    capabilities:
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 1
+      host:
+        properties:
+          disk_size: 10 GB
+          num_cpus: 1
+          mem_size: 1 GB
+
+  java_runtime:
+    type: tosca.nodes.JavaRuntime
+    requirements:
+      - host: compute
+
+  tomcat_server:
+    type: tosca.nodes.WebServer.ApacheTomcat
+    properties:
+      port: 8080
+    requirements:
+      - host: compute
+      - java: java_runtime
+
+  web_app:
+    type: tosca.nodes.WebApplication.War
+    properties:
+      context_path: /mywebapp
+      # The 'file' property here specifies the name of the WAR artifact expected
+      # to be uploaded or provided during deployment.
+      file: mywebapp.war
+    requirements:
+      - host: tomcat_server
+
+outputs:
+  application_url:
+    description: URL to access the deployed web application.
+    value: { concat: [ 'http://', get_attribute: [ compute, public_address ], ':', get_property: [ tomcat_server, port ], get_property: [ web_app, context_path ] ] }
+
+  server_url:
+    description: URL to access the Apache Tomcat server.
+    value: { concat: [ 'http://', get_attribute: [ compute, public_address ], ':', get_property: [ tomcat_server, port ] ] }

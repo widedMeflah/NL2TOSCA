@@ -1,0 +1,91 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of a single-node Elasticsearch service on a Ubuntu 16.04 VM with public access.
+
+topology_template:
+
+  node_templates:
+
+    VM:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        vdu:
+          name: ElasticsearchVM
+          description: Virtual Machine for Elasticsearch
+          default_virtual_binding: default
+          default_virtual_ip: default
+          compute_resource:
+            virtual_link:
+              default: public_net
+            virtual_cpu:
+              default: 2
+              allowed: [2, 4]
+            virtual_mem:
+              default: 4096
+              unit: MB
+              allowed: [4096, 8192]
+          image: Ubuntu 16.04
+          os:
+            architecture: x86_64
+            type: Linux
+
+    ElasticsearchService:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: Elasticsearch
+        version: 7.4.1
+        description: Elasticsearch service configured to bind on 0.0.0.0
+        install_script: |
+          #!/bin/bash
+          echo "Installing Elasticsearch..."
+          wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.4.1-amd64.deb
+          sudo dpkg -i elasticsearch-7.4.1-amd64.deb
+          sudo systemctl enable elasticsearch
+          sudo systemctl start elasticsearch
+          echo "Setting up passwords for 'elastic' and 'kibana' users..."
+          sudo useradd elastic
+          sudo useradd kibana
+          sudo passwd elastic
+          sudo passwd kibana
+        config:
+          - key: network.host
+            value: 0.0.0.0
+          - key: cluster.name
+            value: elasticsearch-cluster
+          - key: node.name
+            value: elasticsearch-node
+          - key: discovery.type
+            value: single-node
+        parameters:
+          - name: elastic_password
+            value: "elastic_password_value"
+          - name: kibana_password
+            value: "kibana_password_value"
+
+    PublicNetwork:
+      type: tosca.nodes.nfv.L2Network
+      properties:
+        network_name: public_network
+        network_type: public
+        port:
+          port_name: elasticsearch_port
+          protocol: TCP
+          port_number: 9200
+
+  outputs:
+    elasticsearch_endpoint:
+      description: URL to access the Elasticsearch service
+      value: >-
+        http://${VM.public_ip}:9200
+    public_ip:
+      description: Public IP address of the deployed VM
+      value: >-
+        ${VM.public_ip}
+    elastic_user_password:
+      description: Password for the 'elastic' user
+      value: >-
+        elastic_password_value
+    kibana_user_password:
+      description: Password for the 'kibana' system user
+      value: >-
+        kibana_password_value

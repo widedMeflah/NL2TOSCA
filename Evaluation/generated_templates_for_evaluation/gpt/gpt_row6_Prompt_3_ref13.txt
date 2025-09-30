@@ -1,0 +1,158 @@
+
+tosca_definitions_version: alien_dsl_1_4_0
+
+metadata:
+  template_name: kubernetes_cluster_topology
+  template_version: 1.0.0
+  template_author: user
+
+description: >
+  TOSCA topology for deploying a scalable Kubernetes cluster on Alien4Cloud with
+  master/worker nodes, Docker runtime, Flannel networking, Etcd service, and
+  the Kubernetes Dashboard.
+
+imports:
+  - tosca-normative-types:1.0.0
+  - alien-base-types:3.0.0
+
+topology_template:
+  inputs:
+    worker_count:
+      type: integer
+      description: Number of Kubernetes worker nodes
+      default: 1
+      constraints:
+        - valid_values: [1,2,3,4,5]
+    ip_mask:
+      type: string
+      description: IP mask for Flannel networking
+      default: "10.244.0.0/16"
+
+  node_templates:
+
+    private_network:
+      type: tosca.nodes.Network
+      properties:
+        network_id: private-net
+        ip_version: 4
+
+    kubernetes_master_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+            os_arch: x86_64
+            os_type: linux
+            os_distribution: ubuntu
+            os_version: 18.04
+      requirements:
+        - network: private_network
+
+    kubernetes_worker_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: { get_input: worker_count }
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+            os_arch: x86_64
+            os_type: linux
+            os_distribution: ubuntu
+            os_version: 18.04
+      requirements:
+        - network: private_network
+
+    docker_master:
+      type: tosca.nodes.Container.Runtime.Docker
+      properties:
+        version: 20.10
+      requirements:
+        - host: kubernetes_master_host
+
+    docker_worker:
+      type: tosca.nodes.Container.Runtime.Docker
+      properties:
+        version: 20.10
+      requirements:
+        - host: kubernetes_worker_host
+
+    etcd_service:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 2.2.1
+        container_image: "quay.io/coreos/etcd:v2.2.1"
+      requirements:
+        - host: docker_master
+
+    flannel_master:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 0.5.5
+        container_image: "quay.io/coreos/flannel:v0.5.5"
+        ip_mask: { get_input: ip_mask }
+      requirements:
+        - host: docker_master
+
+    flannel_worker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 0.5.5
+        container_image: "quay.io/coreos/flannel:v0.5.5"
+        ip_mask: { get_input: ip_mask }
+      requirements:
+        - host: docker_worker
+
+    kubernetes_master:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 1.2.1
+        dns_domain: "cluster.local"
+      requirements:
+        - host: docker_master
+        - dependency: etcd_service
+        - dependency: flannel_master
+
+    kubectl:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 1.5.3
+      requirements:
+        - host: kubernetes_master_host
+
+    kubernetes_worker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: 1.2.1
+      requirements:
+        - host: docker_worker
+        - dependency: kubernetes_master
+        - dependency: flannel_worker
+
+    kubernetes_dashboard:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: 1.5.1
+        namespace: kube-system
+      requirements:
+        - host: kubernetes_master
+      attributes:
+        ui_endpoint:
+          description: Kubernetes Dashboard UI Endpoint
+          default: { concat: ["https://", { get_attribute: [kubernetes_master_host, public_address] }, ":", "6443/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/"] }
+
+  outputs:
+    dashboard_ui_endpoint:
+      description: Kubernetes Dashboard UI endpoint
+      value: { get_attribute: [kubernetes_dashboard, ui_endpoint] }
+    kubernetes_api_endpoint:
+      description: Kubernetes master API endpoint
+      value: { concat: ["https://", { get_attribute: [kubernetes_master_host, public_address] }, ":6443"] }

@@ -1,0 +1,73 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA template to deploy a Node.js application with persistent structured data storage,
+  accessible via a web interface on specified ports, running in a Linux environment.
+
+imports:
+  - alien-dsl-2.0.yml
+
+topology_template:
+
+  inputs:
+    app_port:
+      type: integer
+      description: Port for the Node.js application.
+      default: 3000
+    
+    db_port:
+      type: integer
+      description: Port for data storage access (e.g., PostgreSQL).
+      default: 5432
+
+  node_templates:
+
+    LinuxHost:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        image: ubuntu_20.04 # Specify the desired Ubuntu version or replace with an appropriate one.
+
+    NodeJsContainer:
+      type: tosca.nodes.Container.Application
+      requirements:
+        - host: LinuxHost
+      properties:
+        container_config:
+          runtime: nodejs
+          entrypoint: ['node', '/app/server.js']
+      artifacts:
+        app_source:
+          type: git
+          source: https://github.com/your-repo/sample-node-app.git # Replace with your Node.js application repository.
+    
+    PostgreSQLDatabase:
+      type: tosca.nodes.DBMS.Database
+      properties:
+        image: postgres:latest
+        env:
+          POSTGRES_DB: sampledb
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+      interfaces:
+        db_configure:
+          inputs:
+            port:
+              default: { get_input: db_port }
+    
+    WebServer:
+      type: tosca.nodes.WebServer
+      requirements:
+        - host: LinuxHost
+      properties:
+        ports:
+          - { get_input: app_port }
+
+  policies:
+    - type: tosca.policies.scaling.Instances
+      targets: [NodeJsContainer]
+      properties:
+        number_instances: 1
+
+outputs:
+  nodejs_app_endpoint:

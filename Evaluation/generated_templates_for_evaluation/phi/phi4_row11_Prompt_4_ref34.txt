@@ -1,0 +1,121 @@
+tosca_definitions_version: cloudify_dsl_1_4
+
+imports:
+  - cloudify/types.yaml
+
+node_types:
+  galaxy:
+    derived_from: cloudify.nodes.SoftwareComponent
+  slurm_manager:
+    derived_from: cloudify.nodes.SoftwareComponent
+  vault_server:
+    derived_from: cloudify.nodes.SoftwareComponent
+  email_notifier:
+    derived_from: cloudify.nodes.SoftwareComponent
+
+inputs:
+  worker_nodes_count:
+    description: Number of worker nodes required for the Galaxy deployment.
+    type: integer
+    default: 3
+  galaxy_flavor:
+    description: Specific flavor or version of Galaxy to be deployed.
+    type: string
+  email_recipient:
+    description: Email address to send confirmation upon successful deployment.
+    type: string
+
+node_templates:
+
+  centos_7_vm:
+    type: cloudify.nodes.Compute
+    properties:
+      image: CentOS-7-x86_64-GenericCloud.qcow2
+      flavors:
+        - m1.medium
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            resource_config: { server_type: vm }
+
+  slurm_manager_vm:
+    type: slurm_manager
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: centos_7_vm
+    properties:
+      install_script: |
+        #!/bin/bash
+        yum install -y slurm slurmd munge
+        systemctl enable slurmd munged
+        systemctl start slurmd munged
+
+  galaxy_instance:
+    type: galaxy
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: centos_7_vm
+    properties:
+      install_script: |
+        #!/bin/bash
+        yum install -y galaxy-toolbox
+        galaxy --init
+        # Additional Galaxy setup commands here
+
+  vault_server_vm:
+    type: vault_server
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: centos_7_vm
+    properties:
+      install_script: |
+        #!/bin/bash
+        yum install -y vault
+        systemctl enable vault
+        systemctl start vault
+
+  email_notifier_service:
+    type: email_notifier
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: centos_7_vm
+    properties:
+      send_confirmation_script: |
+        #!/bin/bash
+        echo "Galaxy deployment successful!" | mail -s "Deployment Notification" {{ input.email_recipient }}
+
+workflows:
+
+  setup_galaxy_deployment:
+    mapping:
+      inputs:
+        worker_nodes_count: { get_input: worker_nodes_count }
+        galaxy_flavor: { get_input: galaxy_flavor }
+        email_recipient: { get_input: email_recipient }
+
+    tasks:
+      - create_centos_vm:
+          implementation: cloudify.interfaces.lifecycle.create
+          target: centos_7_vm
+
+      - install_slurm_manager:
+          implementation: slurm_manager.install_script
+          target: slurm_manager_vm
+
+      - deploy_galaxy_instance:
+          implementation: galaxy_instance.install_script
+          target: galaxy_instance
+
+      - setup_vault_server:
+          implementation: vault_server_vm.install_script
+          target: vault_server_vm
+
+      - send_confirmation_email:
+          implementation: email_notifier_service.send_confirmation_script
+          target: email_notifier_service
+
+    on-success:
+      - notify_admins:
+          implementation: cloudify.interfaces.lifecycle.create
+          target: email_notifier_service

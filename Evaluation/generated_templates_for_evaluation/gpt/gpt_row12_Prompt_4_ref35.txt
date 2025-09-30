@@ -1,0 +1,93 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template to deploy Galaxy application with MySQL database on
+  a single VM using Docker. Includes encrypted storage, configurable
+  instance flavor and disk size, and basic configuration options.
+
+imports:
+  - indigo_types: indigo_dsl_types.yaml
+
+topology_template:
+  inputs:
+    vm_flavor:
+      type: string
+      description: Flavor of the virtual machine
+      default: m1.medium
+    storage_size:
+      type: scalar-unit.size
+      description: Size of the encrypted storage attached to VM
+      default: 50 GB
+    admin_email:
+      type: string
+      description: Galaxy admin email
+      default: admin@example.com
+    galaxy_api_key:
+      type: string
+      description: Galaxy admin API key
+      default: changemeapikey
+    reference_data_url:
+      type: string
+      description: URL to reference data installation scripts or archives
+      default: https://example.com/reference_data.tar.gz
+
+  node_templates:
+    galaxy_vm:
+      type: tosca.nodes.indigo.Compute
+      properties:
+        flavor: { get_input: vm_flavor }
+
+    encrypted_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: storage_size }
+        encrypted: true
+
+    galaxy_storage_attachment:
+      type: tosca.nodes.BlockStorage.Attachment
+      properties:
+        location: /mnt/data
+      requirements:
+        - host: galaxy_vm
+        - attachment: encrypted_storage
+
+    mysql_db:
+      type: tosca.nodes.DBMS.MySQL
+      properties:
+        root_password: 'mysql_root_pw'
+        port: 3306
+      requirements:
+        - host: galaxy_vm
+
+    galaxy_app:
+      type: tosca.nodes.WebApplication.Docker
+      properties:
+        image: 'bgruening/galaxy-stable'
+        ports:
+          - "8080:80"
+        env:
+          GALAXY_CONFIG_ADMIN_USERS: { get_input: admin_email }
+          GALAXY_CONFIG_MASTER_API_KEY: { get_input: galaxy_api_key }
+          GALAXY_CONFIG_DATABASE_CONNECTION: "mysql://root:mysql_root_pw@localhost:3306/galaxy"
+      requirements:
+        - host: galaxy_vm
+        - dependency: mysql_db
+        - dependency: encrypted_storage
+
+    reference_data_install:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        install_script: |
+          #!/bin/bash
+          wget { get_input: reference_data_url } -O /tmp/reference_data.tar.gz
+          mkdir -p /mnt/data/ref_data
+          tar -xzvf /tmp/reference_data.tar.gz -C /mnt/data/ref_data
+      requirements:
+        - host: galaxy_vm
+        - dependency: galaxy_app
+
+  outputs:
+    galaxy_url:
+      description: URL to access the deployed Galaxy instance
+      value: { concat: ["http://", { get_attribute: [ galaxy_vm, public_address ] }, ":8080"] }

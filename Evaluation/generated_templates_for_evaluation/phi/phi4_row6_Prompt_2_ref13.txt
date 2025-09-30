@@ -1,0 +1,57 @@
+tosca_definitions_version: alien_dsl_3_0_0
+
+description: >
+  TOSCA description for deploying a Kubernetes Cluster with Alien4Cloud.
+
+imports:
+  - tosca-normative-types.yaml
+  
+topology_template:
+
+  inputs:
+    worker_node_count:
+      type: integer
+      required: true
+      constraints:
+        - valid_range: [1,5]
+
+  node_templates:
+
+    kubernetes_master:
+      type: org.alien4cloud.nodes.k8s.KubernetesMaster
+      properties:
+        operating_system: Ubuntu
+        enable_secure_communication: true
+
+    kubernetes_worker_nodes:
+      type: org.alien4cloud.nodes.k8s.KubernetesWorker
+      capabilities:
+        scalable_entity:
+          properties:
+            min_instances: 1
+            max_instances: 5
+        host: {}
+      requirements:
+        - host: kubernetes_master
+      properties:
+        operating_system: Ubuntu
+        enable_secure_communication: true
+
+    cluster_network_configuration:
+      type: org.alien4cloud.nodes.network.NetworkConfiguration
+      properties:
+        ip_version: IPv4
+
+    dashboard_access:
+      type: org.alien4cloud.nodes.dashboard.DashboardAccess
+      requirements:
+        - host: kubernetes_master
+
+  policies:
+
+    scale_worker_nodes_policy:
+      type: tosca.policies.scalability.ScalableProperties
+      targets: [kubernetes_worker_nodes]
+      properties:
+        default_instances: { get_input: worker_node_count }
+

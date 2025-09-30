@@ -1,0 +1,84 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Single-node Elasticsearch service on a virtual machine
+
+  node_templates:
+    ElasticSearch:
+      type: tosca.nodes.ElasticSearch
+      properties:
+        version: { get_attribute: [ ElasticSearchVersion, version ] }
+        bind_address: 0.0.0.0
+        elastic_password: { get_input: elastic_password }
+        kibana_password: { get_input: kibana_password }
+
+    ElasticSearchVersion:
+      type: tosca.nodes.Root
+      properties:
+        version: 7.4.1
+
+    VirtualMachine:
+      type: tosca.nodes.Compute
+      properties:
+        os: Linux
+        os_version: Ubuntu 16.04
+        num_cpus: { get_input: num_cpus }
+        mem_size: { get_input: mem_size }
+      requirements:
+        - host: ElasticSearch
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        name: Public Network
+      requirements:
+        - bind: ElasticSearch
+
+    SecurityGroup:
+      type: tosca.nodes.SecurityGroup
+      properties:
+        rules:
+          - protocol: tcp
+            port_range: 9200
+      requirements:
+        - bind: VirtualMachine
+
+  relationship_templates:
+    - type: tosca.relationships.Network
+      properties:
+        network_name: Public Network
+      requirements:
+        - network: Network
+
+  input_templates:
+    - name: elastic_password
+      type: string
+      required: true
+    - name: kibana_password
+      type: string
+      required: true
+    - name: num_cpus
+      type: integer
+      required: false
+      default: 2
+      valid_values: [ 2, 4 ]
+    - name: mem_size
+      type: integer
+      required: false
+      default: 4
+      valid_values: [ 4, 8 ]
+
+  output_templates:
+    - name: endpoint_url
+      value: "http://{ get_attribute: [ VirtualMachine, public_address ] }:9200"
+      description: The endpoint URL for accessing the Elasticsearch service
+    - name: public_ip_address
+      value: { get_attribute: [ VirtualMachine, public_address ] }
+      description: The public IP address of the node
+    - name: elastic_credentials
+      value: { get_input: elastic_password }
+      description: The credentials for accessing the Elasticsearch service
+    - name: kibana_credentials
+      value: { get_input: kibana_password }
+      description: The credentials for accessing the Kibana service

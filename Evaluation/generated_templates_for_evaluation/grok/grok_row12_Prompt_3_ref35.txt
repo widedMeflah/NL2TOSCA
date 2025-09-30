@@ -1,0 +1,144 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+
+description: TOSCA definition for deploying a Galaxy Docker image on a single VM using INDIGO orchestrator
+
+topology_template:
+  inputs:
+    num_cpus:
+      type: integer
+      description: Number of CPUs for the VM
+      default: 2
+    memory_size:
+      type: string
+      description: Memory size for the VM
+      default: "4 GB"
+    disk_size:
+      type: string
+      description: Disk size for the VM
+      default: "20 GB"
+    storage_size:
+      type: string
+      description: Size of the block storage
+      default: "50 GB"
+    galaxy_admin_email:
+      type: string
+      description: Admin email for Galaxy instance
+      default: "admin@example.com"
+    galaxy_api_key:
+      type: string
+      description: API key for Galaxy instance
+      default: "default_api_key"
+    galaxy_version:
+      type: string
+      description: Version of Galaxy to deploy
+      default: "latest"
+    galaxy_instance_description:
+      type: string
+      description: Description of the Galaxy instance
+      default: "Galaxy Instance for Research"
+    install_reference_data:
+      type: boolean
+      description: Whether to install reference data for Galaxy
+      default: false
+
+  node_templates:
+    galaxy_vm:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: num_cpus }
+        mem_size: { get_input: memory_size }
+        disk_size: { get_input: disk_size }
+      capabilities:
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: "16.04"
+        host:
+          properties:
+            num_cpus: { get_input: num_cpus }
+            mem_size: { get_input: memory_size }
+            disk_size: { get_input: disk_size }
+        endpoint:
+          properties:
+            network_name: public
+            ports:
+              http:
+                protocol: tcp
+                target: 80
+              ftp:
+                protocol: tcp
+                target: 21
+              ssh:
+                protocol: tcp
+                target: 22
+              luks_api:
+                protocol: tcp
+                target: 8200
+
+    block_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: storage_size }
+      requirements:
+        - attachment:
+            node: galaxy_vm
+            capability: tosca.capabilities.Attachment
+
+    docker_engine:
+      type: tosca.nodes.Container.Runtime
+      requirements:
+        - host:
+            node: galaxy_vm
+            capability: tosca.capabilities.Container
+
+    galaxy_container:
+      type: tosca.nodes.Container.Application
+      properties:
+        image: "bgruening/galaxy-stable:{ get_input: galaxy_version }"
+        environment:
+          - GALAXY_CONFIG_ADMIN_USERS={ get_input: galaxy_admin_email }
+          - GALAXY_CONFIG_MASTER_API_KEY={ get_input: galaxy_api_key }
+          - GALAXY_CONFIG_BRAND={ get_input: galaxy_instance_description }
+      requirements:
+        - host:
+            node: docker_engine
+            capability: tosca.capabilities.Container
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_galaxy.sh
+            inputs:
+              install_reference_data: { get_input: install_reference_data }
+
+    vault_service:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "latest"
+      requirements:
+        - host:
+            node: galaxy_vm
+            capability: tosca.capabilities.Node
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_vault.sh
+          configure:
+            implementation: scripts/configure_vault.sh
+          start:
+            implementation: scripts/start_vault.sh
+
+  outputs:
+    galaxy_endpoint:
+      description: Public endpoint for Galaxy instance
+      value: { get_attribute: [galaxy_vm, public_ip_address] }
+    galaxy_port:
+      description: HTTP port for Galaxy access
+      value: 80
+    ssh_access:
+      description: SSH access endpoint for the VM
+      value: { get_attribute: [galaxy_vm, public_ip_address] }
+    vault_endpoint:
+      description: Endpoint for Vault API access
+      value: { concat: ["http://", { get_attribute: [galaxy_vm, public_ip_address] }, ":8200"] }

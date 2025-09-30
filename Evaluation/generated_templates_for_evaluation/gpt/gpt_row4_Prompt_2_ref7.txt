@@ -1,0 +1,65 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA template for an efficient, secure, and network-accessible data storage/management system
+  running on Ubuntu, with configurable TCP port and dynamic IP/port retrieval.
+
+topology_template:
+  inputs:
+    data_port:
+      type: integer
+      description: Configurable TCP port for data operations
+      default: 5000
+      constraints:
+        - in_range: [4000, 6000]
+
+  node_templates:
+
+    ubuntu_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+
+    data_storage:
+      type: tosca.nodes.Database
+      requirements:
+        - host: ubuntu_server
+        - network: data_network
+      properties:
+        name: managed_data
+        port: { get_input: data_port }
+        secure_connection: true
+
+    data_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: data_network
+        network_type: private
+
+    data_endpoint:
+      type: tosca.nodes.Endpoint
+      properties:
+        protocol: tcp
+        port: { get_input: data_port }
+        secure: true
+      requirements:
+        - host: ubuntu_server
+        - data_storage: data_storage
+
+  outputs:
+    data_server_ip:
+      value: { get_attribute: [ ubuntu_server, private_address ] }
+      description: The IP address of the data server
+
+    data_server_port:
+      value: { get_input: data_port }
+      description: The TCP port used for data storage operations

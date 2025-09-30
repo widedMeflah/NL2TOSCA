@@ -1,0 +1,184 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: ElasticsearchReplicatedSetup
+  template_version: 1.0.0
+  template_author: User
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:2.0.0
+
+topology_template:
+  node_templates:
+    JavaRuntime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "11"
+      requirements:
+        - host:
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    ElasticsearchMaster:
+      type: tosca.nodes.Database
+      properties:
+        component_version: "7.10.0"
+        port: 9200
+      capabilities:
+        database_endpoint:
+          properties:
+            protocol: tcp
+            port: 9200
+      requirements:
+        - host:
+            node: JavaRuntime
+            relationship: tosca.relationships.HostedOn
+
+    ElasticsearchDataNode1:
+      type: tosca.nodes.Database
+      properties:
+        component_version: "7.10.0"
+        port: 9200
+      capabilities:
+        database_endpoint:
+          properties:
+            protocol: tcp
+            port: 9200
+      requirements:
+        - host:
+            node: JavaRuntime
+            relationship: tosca.relationships.HostedOn
+        - connect_to_master:
+            node: ElasticsearchMaster
+            relationship: tosca.relationships.ConnectsTo
+
+    ElasticsearchDataNode2:
+      type: tosca.nodes.Database
+      properties:
+        component_version: "7.10.0"
+        port: 9200
+      capabilities:
+        database_endpoint:
+          properties:
+            protocol: tcp
+            port: 9200
+      requirements:
+        - host:
+            node: JavaRuntime
+            relationship: tosca.relationships.HostedOn
+        - connect_to_master:
+            node: ElasticsearchMaster
+            relationship: tosca.relationships.ConnectsTo
+
+    TestingComponent:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "1.0.0"
+      requirements:
+        - host:
+            node: JavaRuntime
+            relationship: tosca.relationships.HostedOn
+        - connect_to_es:
+            node: ElasticsearchMaster
+            relationship: tosca.relationships.ConnectsTo
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        cidr: "192.168.1.0/24"
+      capabilities:
+        connectable:
+          type: tosca.capabilities.Network
+
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+      requirements:
+        - network:
+            node: Network
+            relationship: tosca.relationships.AttachesTo
+
+  relationships:
+    - type: tosca.relationships.HostedOn
+      source: JavaRuntime
+      target: Compute
+    - type: tosca.relationships.ConnectsTo
+      source: TestingComponent
+      target: ElasticsearchMaster
+    - type: tosca.relationships.ConnectsTo
+      source: ElasticsearchDataNode1
+      target: ElasticsearchMaster
+    - type: tosca.relationships.ConnectsTo
+      source: ElasticsearchDataNode2
+      target: ElasticsearchMaster
+
+  workflows:
+    install:
+      steps:
+        install_compute:
+          target: Compute
+          activities:
+            - install
+        install_network:
+          target: Network
+          activities:
+            - install
+        install_java:
+          target: JavaRuntime
+          activities:
+            - install
+        install_es_master:
+          target: ElasticsearchMaster
+          activities:
+            - install
+        install_es_data1:
+          target: ElasticsearchDataNode1
+          activities:
+            - install
+        install_es_data2:
+          target: ElasticsearchDataNode2
+          activities:
+            - install
+        install_testing:
+          target: TestingComponent
+          activities:
+            - install
+
+    uninstall:
+      steps:
+        uninstall_testing:
+          target: TestingComponent
+          activities:
+            - uninstall
+        uninstall_es_data2:
+          target: ElasticsearchDataNode2
+          activities:
+            - uninstall
+        uninstall_es_data1:
+          target: ElasticsearchDataNode1
+          activities:
+            - uninstall
+        uninstall_es_master:
+          target: ElasticsearchMaster
+          activities:
+            - uninstall
+        uninstall_java:
+          target: JavaRuntime
+          activities:
+            - uninstall
+        uninstall_network:
+          target: Network
+          activities:
+            - uninstall
+        uninstall_compute:
+          target: Compute
+          activities:
+            - uninstall

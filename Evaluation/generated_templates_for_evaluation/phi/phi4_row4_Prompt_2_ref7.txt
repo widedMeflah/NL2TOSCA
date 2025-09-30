@@ -1,0 +1,44 @@
+topology_template:
+  inputs:
+    network_port_range:
+      type: integer[]
+      default: [3000, 3100]
+      description: Configureable range of ports for data operations
+
+  node_templates:
+    ubuntu_server:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu:latest
+        networks:
+          - network: private_network
+    storage_service:
+      type: tosca.nodes.ServiceComponent # Custom node type
+      requirements:
+        - host: ubuntu_server
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              port_range: { get_input: network_port_range }
+            implementation: scripts/setup_storage.sh
+            outputs:
+              ip_address: { get_attribute: [host, management_ip] }
+              assigned_port: { get_attribute: [self, running_on_port] }
+
+    private_network:
+      type: tosca.nodes.network.Network
+
+  policies:
+    - type: tosca.policies.scaling.BalanceLoad
+      targets: [storage_service]
+      properties:
+        algorithm: round_robin
+
+workflows:
+  install_and_configure:
+    steps:
+      - create_storage_service:
+          target: storage_service
+      - get_server_info:
+          implementation: scripts/get_server_info.sh

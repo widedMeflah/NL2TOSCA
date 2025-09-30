@@ -1,0 +1,70 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA topology for deploying an Apache server on a compute node.
+  Includes custom workflows to start, stop, restart Apache, 
+  and to execute a curl command accessing the welcome page.
+
+topology_template:
+
+  node_templates:
+    my_compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2048 MB
+            disk_size: 10 GB
+          # OS and other details intentionally left generic
+
+    apache_server:
+      type: tosca.nodes.WebServer.Apache
+      requirements:
+        - host: my_compute
+
+  workflows:
+    custom_start:
+      steps:
+        start_apache:
+          target: apache_server
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.start
+
+    custom_stop:
+      steps:
+        stop_apache:
+          target: apache_server
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.stop
+
+    custom_restart:
+      steps:
+        stop_apache:
+          target: apache_server
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.stop
+        start_apache:
+          target: apache_server
+          activities:
+            - call_operation: tosca.interfaces.node.lifecycle.Standard.start
+          on_success:
+            - stop_apache
+
+    curl_welcome_page:
+      steps:
+        execute_curl:
+          target: my_compute
+          activities:
+            - call_operation: custom.interfaces.Execute.curl_welcome
+
+  interfaces:
+    custom.interfaces.Execute:
+      operations:
+        curl_welcome:
+          implementation: scripts/curl_welcome.sh
+
+  artifacts:
+    curl_welcome_script:
+      file: scripts/curl_welcome.sh
+      type: tosca.artifacts.File

@@ -1,0 +1,59 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Web application platform and search engine system
+  node_templates:
+    Webserver:
+      type: tosca.nodes.WebServer
+      properties:
+        name: Web Application Platform
+        protocol: http
+      capabilities:
+        hosting:
+          type: tosca.capabilities.WebServer
+      requirements:
+        - host: Java_Application_Server
+        - network: Network
+
+    Java_Application_Server:
+      type: tosca.nodes.Java_Application_Server
+      properties:
+        name: Java Application Server
+        java_version: 11
+      capabilities:
+        hosting:
+          type: tosca.capabilities.Container
+      requirements:
+        - network: Network
+
+    Search_Engine:
+      type: tosca.nodes.DBMS
+      properties:
+        name: Search Engine
+        dbms_type: elastic_search
+      capabilities:
+        hosting:
+          type: tosca.capabilities.DBMS
+      requirements:
+        - network: Network
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        name: Network
+
+    Web_Application:
+      type: tosca.nodes.WebApplication
+      properties:
+        name: Web Application
+        runtime: java
+      requirements:
+        - host: Webserver
+        - dependency: Search_Engine
+
+    Search_Engine_Data:
+      type: tosca.nodes.Data
+      properties:
+        name: Search Engine Data
+

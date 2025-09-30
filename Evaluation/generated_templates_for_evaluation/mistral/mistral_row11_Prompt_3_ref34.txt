@@ -1,0 +1,88 @@
+topology_template_version: "topology_template_2.0"
+
+description: Deployment of Galaxy platform with cluster support, utilizing CentOS 7 and SLURM for resource management
+
+node_templates:
+  Galaxy:
+    type: compute
+    metadata:
+      label: Galaxy
+    properties:
+      os: centos7
+      slurm: true
+      flavor:
+        frontend: small
+        worker: small
+        storage_size: 50
+      hybrid_environment: false
+      galaxy_version: release_18.05
+      instance_description: ELIXIR-ITALY
+      ssh_public_key: your_ssh_public_key
+      export_directory: /export
+      encryption:
+        storage: false
+        vault:
+          server_url: changeit
+          wrapping_token: not_a_wrapping_token
+          secret_path: subject/depuuid
+          secret_key_name: secret
+      tools:
+        galaxy_flavor: galaxy-no-tools
+        reference_data: true
+        cernvm_fs:
+          configuration: cvmfs_preconfigured
+          repository_name: elixir-italy.galaxy.refdata
+          server_url: 90.147.102.186
+          public_key_file: elixir-italy.galaxy.refdata.pub
+          proxy_url: DIRECT
+          proxy_port: 80
+      reference_data_directory: /cvmfs
+      admin:
+        email: admin@admin.com
+        api_key: not_very_secret_api_key
+
+relationships:
+  Galaxy_Cluster:
+    type: compose
+    roles: [worker, frontend]
+    multiplicity: many
+    properties:
+      worker_count: 2
+
+capabilities:
+  - name: cloud.deploy
+  - name: cloud.start
+  - name: cloud.stop
+  - name: cloud.delete
+  - name: cloud.reconfigure
+
+actions:
+  ConfirmationEmail:
+    description: Send a confirmation email with instructions on how to provide the passphrase (if encryption is enabled) and log in to the new Galaxy instance
+    input_parameters: {}
+    implementation:
+      cloud.send_email:
+        to: admin@admin.com
+        subject: Galaxy instance deployment confirmation
+        body: Instructions for accessing the new Galaxy instance.
+        cc: ''
+        bcc: ''
+        reply_to: ''
+        from: ''
+    triggers:
+      - event: cloud.deployed
+
+interfaces:
+  web:
+    interface_type: rep_web
+    properties:
+      host: ${hostname}
+      port: 8080
+      protocol: http
+
+resources:
+  - type: compute
+    properties:
+      nodes:
+        - name: galaxy-instance
+          template: Galaxy

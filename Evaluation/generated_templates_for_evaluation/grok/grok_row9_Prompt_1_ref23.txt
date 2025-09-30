@@ -1,0 +1,58 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a plant classification application using INDIGO orchestrator
+
+topology_template:
+  node_templates:
+    plant_classification_app:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        image: plant_classification_image:latest
+        ports:
+          - target: 8080
+            protocol: tcp
+            source: 8080
+        command: ["python", "app.py"]
+        environment:
+          - HOST=0.0.0.0
+      requirements:
+        - host:
+            node: docker_host
+            relationship: tosca.relationships.HostedOn
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            port: 8080
+            initiator: source
+            network_name: PUBLIC
+            secure: false
+
+    docker_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            network_name: PUBLIC
+
+  policies:
+    - load_balancing:
+        type: tosca.policies.Placement
+        properties:
+          strategy: balance
+        targets: [plant_classification_app]
+
+outputs:
+  app_endpoint:
+    description: External endpoint for the plant classification application
+    value: { get_attribute: [plant_classification_app, endpoint, url] }

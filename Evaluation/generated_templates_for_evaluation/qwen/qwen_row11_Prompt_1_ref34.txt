@@ -1,0 +1,40 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: Deployment of a clustered Galaxy instance with CentOS 7, SLURM, and custom configuration options.
+
+topology_template:
+  node_templates:
+    galaxy_cluster:
+      type: tosca.nodes.Compute
+      properties:
+        admin_email: admin@example.com
+        api_key: "your_api_key_here"
+        galaxy_version: "22.05"
+        description: "Galaxy instance with SLURM clustering support"
+        ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2E... user@example.com"
+        worker_count: 4
+        frontend_specs:
+          cpu: 4
+          ram: 16384
+          storage: 50
+        worker_specs:
+          cpu: 8
+          ram: 32768
+          storage: 100
+        storage_encryption: true
+        hybrid_environment_support: true
+        reference_data_sources:
+          - "https://usegalaxy.org/reference_data.tar.gz"
+          - "cernvm-fs:/cernvm-reference-data"
+        galaxy_tools:
+          - "toolshed.g2.bx.psu.edu:9009/repos/devteam/fastqc/fastqc/0.11.9+galaxy1"
+          - "toolshed.g2.bx.psu.edu:9009/repos/iuc/trimmomatic/trimmomatic/0.39"
+        cernvm_fs_config:
+          enabled: true
+          mount_point: "/mnt/cernvm-reference-data"
+        notification_email: admin@example.com
+      requirements:
+        - host:
+            node: tosca.nodes.Compute
+            capability: tosca.capabilities.ContainerHost
+            relationship: tosca.relationships.HostedOn

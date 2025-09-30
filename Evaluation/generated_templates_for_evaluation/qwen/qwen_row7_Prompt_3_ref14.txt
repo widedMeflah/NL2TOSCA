@@ -1,0 +1,100 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: |
+  TOSCA template for deploying a WAR-based web application on Apache Tomcat hosted on a JDK-enabled compute node.
+  The template supports multiple operating systems and architectures.
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.nfv.Compute
+      properties:
+        # Compute node properties
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 50 GB
+        architectures:
+          - x86_32
+          - x86_64
+        os_distro:
+          - Linux
+          - AIX
+          - Mac OS
+          - Windows
+        os_type: any
+      interfaces:
+        Standard:
+          create:
+            implementation: custom_scripts/create_compute.sh
+            inputs: {}
+          configure:
+            implementation: custom_scripts/configure_compute.sh
+            inputs: {}
+
+    JDK:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        vendor: Oracle
+        version: "17"
+        distribution: official
+        download_url: "https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz"
+      relationships:
+        requires:
+          - target: ComputeNode
+            type: tosca.relationships.HostedOn
+      interfaces:
+        Standard:
+          configure:
+            implementation: custom_scripts/install_jdk.sh
+            inputs: {}
+
+    TomcatServer:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        vendor: Apache
+        version: "10.1"
+        distribution: official
+        download_url: "https://downloads.apache.org/tomcat/tomcat-10/v10.1.13/bin/apache-tomcat-10.1.13.tar.gz"
+        configuration:
+          - key: CATALINA_HOME
+            value: /opt/tomcat
+      relationships:
+        requires:
+          - target: JDK
+            type: tosca.relationships.DependentOn
+      interfaces:
+        Standard:
+          configure:
+            implementation: custom_scripts/install_tomcat.sh
+            inputs: {}
+          start:
+            implementation: custom_scripts/start_tomcat.sh
+            inputs: {}
+          stop:
+            implementation: custom_scripts/stop_tomcat.sh
+            inputs: {}
+
+    WARApplication:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        vendor: custom
+        version: "1.0"
+        artifact_url: "http://example.com/applications/myapp.war"
+        deployment_path: "/opt/tomcat/webapps"
+      relationships:
+        requires:
+          - target: TomcatServer
+            type: tosca.relationships.DeployedOn
+      interfaces:
+        Standard:
+          configure:
+            implementation: custom_scripts/deploy_war.sh
+            inputs: {}
+
+  outputs:
+    TomcatURL:
+      description: URL to access the Tomcat server
+      value: { get_attribute: [ TomcatServer, server_url ] }
+    WebAppURL:
+      description: URL to access the deployed web application
+      value: { get_attribute: [ WARApplication, app_url ] }

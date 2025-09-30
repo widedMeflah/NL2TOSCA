@@ -1,0 +1,169 @@
+definition:
+  $id: indigo_galaxy_setup
+  $version: 1.0.0
+  description: Setup a new Galaxy instance on CentOS 7 with SLURM support, secure data storage, and email notification on completion. Scalable by adding more worker nodes.
+  type: composite
+  metadata:
+    tosca_versions:
+      - 1.0
+
+  properties:
+    email:
+      type: string
+      description: Recipient's email address for notification
+
+  node_templates:
+    GalaxyInstance:
+      type: os::Linux
+      properties:
+        distro:
+          centos: 7
+        hostname:
+          type: string
+          description: Hostname for the Galaxy instance
+
+      interfaces:
+        - type: network_interface
+          properties:
+            network:
+              type: network
+              id: default_network
+              properties:
+                physical_network: default
+
+      services:
+        - type: slurm
+        - type: galaxy
+        - type: postgresql
+        - type: apache
+
+    DatabaseInstance:
+      type: os::Linux
+      properties:
+        distro:
+          centos: 7
+        hostname:
+          type: string
+          description: Hostname for the Database instance
+
+      interfaces:
+        - type: network_interface
+          properties:
+            network:
+              type: network
+              id: default_network
+              properties:
+                physical_network: default
+
+      services:
+        - type: postgresql
+
+    CompanionSoftware:
+      type: script
+      properties:
+        implementation:
+          bash:
+            - |
+              yum install -y bioconda-galaxy
+              conda activate bioconda
+              conda install -c bioconda -y galaxy-central
+              conda install -c bioconda -y galaxy-tool-slurm
+              conda install -c bioconda -y galaxy-tool-galaxy_publish_history
+
+    ReferenceData:
+      type: artifact
+      properties:
+        artifact_type: file
+        uri: https://github.com/galaxyproject/galaxy-distros/releases/download/centos7/galaxy-distro-centos7.tar.gz
+        destination: /tmp/galaxy-distro-centos7.tar.gz
+
+    SecureDataStorage:
+      type: script
+      properties:
+        implementation:
+          bash:
+            - |
+              yum install -y ansible
+              ansible-galaxy install -r /etc/ansible/roles/galaxy/requirements.yml
+              ansible-playbook /etc/ansible/playbooks/galaxy_encrypt_data.yml
+
+    EmailNotification:
+      type: script
+      properties:
+        implementation:
+          bash:
+            - echo "Galaxy instance setup complete. Access instructions below:" | mail -s "Galaxy Instance Setup Complete" $email
+            - cat /tmp/access_instructions | mail -s "Galaxy Instance Setup Complete" $email
+
+  relationships:
+    GalaxyInstance:
+      - type: contains
+        GalaxyInstance:
+          GalaxyInstanceNode: galaxy_node
+          DatabaseInstance: database_node
+          CompanionSoftware: companion_software
+          SecureDataStorage: secure_data_storage
+
+    GalaxyInstance:
+      - type: uses
+        GalaxyInstance: galaxy_node
+        EmailNotification: email_notification
+
+    DatabaseInstance:
+      - type: uses
+        DatabaseInstance: database_node
+        GalaxyInstance: galaxy_node
+
+    GalaxyInstance:
+      - type: scales_with
+        GalaxyInstance: worker_node
+        GalaxyInstance: galaxy_node
+        relationship_data:
+          slurm_partition: my_partition
+
+  node_types:
+    os::Linux:
+      description: A Linux-based operating system
+      swid_tag: ARC00513_os_Linux_x86_64
+
+    network:
+      description: A network for interconnecting nodes
+      swid_tag: ARC00513_network
+
+    network_interface:
+      description: An interface for connecting a node to a network
+      swid_tag: ARC00513_network_interface
+
+    slurm:
+      description: SLURM workload manager for resource management and job scheduling
+      swid_tag: ARC00513_slurm
+
+    galaxy:
+      description: Galaxy platform for data analysis
+      swid_tag: ARC00513_galaxy
+
+    postgresql:
+      description: PostgreSQL database server
+      swid_tag: ARC00513_postgresql
+
+    apache:
+      description: Apache HTTP Server for web serving
+      swid_tag: ARC00513_apache
+
+    script:
+      description: A script to execute custom commands or install software
+      swid_tag: ARC00513_script
+
+    artifact:
+      description: A file or other artifact
+      swid_tag: ARC00513_artifact
+
+  artifact_types:
+    file:
+      description: A file artifact
+      swid_tag: ARC00513_artifact_file
+
+  interfaces:
+    network:
+      description: A network interface
+      swid_tag: ARC00513_interface_network

@@ -1,0 +1,86 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+topology_template:
+  inputs:
+    worker_count:
+      type: integer
+      description: Number of Kubernetes worker nodes
+      default: 2
+      constraints:
+        - in_range: [1, 5]
+
+  node_templates:
+    kubernetes_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+
+    ubuntu_master:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            os:
+              architecture: x86_64
+              type: linux
+              distribution: ubuntu
+              version: 20.04
+        endpoint:
+          properties:
+            network_name: kubernetes_network
+
+    kubernetes_master:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: ubuntu_master
+        - dependency: kubernetes_network
+
+    ubuntu_worker:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            os:
+              architecture: x86_64
+              type: linux
+              distribution: ubuntu
+              version: 20.04
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: { get_input: worker_count }
+        endpoint:
+          properties:
+            network_name: kubernetes_network
+
+    kubernetes_worker:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: ubuntu_worker
+        - dependency: kubernetes_master
+        - dependency: kubernetes_network
+
+    kubernetes_dashboard:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: kubernetes_master
+        - dependency: kubernetes_network
+
+    secure_channel_master_workers:
+      type: tosca.nodes.SecurityGroup
+      properties:
+        security_rules:
+          - protocol: tcp
+            port_range: [10250, 10255]
+            direction: ingress
+            remote: kubernetes_network
+          - protocol: tcp
+            port_range: [6443, 6443]
+            direction: ingress
+            remote: kubernetes_network
+
+  outputs:
+    kubernetes_dashboard_url:
+      value: { get_attribute: [ kubernetes_dashboard, endpoint, url ] }
+      description: URL to access the Kubernetes dashboard.

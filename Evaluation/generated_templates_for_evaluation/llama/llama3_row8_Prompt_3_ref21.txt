@@ -1,0 +1,67 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Two-tier Wine Cellar Application
+  node_templates:
+    Web_Server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        cpu: 1
+        memory: 1 GB
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports: 80
+        endpoint:
+          properties:
+            protocol: https
+            ports: 443
+      requirements:
+        - host:
+            node: Apache
+        - database:
+            node: Database
+
+    Apache:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 80
+        protocol: http
+        url: https://github.com/winecellar/winecellar-php
+      requirements:
+        - host:
+            node: Web_Server
+
+    Database:
+      type: tosca.nodes.Database
+      properties:
+        type: mysql
+        username: winecellar
+        password: winecellar
+        db_name: winecellar
+        sql_file: https://example.com/winecellar.sql
+      requirements:
+        - host:
+            node: Database_Server
+
+    Database_Server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        cpu: 1
+        memory: 4 GB
+        disk_size: 10 GB
+      requirements:
+        - database:
+            node: Database
+
+  relationship_templates:
+    - connect_to_database:
+        type: ConnectsTo
+        properties:
+          username: winecellar
+          password: winecellar
+          db_name: winecellar

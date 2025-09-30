@@ -1,0 +1,50 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying Elasticsearch on Ubuntu
+
+topology_template:
+  inputs:
+    elasticsearch_version:
+      type: string
+      default: "7.17.9"
+      description: Version of Elasticsearch to install
+    elastic_password:
+      type: string
+      required: true
+      description: Password for elastic user
+    kibana_password:
+      type: string
+      required: true
+      description: Password for kibana_system user
+
+  node_templates:
+    elasticsearch_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: "20.04"
+
+    elasticsearch:
+      type: tosca.nodes.indigo.ElasticSearch
+      properties:
+        elastic_version: { get_input: elasticsearch_version }
+        elastic_password: { get_input: elastic_password }
+        kibana_system_password: { get_input: kibana_password }
+        network_mode: host
+      requirements:
+        - host: elasticsearch_server
+
+  outputs:
+    elasticsearch_endpoint:
+      value: { concat: ['http://', get_attribute: [elasticsearch_server, public_address], ':9200'] }
+      description: Elasticsearch endpoint

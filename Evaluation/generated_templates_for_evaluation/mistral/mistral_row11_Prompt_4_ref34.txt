@@ -1,0 +1,97 @@
+
+definition:
+  $id: indigo_galaxy_deployment
+  $version: 1.0.0
+  $extends: tosca.simple.profile.common.cloudformation.CloudFormationTemplate
+
+properties:
+  galxy_flavor:
+    type: string
+    description: The specific Galaxy flavor to use
+
+  companion_software:
+    type: string
+    description: The necessary companion software for the Galaxy instance
+
+  reference_data:
+    type: string
+    description: The reference data for the Galaxy instance
+
+  vault_url:
+    type: string
+    description: The URL of the Vault server for managing secrets
+
+  storage_encryption_key:
+    type: string
+    description: The encryption key for storage encryption
+
+  worker_nodes:
+    type: integer
+    description: The number of worker nodes to be utilized
+
+  confirmation_email_recipient:
+    type: string
+    description: The recipient of the confirmation email upon successful deployment
+
+  hybrid_environment:
+    type: boolean
+    description: Whether the deployment supports a hybrid environment (true/false)
+
+topology_template:
+  nodes:
+    - type: GalaxyInstance
+      galaxy_flavor: ${galxy_flavor}
+      companion_software: ${companion_software}
+      reference_data: ${reference_data}
+      properties:
+        SLURM:
+          image: centos7_slurm
+          storage_encryption_key: ${storage_encryption_key}
+          vault_url: ${vault_url}
+      interfaces:
+        - name: public
+          protocol: tcp
+          ports:
+            - name: http
+              public_port: 8080
+              private_port: 8080
+            - name: https
+              public_port: 8443
+              private_port: 8443
+          security_groups:
+            - name: default
+
+    - type: SLURMManager
+      interfaces:
+        - name: public
+          protocol: tcp
+          ports:
+            - name: slurm_control
+              public_port: 6817
+              private_port: 6817
+            - name: slurm_auth
+              public_port: 6830
+              private_port: 6830
+
+    - type: WorkerNode
+      interfaces:
+        - name: public
+          protocol: tcp
+          security_groups:
+            - name: default
+      number: ${worker_nodes}
+
+  relations:
+    - - type: GalaxyInstance
+        GalaxyInstance:
+
+    - - type: GalaxyInstance
+        GalaxyInstance:
+          - type: WorkerNode
+
+
+  parameters:
+    - name: confirmation_email_recipient
+      description: The recipient of the confirmation email upon successful deployment
+    - name: hybrid_environment
+      description: Whether the deployment supports a hybrid environment (true/false)

@@ -1,0 +1,134 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a Galaxy application with MySQL on a single VM using INDIGO orchestrator
+
+imports:
+  - file: https://www.toscahub.org/tosca-normative-types/1.0.0
+    namespace_prefix: tosca
+
+topology_template:
+  inputs:
+    instance_flavor:
+      type: string
+      description: Flavor of the virtual machine
+      default: medium
+    storage_size:
+      type: integer
+      description: Size of the storage in GB
+      default: 50
+    admin_email:
+      type: string
+      description: Admin email for Galaxy configuration
+      default: admin@example.com
+    api_key:
+      type: string
+      description: API key for Galaxy access
+      default: default_api_key
+    install_reference_data:
+      type: boolean
+      description: Whether to install reference data for Galaxy
+      default: true
+
+  node_templates:
+    galaxy_vm:
+      type: tosca.nodes.Compute
+      properties:
+        flavor: { get_input: instance_flavor }
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - local_storage:
+            node: encrypted_storage
+            relationship: tosca.relationships.AttachesTo
+
+    encrypted_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: storage_size } 
+        encryption:
+          algorithm: AES-256
+      capabilities:
+        attachment:
+          properties:
+            location: /data
+
+    galaxy_app:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: galaxy_vm
+            relationship: tosca.relationships.HostedOn
+        - database:
+            node: mysql_db
+            relationship: tosca.relationships.ConnectsTo
+      properties:
+        component_version: latest
+      interfaces:
+        Standard:
+          create:
+            implementation: docker
+            inputs:
+              image: galaxyproject/galaxy:latest
+              ports:
+                - 8080:8080
+              volumes:
+                - /data/galaxy:/galaxy
+              environment:
+                - GALAXY_CONFIG_ADMIN_USERS={ get_input: admin_email }
+                - GALAXY_CONFIG_MASTER_API_KEY={ get_input: api_key }
+          configure:
+            inputs:
+              install_reference_data: { get_input: install_reference_data }
+            implementation:
+              script: |
+                if [ { get_input: install_reference_data } = true ]; then
+                  echo "Installing reference data..."
+                  # Add commands to download and configure reference data
+                fi
+
+    mysql_db:
+      type: tosca.nodes.Database
+      requirements:
+        - host:
+            node: galaxy_vm
+            relationship: tosca.relationships.HostedOn
+      properties:
+        name: galaxy_db
+        user: galaxy_user
+        password: galaxy_pass
+        port: 3306
+      interfaces:
+        Standard:
+          create:
+            implementation: docker
+            inputs:
+              image: mysql:8.0
+              environment:
+                - MYSQL_ROOT_PASSWORD=root_pass
+                - MYSQL_DATABASE=galaxy_db
+                - MYSQL_USER=galaxy_user
+                - MYSQL_PASSWORD=galaxy_pass
+              volumes:
+                - /data/mysql:/var/lib/mysql
+              ports:
+                - 3306:3306
+
+  outputs:
+    galaxy_endpoint:
+      description: URL to access the Galaxy application
+      value: { get_attribute: [galaxy_vm, public_address] }
+    admin_email:
+      description: Admin email for Galaxy
+      value: { get_input: admin_email }
+    api_key:
+      description: API key for Galaxy access
+      value: { get_input: api_key }

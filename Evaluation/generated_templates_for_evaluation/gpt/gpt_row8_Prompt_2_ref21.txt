@@ -1,0 +1,93 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for a web application to manage a wine cellar, with user authentication, data security, and high availability.
+
+topology_template:
+  node_templates:
+
+    winecellar_webapp:
+      type: tosca.nodes.WebApplication
+      properties:
+        description: Web application for managing a wine cellar.
+        user_friendly_ui: true
+        exposed_protocol: [ HTTP, HTTPS ]
+      requirements:
+        - host: winecellar_webserver
+        - database: winecellar_db
+        - dependency: winecellar_auth
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 3
+
+    winecellar_webserver:
+      type: tosca.nodes.WebServer
+      properties:
+        http_port: 80
+        https_port: 443
+      requirements:
+        - host: winecellar_vm
+
+    winecellar_db:
+      type: tosca.nodes.Database
+      properties:
+        db_name: winecellar
+        port: 5432
+        username: wineadmin
+        password: { get_input: db_password }
+      capabilities:
+        endpoint:
+          properties:
+            secure: true
+      requirements:
+        - host: winecellar_db_vm
+
+    winecellar_auth:
+      type: tosca.nodes.Security.Authentication
+      properties:
+        method: password
+        user_roles:
+          - admin
+          - user
+
+    winecellar_vm:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 40 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 22.04
+
+    winecellar_db_vm:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 40 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 22.04
+
+  outputs:
+    app_url:
+      description: Public URL to access the Wine Cellar management web application
+      value: { concat: [ "https://", { get_attribute: [ winecellar_webserver, public_address ] } ] }
+
+inputs:
+  db_password:
+    type: string
+    description: Password for the wine cellar database user
+    required: true
+    hidden: true

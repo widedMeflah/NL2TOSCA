@@ -1,0 +1,170 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: KubernetesClusterSetup
+  template_version: 1.0.0
+  template_author: User
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:1.0.0-ALIEN20
+  - kubernetes-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.UbuntuServer:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_distribution:
+        type: string
+        default: Ubuntu
+      os_version:
+        type: string
+        default: 20.04
+
+topology_template:
+  node_templates:
+    MasterCompute:
+      type: Custom.UbuntuServer
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+      requirements:
+        - host:
+            node: MasterNetwork
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.Network
+
+    WorkerCompute:
+      type: Custom.UbuntuServer
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: 1
+      requirements:
+        - host:
+            node: WorkerNetwork
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.Network
+
+    MasterNetwork:
+      type: tosca.nodes.Network
+      properties:
+        network_type: private
+        protocol: tcp
+        secure: true
+
+    WorkerNetwork:
+      type: tosca.nodes.Network
+      properties:
+        network_type: private
+        protocol: tcp
+        secure: true
+
+    DockerEngineMaster:
+      type: docker.nodes.Engine
+      requirements:
+        - host:
+            node: MasterCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    DockerEngineWorker:
+      type: docker.nodes.Engine
+      requirements:
+        - host:
+            node: WorkerCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    KubernetesMaster:
+      type: kubernetes.nodes.Master
+      properties:
+        dns_domain: cluster.local
+      requirements:
+        - host:
+            node: MasterCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - network:
+            node: MasterNetwork
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.ConnectsTo
+
+    KubernetesWorker:
+      type: kubernetes.nodes.Worker
+      requirements:
+        - host:
+            node: WorkerCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - network:
+            node: WorkerNetwork
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.ConnectsTo
+        - master:
+            node: KubernetesMaster
+            capability: kubernetes.capabilities.Master
+            relationship: kubernetes.relationships.ConnectsToMaster
+
+    KubernetesCLI:
+      type: kubernetes.nodes.CLI
+      requirements:
+        - host:
+            node: MasterCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - target:
+            node: KubernetesMaster
+            capability: kubernetes.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+
+    Etcd:
+      type: kubernetes.nodes.Etcd
+      requirements:
+        - host:
+            node: MasterCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    FlannelOverlay:
+      type: kubernetes.nodes.NetworkOverlay
+      properties:
+        overlay_type: flannel
+      requirements:
+        - host:
+            node: MasterCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - host:
+            node: WorkerCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - config_store:
+            node: Etcd
+            capability: kubernetes.capabilities.ConfigStore
+            relationship: tosca.relationships.ConnectsTo
+
+    KubernetesDashboard:
+      type: kubernetes.nodes.Dashboard
+      properties:
+        namespace: kube-system
+      requirements:
+        - host:
+            node: MasterCompute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - target:
+            node: KubernetesMaster
+            capability: kubernetes.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+
+  outputs:
+    dashboard_ui:
+      value: { get_attribute: [KubernetesDashboard, endpoint] }
+    api_endpoint:
+      value: { get_attribute: [KubernetesMaster, endpoint] }

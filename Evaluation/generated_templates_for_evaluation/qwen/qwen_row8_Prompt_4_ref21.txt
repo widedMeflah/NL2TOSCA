@@ -1,0 +1,79 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: TOSCA template to deploy a two-tier application consisting of a PHP-based Wine Cellar web application on Apache and a MySQL database, both running on Ubuntu Linux.
+
+topology_template:
+
+  node_templates:
+
+    web_server:
+      type: tosca.nodes.nfv.Vdu.Compute
+      capabilities:
+        nfv_compute:
+          properties:
+            num_cpus: 1
+            mem_size: 1024 MB
+            disk_size: 10 GB
+      properties:
+        image: Ubuntu 20.04 LTS
+        nfv:
+          mgmt_interface:
+            ip_address: 192.168.1.10
+            port: 80
+        endpoints:
+          - name: HTTP
+            protocol: HTTP
+            port: 80
+          - name: HTTPS
+            protocol: HTTPS
+            port: 443
+      interfaces:
+        nfv:
+          configure:
+            inputs:
+              - name: install_apache_php
+                value: |
+                  apt update && apt install -y apache2 php libapache2-mod-php
+                  systemctl start apache2
+                  systemctl enable apache2
+              - name: deploy_application
+                value: |
+                  cd /var/www/html
+                  wget https://example.com/winecellar.tar.gz
+                  tar -xzf winecellar.tar.gz
+                  chown -R www-data:www-data /var/www/html
+      requirements:
+        - host: database_server
+          relationship_type: tosca.relationships.nfv.VduLink
+          properties:
+            endpoint: 192.168.1.20
+
+    database_server:
+      type: tosca.nodes.nfv.Vdu.Compute
+      capabilities:
+        nfv_compute:
+          properties:
+            num_cpus: 1
+            mem_size: 1024 MB
+            disk_size: 10 GB
+      properties:
+        image: Ubuntu 20.04 LTS
+        nfv:
+          mgmt_interface:
+            ip_address: 192.168.1.20
+      interfaces:
+        nfv:
+          configure:
+            inputs:
+              - name: install_mysql
+                value: |
+                  apt update && apt install -y mysql-server
+                  systemctl start mysql
+                  systemctl enable mysql
+              - name: configure_mysql
+                value: |
+                  mysql -u root -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('password123');"
+                  mysql -u root -ppassword123 -e "CREATE DATABASE winecellar;"
+      requirements:
+        - host: database_server
+          relationship_type: tosca.relationships.nfv.VduLink

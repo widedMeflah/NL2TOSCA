@@ -1,0 +1,184 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+description: A system designed to host a specific Java application with replicated data storage and integration testing capabilities, deployed across multiple compute resources on an IPv4 network.
+
+imports:
+  - alien-base-types: latest
+  - alien-extended-types: latest # Provides Compute, Network, JDK, MySQL, JavaWebApp
+
+node_types:
+  # Custom node type for the specific application requirements
+  my.nodes.Application:
+    derived_from: alien.nodes.JavaWebApp # Represents a generic Java web application server
+    properties:
+      context_path:
+        type: string
+        default: "/"
+        description: "The web context path where the application will be accessible."
+      app_arguments:
+        type: string
+        required: true
+        description: "Specific application arguments for security and documentation settings."
+
+  # Custom node type for the integration testing component
+  my.nodes.IntegrationTester:
+    derived_from: alien.nodes.SoftwareComponent # A generic software component for testing
+    properties:
+      application_branch:
+        type: string
+        required: true
+        description: "The specific branch of the application's source code to test."
+      plugin_version:
+        type: string
+        required: true
+        description: "The version of the testing plugin to be used."
+      test_suite:
+        type: string
+        required: true
+        description: "The name or path of the test suite to execute."
+
+topology_template:
+  node_templates:
+
+    # 7. Multiple computing resources to host different components
+    app_compute:
+      type: alien.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 20 GB
+            mem_size: 4 GB
+
+    db1_compute:
+      type: alien.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: 50 GB
+            mem_size: 2 GB
+
+    db2_compute:
+      type: alien.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: 50 GB
+            mem_size: 2 GB
+
+    tester_compute:
+      type: alien.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: 15 GB
+            mem_size: 2 GB
+
+    # 6. Network that supports IPv4 connectivity
+    application_network:
+      type: alien.nodes.Network
+      properties:
+        ip_version: 4 # Specifies IPv4 connectivity
+
+    # 1. Java Development Kit (JDK) from a specified URL, installed in a specific directory
+    application_jdk:
+      type: alien.nodes.software.JDK
+      properties:
+        jdk_url: "http://example.com/software/jdk-8u202-linux-x64.tar.gz" # Placeholder: Replace with actual URL
+        install_dir: "/opt/java/jdk8"
+      requirements:
+        - host:
+            node: app_compute
+            capability: tosca.capabilities.Container.Runtime # JDK is a runtime environment
+            relationship: tosca.relationships.HostedOn
+
+    # 2. Application accessible via a web interface at the root context with specific arguments
+    main_application:
+      type: my.nodes.Application
+      properties:
+        context_path: "/" # Accessible via web interface at the root context
+        app_arguments: "-Dsecurity.config=/etc/app/security.conf -Ddocs.enable=true" # Specific application arguments
+      requirements:
+        - host:
+            node: app_compute
+            capability: tosca.capabilities.Container.Application # Application hosted on compute
+            relationship: tosca.relationships.HostedOn
+        - runtime: # Application needs a JDK runtime
+            node: application_jdk
+            capability: alien.capabilities.JDK # Capability provided by the JDK node
+            relationship: tosca.relationships.DependsOn
+        - network: # Application needs network access for web interface
+            node: application_network
+            capability: tosca.capabilities.network.Linkable # Ability to connect to a network
+            relationship: tosca.relationships.network.BindsTo
+
+    # 3. First instance of a data storage service (MySQL Master)
+    data_storage_master:
+      type: alien.nodes.MySQL # Using MySQL as a concrete example of a DBMS
+      properties:
+        root_password: "ChangeMeSecurely123!" # IMPORTANT: Use secure credential management in production
+        database_name: "application_data"
+      requirements:
+        - host:
+            node: db1_compute
+            capability: tosca.capabilities.Container.Application
+            relationship: tosca.relationships.HostedOn
+        - network: # DB needs network access
+            node: application_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.network.BindsTo
+
+    # 3. Second instance of a data storage service (MySQL Slave) that can replicate data
+    data_storage_slave:
+      type: alien.nodes.MySQL
+      properties:
+        root_password: "ChangeMeSecurely456!" # IMPORTANT: Use secure credential management in production
+        database_name: "application_data"
+      requirements:
+        - host:
+            node: db2_compute
+            capability: tosca.capabilities.Container.Application
+            relationship: tosca.relationships.HostedOn
+        - network: # DB needs network access
+            node: application_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.network.BindsTo
+        - master: # Defines replication setup from the master database instance
+            node: data_storage_master
+            capability: tosca.capabilities.Endpoint.Database # The slave connects to the master's database endpoint
+            relationship: tosca.relationships.ConnectsTo
+
+    # 4. Application connects to both instances of the data storage service
+    app_to_master_connection:
+      type: tosca.relationships.ConnectsTo
+      source: main_application
+      target: data_storage_master
+
+    app_to_slave_connection:
+      type: tosca.relationships.ConnectsTo
+      source: main_application
+      target: data_storage_slave
+
+    # 5. Testing component that runs integration tests
+    integration_test_component:
+      type: my.nodes.IntegrationTester
+      properties:
+        application_branch: "release/v1.0" # Specific branch of the application
+        plugin_version: "3.1.0" # Specified version of a plugin
+        test_suite: "sanity_checks.xml" # Particular test suite
+      requirements:
+        - host:
+            node: tester_compute
+            capability: tosca.capabilities.Container.Application
+            relationship: tosca.relationships.HostedOn
+        - network: # Tester needs network access
+            node: application_network
+            capability: tosca.capabilities.network.Linkable
+            relationship: tosca.relationships.network.BindsTo
+        - test_target: # Tester needs to connect to the application it's testing
+            node: main_application
+            capability: tosca.capabilities.Endpoint.Admin # Assumes an admin/testing endpoint
+            relationship: tosca.relationships.ConnectsTo

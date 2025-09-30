@@ -1,0 +1,121 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: A system for running a data analysis application with a web interface, scalability, security, and automated testing.
+
+topology_template:
+
+  node_templates:
+
+    DataAnalysisApplication:
+      type: tosca.nodes.WebApplication
+      properties:
+        application_name: DataAnalysisApp
+        version: 1.0
+        data_analysis_engine: python
+        scalability: horizontal
+        security:
+          ssl: true
+          authentication: true
+          authorization: true
+      interfaces:
+        Standard:
+          create: install.sh
+          start: start.sh
+          stop: stop.sh
+          delete: uninstall.sh
+      requirements:
+        - host: WebServer
+        - database: Database
+        - test_runner: TestFramework
+
+    WebServer:
+      type: tosca.nodes.Compute
+      properties:
+        number_of_instances: 2
+        instance_type: m4.large
+        os:
+          type: Linux
+          distribution: Ubuntu
+          version: "20.04"
+        networks:
+          - name: PublicNetwork
+            type: tosca.nodes.Network.Public
+      interfaces:
+        Standard:
+          create: create_server.sh
+          configure: configure_webserver.sh
+          start: start_webserver.sh
+          stop: stop_webserver.sh
+          delete: delete_server.sh
+
+    Database:
+      type: tosca.nodes.Database
+      properties:
+        database_type: PostgreSQL
+        version: 13
+        storage:
+          size: 50 GB
+          type: SSD
+        backup:
+          frequency: daily
+          retention_period: 7 days
+      interfaces:
+        Standard:
+          create: create_db.sh
+          configure: configure_db.sh
+          start: start_db.sh
+          stop: stop_db.sh
+          delete: delete_db.sh
+
+    TestFramework:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        framework_type: pytest
+        test_suites:
+          - data_analysis_tests
+          - web_ui_tests
+        execution_schedule: daily
+      interfaces:
+        Standard:
+          create: setup_tests.sh
+          configure: configure_tests.sh
+          start: run_tests.sh
+          stop: stop_tests.sh
+          delete: remove_tests.sh
+      requirements:
+        - host: TestRunnerCompute
+
+    TestRunnerCompute:
+      type: tosca.nodes.Compute
+      properties:
+        number_of_instances: 1
+        instance_type: t3.medium
+        os:
+          type: Linux
+          distribution: Ubuntu
+          version: "20.04"
+      interfaces:
+        Standard:
+          create: create_test_runner.sh
+          configure: configure_test_runner.sh
+          start: start_test_runner.sh
+          stop: stop_test_runner.sh
+          delete: delete_test_runner.sh
+
+    LoadBalancer:
+      type: tosca.nodes.LoadBalancer
+      properties:
+        algorithm: round_robin
+        health_check:
+          protocol: HTTP
+          path: /health
+          interval: 30
+      interfaces:
+        Standard:
+          create: create_lb.sh
+          configure: configure_lb.sh
+          start: start_lb.sh
+          stop: stop_lb.sh
+          delete: delete_lb.sh
+      requirements:
+        - targets: WebServer

@@ -1,0 +1,62 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A system that hosts a web application on a server running Tomcat with a specific Java version and OS configuration.
+
+topology_template:
+  node_templates:
+    Server:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 50 GB
+        os_distribution: ubuntu
+        os_type: linux
+        os_bit_size: 64
+        os_version: 20.04
+        hypervisor_type: kvm
+        architecture: x86_64
+      interfaces:
+        org.openstack.nfv.interfaces.VduBootstrap:
+          configure:
+            implementation: scripts/bootstrap.sh
+            inputs:
+              java_version: "11"
+              tomcat_version: "9.0.56"
+
+    Tomcat:
+      type: tosca.nodes.SoftwareComponent
+      dependencies:
+        - Server
+      properties:
+        tomcat_version: 9.0.56
+        java_version: 11
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/tomcat_install.sh
+            inputs:
+              tomcat_version: 9.0.56
+              java_version: 11
+
+    WebApplication:
+      type: tosca.nodes.WebApplication
+      dependencies:
+        - Tomcat
+      properties:
+        artifact_url: http://example.com/webapp.war
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_webapp.sh
+            inputs:
+              war_file_url: http://example.com/webapp.war
+              context_path: /myapp
+
+  outputs:
+    tomcat_url:
+      description: URL to access the Tomcat server
+      value: { get_attribute: [ Tomcat, endpoint, url ] }
+    webapp_url:
+      description: URL to access the deployed web application
+      value: { get_attribute: [ WebApplication, endpoint, url ] }

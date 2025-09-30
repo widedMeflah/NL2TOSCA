@@ -1,0 +1,54 @@
+
+definition_versions:
+  - version: 1.0
+
+node_templates:
+  Alien4Cloud:
+    type: cloud.org.Alien4Cloud
+    properties:
+      context_root: /
+      profiles:
+        - security-demo
+        - noApiDoc
+
+  ElasticSearch:
+    type: cloud.org.ElasticSearch
+    properties:
+      num_instances: 2
+      replication: true
+
+  JDK:
+    type: cloud.org.JDK
+    properties:
+      version: OracleJDK
+      download_location: https://www.oracle.com/java/technologies/javase-jdk17-downloads.html
+      installation_location: /usr/lib/jvm
+
+  ITTesting:
+    type: cloud.org.ITTesting
+    properties:
+      branch: develop
+      version: 1.3.0-RC5
+      test_suite: RunCloudify3AmazonLongRunIT
+
+  ComputeNode:
+    type: cloud.org.ComputeNode
+    properties:
+      role: frontend | es
+
+relationships:
+  - type: cloud.org.ConnectsToNetwork
+    from: Alien4Cloud
+    to: ComputeNode
+
+  - type: cloud.org.ConnectsToNetwork
+    from: ElasticSearch
+    to: ComputeNode
+
+  - type: cloud.org.InstalledOn
+    from: Alien4Cloud
+    to: JDK
+
+  - type: cloud.org.InstalledOn
+    from: ElasticSearch
+    to: JDK

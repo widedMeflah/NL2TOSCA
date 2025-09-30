@@ -1,0 +1,106 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA-compliant blueprint for deploying a sample JavaScript application with network-accessible data storage.
+
+imports:
+  - tosca-normative-types:1.0.0
+
+topology_template:
+  inputs:
+    app_port:
+      type: integer
+      description: Port for the JavaScript application server
+      default: 3000
+    db_port:
+      type: integer
+      description: Port for the data storage server
+      default: 27017
+
+  node_templates:
+    app_server_host:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: linux
+          distribution: ubuntu
+          version: 22.04
+          architecture: x86_64
+        secure_boot: true
+      capabilities:
+        host:
+          num_cpus: 2
+          disk_size: 10 GB
+          mem_size: 4 GB
+
+    data_storage_host:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: linux
+          distribution: ubuntu
+          version: 22.04
+          architecture: x86_64
+        secure_boot: true
+      capabilities:
+        host:
+          num_cpus: 2
+          disk_size: 20 GB
+          mem_size: 4 GB
+
+    javascript_application:
+      type: tosca.nodes.WebApplication
+      properties:
+        component_version: 1.0
+        language: javascript
+        url_path: "/"
+      requirements:
+        - host: app_server_host
+        - dependency: data_storage
+        - network:
+            node: app_network
+        - endpoint:
+            node: app_endpoint
+
+    data_storage:
+      type: tosca.nodes.Database
+      properties:
+        dbms:
+          type: mongodb
+          version: 5.0
+        structured: true
+      requirements:
+        - host: data_storage_host
+        - network:
+            node: db_network
+        - endpoint:
+            node: db_endpoint
+
+    app_network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: app_net
+
+    db_network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: db_net
+
+    app_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        protocol: tcp
+        port: { get_input: app_port }
+        network_name: app_net
+
+    db_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        protocol: tcp
+        port: { get_input: db_port }
+        network_name: db_net
+
+  outputs:
+    application_url:
+      description: URL to access the deployed JavaScript application
+      value: { concat: [ "http://", { get_attribute: [ app_server_host, public_address ] }, ":", { get_input: app_port }, "/" ] }

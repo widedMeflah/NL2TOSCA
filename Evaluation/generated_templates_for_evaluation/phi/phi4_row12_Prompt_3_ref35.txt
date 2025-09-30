@@ -1,0 +1,139 @@
+description: INDIGO Orchestrator TOSCA Template for Deploying a Galaxy Docker Image
+
+metadata:
+  template_name: galaxy-deployment-v1
+  template_version: 1.0
+
+topology_template:
+
+  inputs:
+    instance_type:
+      type: string
+      default: m1.small
+      description: Type of VM instance (e.g., CPU, memory, disk).
+
+    block_storage_size:
+      type: integer
+      default: 50
+      description: Size of the block storage in GB.
+
+    galaxy_config:
+      type: map
+      required: true
+      default:
+        admin_email: admin@example.com
+        api_key: DEFAULT_API_KEY
+        version: latest
+        instance_description: Galaxy Instance for Project
+
+    public_network_endpoint:
+      type: string
+      description: Public IP or DNS name for network access.
+
+  node_templates:
+
+    virtual_machine:
+      type: tosca.nodes.indigo.Compute.Image
+      properties:
+        image_id: ubuntu-16.04
+        flavor_id: { get_input: instance_type }
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            memory: 4GiB
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    block_storage:
+      type: tosca.nodes.indigo.Storage.BlockStorage
+      properties:
+        size: { get_input: block_storage_size }
+      requirements:
+        - host: virtual_machine
+
+    docker_container:
+      type: tosca.nodes.indigo.Container.Docker
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      interfaces:
+        DockerContainer:
+          inputs:
+            image: galaxyproject/galaxy
+            volumes:
+              - /path/to/config:/etc/galaxy
+            ports:
+              - container_port: 8080
+                host_port: 80
+              - container_port: 21
+                host_port: 21
+              - container_port: 49152
+                host_port: 49152
+
+    hashi_corp_vault:
+      type: tosca.nodes.indigo.Security.Vault
+      properties:
+        encryption: "LUKS"
+      requirements:
+        - virtual_machine: virtual_machine
+
+    network_configuration:
+      type: tosca.nodes.indigo.Network.VirtualNetwork
+      properties:
+        public_endpoint: { get_input: public_network_endpoint }
+        ports:
+          - 80
+          - 21
+          - 49152
+
+  workflows:
+
+    deploy_galaxy_instance:
+      description: Workflow for deploying the Galaxy instance.
+      tasks:
+        create_virtual_machine:
+          implementation: tosca.workflows.indigo.Compute.CreateVM
+          inputs:
+            image_id: ubuntu-16.04
+            flavor_id: { get_input: instance_type }
+        
+        attach_block_storage:
+          implementation: tosca.workflows.indigo.Storage.AttachBlockStorage
+          inputs:
+            size: { get_input: block_storage_size }
+
+        run_docker_container:
+          implementation: tosca.workflows.indigo.Container.RunDockerContainer
+          inputs:
+            image: galaxyproject/galaxy
+            volumes:
+              - /path/to/config:/etc/galaxy
+
+        configure_hashi_vault:
+          implementation: tosca.workflows.indigo.Security.ConfigureVault
+          properties:
+            encryption: "LUKS"
+
+    post_deployment_tasks:
+      description: Tasks for managing the Galaxy instance.
+      tasks:
+        setup_galaxy_config:
+          implementation: scripts/setup_galaxy.sh
+          inputs:
+            config: { get_input: galaxy_config }
+        
+        install_reference_data:
+          implementation: scripts/install_reference_data.sh
+          when:
+            - condition: { equal: [ true, { get_property: [SELF, install_reference_data] } ] }
+
+outputs:
+
+  public_ip_address:
+    description: The public IP address of the deployed virtual machine.
+    value: { get_attribute: [virtual_machine, network_configuration.public_endpoint] }

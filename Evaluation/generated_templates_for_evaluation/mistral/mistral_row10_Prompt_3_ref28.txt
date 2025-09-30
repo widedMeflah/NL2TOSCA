@@ -1,0 +1,128 @@
+
+definition_templates:
+  Elasticsearch:
+    type: node_template
+    topology_template:
+      type: Node
+      nodes:
+        - type: ElasticsearchService
+          ElasticsearchService:
+            type: service_template
+            service_type: elasticsearch
+            properties:
+              version: 7.4.1
+              bind_address: 0.0.0.0
+              elastic_password: "!parameter password_elastic"
+              kibana_password: "!parameter password_kibana"
+
+    artifacts:
+      - name: elasticsearch-7.4.1.tar.gz
+        uri: https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.4.1.tar.gz
+
+    implementations:
+      - type: os_image
+        os_image:
+          type: virtual_machine
+          operating_system: Linux
+          distribution:
+            name: Ubuntu
+            version: 16.04
+          vm_config:
+            memory_mb: 4096
+            vcpus: 2
+
+    capabilities:
+      - type: network
+        network:
+          type: public
+          port: 9200
+          protocol: TCP
+
+  VM:
+    type: node_template
+    topology_template:
+      type: Node
+      nodes:
+        - type: ElasticsearchService
+
+  Password:
+    type: property_template
+    properties:
+      password_elastic: "secret elastic_password"
+      password_kibana: "secret kibana_password"
+
+node_templates:
+  ElasticsearchNode:
+    type: Node
+    topology_template:
+      type: CompositeNode
+      nodes:
+        - ref: Elasticsearch
+
+policies:
+  configure_elasticsearch:
+    node: ElasticsearchNode
+    policy_type: Execute
+    policy_implementation:
+      type: script
+      script: |
+        # Install Elasticsearch
+        apt-get update && apt-get install -y unzip
+        tar xzf elasticsearch-${ElasticsearchService.version}.tar.gz
+        mv elasticsearch-${ElasticsearchService.version} /usr/local/elasticsearch
+        rm elasticsearch-${ElasticsearchService.version}.tar.gz
+
+        # Configure Elasticsearch
+        echo "elasticsearch.yml" > /usr/local/elasticsearch/config/elasticsearch.yml
+        echo "cluster.name: elasticsearch" >> /usr/local/elasticsearch/config/elasticsearch.yml
+        echo "network.host: 0.0.0.0" >> /usr/local/elasticsearch/config/elasticsearch.yml
+        echo "http.enabled: true" >> /usr/local/elasticsearch/config/elasticsearch.yml
+        echo "http.port: 9200" >> /usr/local/elasticsearch/config/elasticsearch.yml
+        echo "discovery.seed_hosts: []" >> /usr/local/elasticsearch/config/elasticsearch.yml
+
+        # Configure Elasticsearch user
+        useradd -r elastic
+        echo "${ElasticsearchService.elastic_password}" | passwd --stdin elastic
+
+        # Configure Kibana user
+        useradd -r kibana
+        echo "${ElasticsearchService.kibana_password}" | passwd --stdin kibana
+
+        # Set Elasticsearch executable
+        ln -s /usr/local/elasticsearch/bin/elasticsearch /usr/local/bin/elasticsearch
+        ln -s /usr/local/elasticsearch/bin/elasticsearch-plugin install /usr/local/bin/elasticsearch-plugin-install
+        ln -s /usr/local/elasticsearch/bin/elasticsearch-plugin remove /usr/local/bin/elasticsearch-plugin-remove
+
+        # Start Elasticsearch
+        nohup /usr/local/elasticsearch/bin/elasticsearch &
+
+    initial_state: started
+
+services:
+  ElasticsearchService:
+    type: service
+    service_template: Elasticsearch
+
+nodes:
+  ElasticsearchNode:
+    type: ElasticsearchNode
+
+inputs:
+  password_elastic:
+    type: secret
+  password_kibana:
+    type: secret
+
+outputs:
+  elasticsearch_endpoint_url:
+    description: URL for accessing the Elasticsearch service
+    value: http://$(node_ip):9200
+  elasticsearch_public_ip:
+    description: Public IP address of the node
+    value: $(node_ip)
+  elasticsearch_elastic_password:
+    description: Password for accessing the 'elastic' user
+    value: $(ElasticsearchService.elastic_password)
+  elasticsearch_kibana_password:
+    description: Password for accessing the 'kibana' user
+    value: $(ElasticsearchService.kibana_password)

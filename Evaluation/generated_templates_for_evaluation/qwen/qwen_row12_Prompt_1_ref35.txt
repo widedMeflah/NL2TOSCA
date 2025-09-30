@@ -1,0 +1,66 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: >
+  TOSCA template to deploy a Galaxy application on a virtual machine with configurable resources, storage, access, and encryption.
+
+topology_template:
+
+  node_templates:
+
+    galaxy_vm:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: galaxy-instance
+        description: Virtual machine to host the Galaxy application
+        image: ubuntu-20.04
+        instance_type: m1.medium
+        number_of_cpus: 2
+        memory_mb: 4096
+        disk_size_gb: 20
+        admin_user:
+          email: admin@example.com
+          api_key: default_api_key
+        app_user:
+          username: galaxy_user
+        app_version: default_version
+        app_description: Galaxy application instance
+        ssh_key: default_ssh_key
+        data_path: /opt/galaxy/data
+        storage_encryption:
+          enabled: false
+          vault_url: https://vault.example.com
+          wrapping_token: default_wrapping_token
+          secret_path: galaxy/secrets
+          secret_key_name: encryption_key
+        tool_flavor: default_flavor
+        install_reference_data: false
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create_galaxy_vm.sh
+          configure:
+            implementation: scripts/configure_galaxy.sh
+          start:
+            implementation: scripts/start_galaxy.sh
+          delete:
+            implementation: scripts/delete_galaxy.sh
+
+    storage_volume:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size_gb: 50
+        encrypted: false
+        mount_point: /opt/galaxy/data
+      relationships:
+        - type: tosca.relationships.AttachesTo
+          target: galaxy_vm
+
+  outputs:
+
+    endpoint_url:
+      description: URL to access the Galaxy application
+      value: { get_attribute: [ galaxy_vm, endpoint_url ] }
+
+    public_ip:
+      description: Public IP address of the virtual machine
+      value: { get_attribute: [ galaxy_vm, public_ip ] }

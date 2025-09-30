@@ -1,0 +1,91 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a PHP Wine Cellar Application with Apache and MySQL on INDIGO orchestrator
+
+topology_template:
+  node_templates:
+    web_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            ports:
+              http:
+                protocol: tcp
+                target: 80
+              https:
+                protocol: tcp
+                target: 443
+      requirements:
+        - host: apache_web_app
+      artifacts:
+        os_image:
+          file: ubuntu-20.04
+          type: tosca.artifacts.Deployment.Image.VM
+
+    apache_web_app:
+      type: tosca.nodes.WebServer.Apache
+      properties:
+        version: 2.4
+      requirements:
+        - host: web_server
+        - database: mysql_db
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_apache.sh
+            inputs:
+              db_host: { get_attribute: [mysql_server, endpoint, ip_address] }
+              db_name: wine_cellar_db
+              db_user: wine_user
+              db_password: wine_pass_123
+      artifacts:
+        app_files:
+          file: wine_cellar_app.zip
+          type: tosca.artifacts.File
+          deploy_path: /var/www/html/wine_cellar
+
+    mysql_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 30 GB
+        endpoint:
+          properties:
+            network_name: PRIVATE
+      artifacts:
+        os_image:
+          file: ubuntu-20.04
+          type: tosca.artifacts.Deployment.Image.VM
+
+    mysql_db:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        name: wine_cellar_db
+        user: wine_user
+        password: wine_pass_123
+        root_password: root_pass_456
+        port: 3306
+      requirements:
+        - host: mysql_server
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_mysql.sh
+
+  outputs:
+    application_url:
+      description: URL to access the Wine Cellar Application
+      value: { concat: [ 'http://', get_attribute: [web_server, endpoint, ip_address], '/wine_cellar' ] }
+    application_url_ssl:
+      description: Secure URL to access the Wine Cellar Application
+      value: { concat: [ 'https://', get_attribute: [web_server, endpoint, ip_address], '/wine_cellar' ] }

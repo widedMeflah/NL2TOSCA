@@ -1,0 +1,76 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A system to deploy a web server to host a website, with health checks and specific configuration.
+
+topology_template:
+  node_templates:
+
+    compute_resource:
+      type: tosca.nodes.nfv.vdu.Compute
+      properties:
+        number_of_instances: 1
+        virtual_deployment_unit:
+          virtual_cpu:
+            num_cpus: 1
+            architecture: x86_64
+          virtual_memory:
+            virtual_memory_size: 1024
+            unit: MB
+          virtual_local_storage:
+            size_of_storage: 10
+            unit: GB
+          virtual_disk:
+            size_of_disk: 10
+            unit: GB
+          virtual_network_interfaces:
+            - network_interface:
+                network_name: private_network
+                network_type: VLAN
+                network_id: 100
+                security_groups:
+                  - web_server_sec_group
+                is_admin_network: true
+
+    web_server:
+      type: tosca.nodes.WebServer
+      properties:
+        version: 2.4
+        port: 80
+        document_root: /var/www
+        health_check_url: http://localhost/
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute_resource
+
+    private_network:
+      type: tosca.nodes.Network.Private
+      properties:
+        name: private_network
+        network_type: VLAN
+        network_id: 100
+        security_groups:
+          - web_server_sec_group
+
+    web_server_sec_group:
+      type: tosca.nodes.nfv.SecurityGroup
+      properties:
+        name: web_server_sec_group
+        rules:
+          - direction: ingress
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+            remote_ip_prefix: 0.0.0.0/0
+          - direction: ingress
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            remote_ip_prefix: 192.168.1.0/24
+
+    endpoint_data:
+      type: tosca.nodes.Endpoint.Web
+      properties:
+        url: http://[IP_ADDRESS]:80
+      relationships:
+        - type: tosca.relationships.AttachedTo
+          target: web_server

@@ -1,0 +1,56 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for deploying a containerized machine learning service using Docker and Marathon
+
+service_templates:
+  machine_learning_service:
+    topology_template:
+      description: Deploys a Docker containerized machine learning service using Marathon
+      node_templates:
+        machine_learning_container:
+          type: tosca.nodes.QC-indigo.Docker.Application
+          properties:
+            image: tensorflow/serving:latest
+            ports:
+              - "0.0.0.0:5000:5000"
+            resources:
+              cpus: 1.0
+              mem: 1GB
+          relationships:
+            - type: tosca.relationships.Network
+              target: external_network
+            - type: tosca.relationships.HostedOn
+              target: marathon_orchestrator
+
+        marathon_orchestrator:
+          type: tosca.nodes.QC-indigo.Marathon.Application
+          properties:
+            instances: 1
+            resources:
+              cpus: 1.0
+              mem: 1GB
+            container:
+              type: DOCKER
+              docker:
+                image: tensorflow/serving:latest
+                port_mappings:
+                  - containerPort: 5000
+                    hostPort: 5000
+                    protocol: tcp
+            health_checks:
+              - protocol: HTTP
+                path: /
+                portIndex: 5000
+                intervalSeconds: 10
+                timeoutSeconds: 10
+                gracePeriodSeconds: 10
+                minHealthyRatio: 0.33
+                maxConcurrentHealthChecks: 1
+
+        external_network:
+          type: tosca.nodes.Network
+          properties:
+            name: external_network
+            network_type: floating_ip
+            port:
+              - 5000/tcp

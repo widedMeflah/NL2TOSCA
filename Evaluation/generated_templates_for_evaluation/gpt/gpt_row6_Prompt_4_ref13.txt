@@ -1,0 +1,117 @@
+
+tosca_definitions_version: alien_dsl_1_4_0
+
+description: >
+  Basic Kubernetes cluster with one master, multiple workers, etcd storage, Flannel overlay, and Dashboard.
+  Docker is used as the container engine. API endpoint and Dashboard UI are outputs.
+
+topology_template:
+  node_templates:
+
+    kubernetes_master:
+      type: org.alien4cloud.kubernetes.nodes.KubernetesMaster
+      properties:
+        kube_version: 1.26.0
+      requirements:
+        - host: docker_master_host
+        - network: flannel_network
+        - etcd: etcd_instance
+
+    kubernetes_worker_1:
+      type: org.alien4cloud.kubernetes.nodes.KubernetesWorker
+      properties:
+        kube_version: 1.26.0
+      requirements:
+        - master: kubernetes_master
+        - host: docker_worker_host_1
+        - network: flannel_network
+
+    kubernetes_worker_2:
+      type: org.alien4cloud.kubernetes.nodes.KubernetesWorker
+      properties:
+        kube_version: 1.26.0
+      requirements:
+        - master: kubernetes_master
+        - host: docker_worker_host_2
+        - network: flannel_network
+
+    etcd_instance:
+      type: org.alien4cloud.nodes.Etcd
+      properties:
+        etcd_version: 3.5.0
+      requirements:
+        - host: docker_master_host
+
+    flannel_network:
+      type: org.alien4cloud.nodes.Network.Flannel
+      properties:
+        flannel_version: 0.22.0
+      requirements:
+        - hosts:
+            node_templates: [docker_master_host, docker_worker_host_1, docker_worker_host_2]
+
+    kubernetes_dashboard:
+      type: org.alien4cloud.kubernetes.nodes.Addons.Dashboard
+      requirements:
+        - master: kubernetes_master
+        - network: flannel_network
+
+    docker_master_host:
+      type: org.alien4cloud.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 30 GB
+        docker:
+          properties:
+            docker_version: 20.10
+
+    docker_worker_host_1:
+      type: org.alien4cloud.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 30 GB
+        docker:
+          properties:
+            docker_version: 20.10
+
+    docker_worker_host_2:
+      type: org.alien4cloud.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 30 GB
+        docker:
+          properties:
+            docker_version: 20.10
+
+  outputs:
+    kube_api_endpoint:
+      description: Kubernetes API Server endpoint
+      value: { get_attribute: [ kubernetes_master, api_endpoint ] }
+
+    dashboard_ui_url:
+      description: Kubernetes Dashboard UI endpoint
+      value: { get_attribute: [ kubernetes_dashboard, url ] }

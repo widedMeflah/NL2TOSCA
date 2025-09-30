@@ -1,0 +1,65 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for deploying a two-tier Wine Cellar web application.
+
+topology_template:
+  description: Two-tier web application with Apache web server and MySQL database.
+
+  node_templates:
+    web_server:
+      type: tosca.nodes.Compute:Ubuntu
+      properties:
+        cpu: 1
+        memory: 1 GB
+        public: true
+        networks:
+          - network: public
+        security_groups:
+          - http
+          - https
+      capabilities:
+        endpoint:
+          network_name: public
+          ports:
+            - 80
+            - 443
+      artifacts:
+        startup_script:
+          type: tosca.artifacts.Implementation.Debian
+
+    database_server:
+      type: tosca.nodes.Compute:Ubuntu
+      properties:
+        cpu: 1
+        memory: 4 GB
+        disk_size: 10 GB
+        public: false
+        networks:
+          - network: private
+        security_groups:
+          - mysql
+      capabilities:
+        endpoint:
+          network_name: private
+          ports:
+            - 3306
+      artifacts:
+        startup_script:
+          type: tosca.artifacts.Implementation.Debian
+
+  relationship_templates:
+    connects_to_database:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        ports:
+          - 3306
+
+  outputs:
+    web_server_ip:
+      description: Public IP of the web server.
+      value: { get_attribute: [web_server, public_ip] }
+
+    database_private_ip:
+      description: Private IP of the database server.
+      value: { get_attribute: [database_server, private_ip] }

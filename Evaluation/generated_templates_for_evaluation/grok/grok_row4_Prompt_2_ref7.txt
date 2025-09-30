@@ -1,0 +1,72 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: DataManagementSystem
+  template_version: 1.0.0
+  template_author: User
+
+description: A system for storing and managing data efficiently over a network with configurable port and secure TCP connection on a Linux Ubuntu server.
+
+node_types:
+  Custom.DataStorageServer:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_distribution:
+        type: string
+        default: ubuntu
+        constraints:
+          - equal: ubuntu
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+      endpoint:
+        type: tosca.capabilities.Endpoint
+        properties:
+          port:
+            type: integer
+            constraints:
+              - in_range: [1024, 65535]
+            default: 8080
+          protocol:
+            type: string
+            default: tcp
+    attributes:
+      ip_address:
+        type: string
+      port:
+        type: integer
+
+topology_template:
+  node_templates:
+    DataStorageServer:
+      type: Custom.DataStorageServer
+      properties:
+        os_distribution: ubuntu
+      capabilities:
+        endpoint:
+          properties:
+            port: { get_input: server_port }
+            protocol: tcp
+      requirements:
+        - host:
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+      attributes:
+        ip_address: { get_attribute: [SELF, ip_address] }
+        port: { get_attribute: [SELF, endpoint, port] }
+
+  inputs:
+    server_port:
+      type: integer
+      description: Port for data operations
+      default: 8080
+      constraints:
+        - in_range: [1024, 65535]
+
+  outputs:
+    server_ip:
+      description: IP address of the data storage server
+      value: { get_attribute: [DataStorageServer, ip_address] }
+    server_port:
+      description: Port used for data operations
+      value: { get_attribute: [DataStorageServer, endpoint, port] }

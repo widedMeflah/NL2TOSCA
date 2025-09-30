@@ -1,0 +1,47 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Deployment configuration for a web application as a WAR file hosted on Apache Tomcat with Java environment.
+
+topology_template:
+  node_templates:
+
+    Compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          type: tosca.capabilities.Host
+        os:
+          type: tosca.capabilities.OperatingSystem
+          properties:
+            architecture: ARCH
+            type: OS_TYPE
+
+    JavaRuntime:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: Compute
+
+    TomcatServer:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: Compute
+        - runtime:
+            node: JavaRuntime
+
+    WebApplication:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host:
+            node: TomcatServer
+        - artifact:
+            artifact_ref: app.war
+
+  outputs:
+    application_url:
+      description: URL to access the deployed web application.
+      value: { get_property: [TomcatServer, application_url] }
+    server_url:
+      description: URL to access the Tomcat server.
+      value: { get_property: [TomcatServer, server_url] }

@@ -1,0 +1,159 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A TOSCA template for deploying a Kubernetes cluster using Alien4cloud
+
+topology_template:
+  node_templates:
+
+    KubernetesMaster:
+      type: tosca.nodes.Compute
+      properties:
+        name: k8s-master
+        description: Kubernetes master node
+        min_instances: 1
+        max_instances: 1
+        instance_type: m4.large
+        image:
+          name: ubuntu-18.04
+          vendor: Canonical
+          version: 18.04
+        network_interfaces:
+          - network_name: private-network
+            ip_address: 192.168.1.10
+      requirements:
+        - host: KubernetesMasterHost
+        - connection: KubernetesMasterPrivateNetwork
+
+    KubernetesMasterHost:
+      type: tosca.nodes.Compute
+      properties:
+        name: k8s-master-host
+        description: Compute host for the Kubernetes master node
+        instance_type: m4.large
+        image:
+          name: ubuntu-18.04
+          vendor: Canonical
+          version: 18.04
+
+    KubernetesWorker:
+      type: tosca.nodes.Compute
+      properties:
+        name: k8s-worker
+        description: Kubernetes worker node
+        min_instances: 1
+        max_instances: 5
+        instance_type: m4.large
+        image:
+          name: ubuntu-18.04
+          vendor: Canonical
+          version: 18.04
+        network_interfaces:
+          - network_name: private-network
+            ip_address: 192.168.1.11
+      requirements:
+        - host: KubernetesWorkerHost
+        - connection: KubernetesWorkerPrivateNetwork
+
+    KubernetesWorkerHost:
+      type: tosca.nodes.Compute
+      properties:
+        name: k8s-worker-host
+        description: Compute host for the Kubernetes worker node
+        instance_type: m4.large
+        image:
+          name: ubuntu-18.04
+          vendor: Canonical
+          version: 18.04
+
+    KubernetesMasterService:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: k8s-master-service
+        description: Kubernetes master service
+        version: 1.2.1
+        kubectl_version: 1.5.3
+        etcd_version: 2.2.1
+        flannel_version: 0.5.5
+        dns_domain: cluster.local
+      requirements:
+        - host: KubernetesMaster
+
+    KubernetesWorkerService:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: k8s-worker-service
+        description: Kubernetes worker service
+        version: 1.2.1
+        container_runtime: docker
+        flannel_version: 0.5.5
+      requirements:
+        - host: KubernetesWorker
+
+    EtcdService:
+      type: tosca.nodes.Container.Application
+      properties:
+        name: etcd
+        version: 2.2.1
+        image: quay.io/coreos/etcd:2.2.1
+      requirements:
+        - host: KubernetesMaster
+        - depends_on: KubernetesMasterService
+
+    FlannelService:
+      type: tosca.nodes.Container.Application
+      properties:
+        name: flannel
+        version: 0.5.5
+        image: quay.io/coreos/flannel:0.5.5
+        ip_mask: 10.244.0.0/16
+      requirements:
+        - host: KubernetesMaster
+        - depends_on: KubernetesMasterService
+        - depends_on: EtcdService
+
+    KubernetesDashboard:
+      type: tosca.nodes.Container.Application
+      properties:
+        name: kubernetes-dashboard
+        namespace: kube-system
+        image: kubernetesui/dashboard:v2.0.0
+      requirements:
+        - host: KubernetesMaster
+        - depends_on: KubernetesMasterService
+
+    KubernetesPrivateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        name: private-network
+        cidr: 192.168.1.0/24
+      capabilities:
+        network_endpoint:
+          properties:
+            ip_address: 192.168.1.0/24
+      requirements:
+        - attached_to: KubernetesMaster
+        - attached_to: KubernetesWorker
+
+    KubernetesMasterPrivateNetwork:
+      type: tosca.nodes.Network.Attachment
+      properties:
+        network_name: private-network
+        ip_address: 192.168.1.10
+      requirements:
+        - attached_to: KubernetesMaster
+
+    KubernetesWorkerPrivateNetwork:
+      type: tosca.nodes.Network.Attachment
+      properties:
+        network_name: private-network
+        ip_address: 192.168.1.11
+      requirements:
+        - attached_to: KubernetesWorker
+
+  outputs:
+    kubernetes_ui_endpoint:
+      description: The endpoint of the Kubernetes Dashboard UI
+      value: { get_property: [KubernetesDashboard, endpoint] }
+    kubernetes_api_endpoint:
+      description: The API endpoint of the Kubernetes master
+      value: { get_property: [KubernetesMasterService, api_endpoint] }

@@ -1,0 +1,81 @@
+tosca_definitions_version: alien4cloud_1_4
+description: >
+  TOSCA topology for a web application deployed on Apache Tomcat with Oracle JDK.
+
+topology_template:
+  node_templates:
+    compute_host:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        min_memory_size: 2 GB
+        num_cpus: 1
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+        host: {}
+
+    os_config:
+      type: tosca.nodes.OperatingSystem
+      properties:
+        type: linux
+        architecture: x86_64
+        distribution: Ubuntu
+        version: "18.04"
+      requirements:
+        - host:
+            node: compute_host
+            capability: tosca.capabilities.OperatingSystem
+            relationship: tosca.relationships.HostedOn
+
+    java_runtime:
+      type: org.alien4cloud.nodes.JavaRuntime
+      properties:
+        version: "8"
+        distribution_type: "oracle"
+      requirements:
+        - host:
+            node: compute_host
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+    tomcat_server:
+      type: org.alien4cloud.nodes.ApacheTomcat
+      properties:
+        version: "9.0.80"
+        download_url: "https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.80/bin/apache-tomcat-9.0.80.tar.gz"
+        port: 8080
+      requirements:
+        - host:
+            node: java_runtime
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - runtime:
+            node: java_runtime
+            capability: org.alien4cloud.capabilities.JavaRuntime
+            relationship: tosca.relationships.DependsOn
+
+    war_application:
+      type: org.alien4cloud.nodes.WarApplication
+      properties:
+        context_path: "mywebapp"
+      artifacts:
+        war_file:
+          file: "mywebapp.war"
+          type: tosca.artifacts.File
+      requirements:
+        - host:
+            node: tomcat_server
+            capability: org.alien4cloud.capabilities.WarCapable
+            relationship: tosca.relationships.HostedOn
+
+  outputs:
+    tomcat_server_url:
+      description: URL to access the Apache Tomcat server.
+      value: {GET_PROPERTY: [tomcat_server, url]}
+    web_application_url:
+      description: URL to access the deployed web application.
+      value: {GET_PROPERTY: [war_application, url]}

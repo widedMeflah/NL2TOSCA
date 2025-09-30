@@ -1,0 +1,92 @@
+tosca_definitions_version: alien_dsl_2_0
+
+description: A system for efficient, secure, and network-accessible data storage and management on Ubuntu, with configurable port.
+
+data_types:
+  alien.datatypes.ConfigurablePort:
+    derived_from: integer
+    constraints:
+      - in_range: [1024, 65535] # Standard user port range for network services
+
+capability_types:
+  alien.capabilities.SecuredTcpEndpoint:
+    derived_from: tosca.capabilities.Endpoint
+    description: Defines a network endpoint for secure TCP communication.
+    properties:
+      port:
+        type: alien.datatypes.ConfigurablePort
+        description: The specific port number for network access, configurable within a predefined range.
+        default: 3306
+      protocol:
+        type: string
+        description: The network protocol used for communication.
+        default: tcp
+        constraints:
+          - equal: tcp
+      secure:
+        type: boolean
+        description: Indicates whether the connection should be secured (e.g., via SSL/TLS).
+        default: true
+
+node_types:
+  alien.nodes.ManagedDataStore:
+    derived_from: tosca.nodes.Database
+    description: Represents a managed data store instance accessible over a network.
+    capabilities:
+      data_access:
+        type: alien.capabilities.SecuredTcpEndpoint
+        description: The network endpoint for accessing this data store.
+
+topology_template:
+  node_templates:
+    ubuntu_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        os:
+          properties:
+            distribution: ubuntu
+            type: linux
+            architecture: x86_64
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        host:
+          properties:
+            disk_size: 10 GB
+            num_cpus: 1
+            mem_size: 1 GB
+
+    mariadb_dbms:
+      type: tosca.nodes.DBMS.MariaDB
+      properties:
+        root_password: CHANGE_ME_ROOT_PASSWORD # Placeholder for root password
+      requirements:
+        - host:
+            node: ubuntu_server
+            capability: host
+
+    my_data_store:
+      type: alien.nodes.ManagedDataStore
+      properties:
+        user: data_admin
+        password: CHANGE_ME_DB_PASSWORD # Placeholder for database user password
+        db_name: my_efficient_data
+      requirements:
+        - host:
+            node: mariadb_dbms
+            capability: host
+      capabilities:
+        data_access:
+          properties:
+            port: 3306 # Default port, can be overridden during deployment within range
+            secure: true # Indicates desire for secure connection
+
+  outputs:
+    server_ip_address:
+      description: The IP address of the server hosting the data store.
+      value: { get_attribute: [ ubuntu_server, public_address ] }
+    data_store_port:
+      description: The specific port used for accessing the data store.
+      value: { get_attribute: [ my_data_store, capabilities, data_access, port ] }

@@ -1,0 +1,122 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of a virtual elastic cluster with INDIGO orchestrator including Galaxy Portal and Slurm-based LRMS.
+
+topology_template:
+
+  node_templates:
+
+    elastic_cluster_frontend:
+      type: tosca.nodes.Compute
+      properties:
+        description: Manages the elasticity of the cluster and supports multiple workload management systems (Torque, SGE, Slurm, Condor).
+        hybrid_support: true
+        ip_address: 192.168.1.10
+        public_ip: 138.221.12.34
+        image: Ubuntu 14.04
+        flavor: m1.medium
+        hostname: elastic-frontend
+        availability_zone: eu-west-1a
+        key_name: cluster-key
+        user_data:
+          config:
+            - install_elastic_frontend
+            - configure_hybrid_support
+            - configure_wms_integration
+
+    galaxy_portal:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        description: Galaxy Portal for bioinformatics applications.
+        version: latest
+        admin_email: admin@example.org
+        api_key: "galaxy_api_key_12345"
+        hostname: galaxy-portal
+        ip_address: 192.168.1.11
+        public_ip: 138.221.12.35
+        dependencies:
+          - elastic_cluster_frontend
+        user_data:
+          - install_galaxy
+          - configure_galaxy_with_admin_email
+          - configure_galaxy_with_api_key
+
+    slurm_frontend:
+      type: tosca.nodes.Compute
+      properties:
+        description: Slurm Frontend for managing compute resources.
+        hostname: slurm-frontend
+        ip_address: 192.168.1.12
+        public_ip: 138.221.12.36
+        image: Ubuntu 14.04
+        flavor: m1.large
+        cpu: 4
+        memory: 8192
+        dependencies:
+          - elastic_cluster_frontend
+        user_data:
+          - install_slurm
+          - configure_slurm_frontend
+
+    compute_node_frontend:
+      type: tosca.nodes.Compute
+      properties:
+        description: Compute node for frontend services.
+        hostname: compute-frontend
+        ip_address: 192.168.1.13
+        image: Ubuntu 14.04
+        flavor: m1.medium
+        cpu: 2
+        memory: 4096
+        user_data:
+          - install_base_services
+          - configure_network
+
+    compute_node_worker:
+      type: tosca.nodes.Compute
+      properties:
+        description: Scalable worker compute nodes.
+        hostname: compute-worker-{index}
+        image: Ubuntu 14.04
+        flavor: m1.small
+        cpu: 2
+        memory: 2048
+        max_instances: 20
+        user_data:
+          - install_base_services
+          - configure_slurm_node
+        dependencies:
+          - slurm_frontend
+
+    galaxy_worker_node:
+      type: tosca.nodes.Compute
+      properties:
+        description: Worker nodes specifically for Galaxy with data export support.
+        hostname: galaxy-worker-{index}
+        image: Ubuntu 14.04
+        flavor: m1.medium
+        cpu: 2
+        memory: 4096
+        export_directory: /data/galaxy
+        user_data:
+          - install_galaxy_worker
+          - configure_export_directory
+        dependencies:
+          - galaxy_portal
+
+  outputs:
+
+    galaxy_url:
+      description: URL to access the Galaxy Portal.
+      value: "http://138.221.12.35"
+
+    cluster_ip:
+      description: Public IP address of the cluster frontend.
+      value: "138.221.12.34"
+
+    cluster_credentials:
+      description: SSH credentials for accessing the cluster.
+      value:
+        username: ubuntu
+        key: "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"

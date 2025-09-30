@@ -1,0 +1,74 @@
+
+definition_versions:
+  - version: "1.0.0"
+
+topology_template:
+  description: Plant Classification Application Deployment with INDIGO Orchestrator
+  metadata:
+    orchestration_artifact_id: plant_classification_app_deployment
+    orchestration_artifact_version: "1.0.0"
+
+node_templates:
+  plant_classification_app:
+    type: os::Container
+    properties:
+      container_runtime: docker
+      image: plant_classification_app:latest
+      command: ["sh", "-c", "python app.py --port 8080"]
+      ports:
+        - name: app_port
+          container_port: 8080
+          protocol: tcp
+      cpu_request: 500m
+      memory_request: 512MB
+      cpu_limit: 1000m
+      memory_limit: 1024MB
+      scaling_policy:
+        type: scale_out_in
+        scaling_group: plant_classification_sg
+        target_cpu_utilization: 70
+        cooldown: PT1M
+      lifecycle:
+        postCreateActions:
+          - action:
+              action_logging: true
+              action_name: "Allow external access"
+              action_module: "os::Firewall"
+              action_params:
+                firewall_group: "default"
+                rule:
+                  description: "Allow traffic on app_port"
+                  cidr_ip_version_4: "0.0.0.0/0"
+                  protocol: "tcp"
+                  port: "{{node.properties.ports[0].container_port}}"
+                  action: "accept"
+
+node_types:
+  os::Container:
+    service_template: container_template.yaml
+
+service_templates:
+  container_template:
+    description: Base container service template
+    properties:
+      docker_image_repository: "docker.io"
+
+relationships:
+  plant_classification_app_with_sg:
+    type: node_group
+    source: plant_classification_app
+    target: service_group
+    target_roles: [load_balancer]
+
+node_groups:
+  plant_classification_sg:
+    type: service_group
+    properties:
+      service_template: load_balancer_template.yaml
+
+service_templates:
+  load_balancer_template:
+    description: Load balancer service template
+    properties:
+      load_balancer_protocol: HTTP
+      balancer_algorithm: ROUND_ROBIN

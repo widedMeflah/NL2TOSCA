@@ -1,0 +1,128 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: SampleNodejsMongoDBApp
+  template_version: 1.0.0-SNAPSHOT
+  template_author: A4C
+
+description: "Deployment template for a Node.js application with MongoDB backend on a Linux infrastructure. It includes network configuration and exposes application endpoints."
+
+imports:
+  - alien-base-types:2.0.0
+  - alien-extended-types:2.0.0
+  - alien-nodejs-types:2.0.0
+  - alien-mongodb-types:2.0.0
+
+topology_template:
+  node_templates:
+    my_compute:
+      type: alien.nodes.Linux.Compute
+      properties:
+        image: "ubuntu-18.04"
+        flavor: "standard.small"
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 1 GB
+            disk_size: 10 GB
+
+    mongodb_server:
+      type: alien.nodes.databases.mongodb.MongoDB
+      properties:
+        component_version: "4.4.x"
+        port: 27017
+      requirements:
+        - host: my_compute
+
+    nodejs_runtime:
+      type: alien.nodes.Nodejs.Nodejs
+      properties:
+        nodejs_version: "16.x"
+      requirements:
+        - host: my_compute
+
+    sample_nodejs_app:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        app_source_url: "https://github.com/cloudify-community/nodejs-mongodb-sample.git"
+        app_entry_point: "app.js"
+      requirements:
+        - host: nodejs_runtime
+        - depends_on: mongodb_server
+
+      interfaces:
+        Standard:
+          create:
+            description: "Install Node.js application code and dependencies."
+            inputs:
+              SOURCE_URL: { get_property: [ SELF, app_source_url ] }
+            implementation:
+              artifact:
+                file: scripts/install_app.sh
+                type: tosca.artifacts.File
+          configure:
+            description: "Configure application environment variables for MongoDB connection and application port."
+            inputs:
+              MONGO_URL: { concat: [ "mongodb://", get_attribute: [ mongodb_server, private_address ], ":", get_property: [ mongodb_server, port ], "/myapp" ] }
+              APP_PORT: { get_property: [ nodejs_app_endpoint, port ] }
+            implementation:
+              artifact:
+                file: scripts/configure_app.sh
+                type: tosca.artifacts.File
+          start:
+            description: "Start the Node.js application."
+            implementation:
+              artifact:
+                file: scripts/start_app.sh
+                type: tosca.artifacts.File
+          stop:
+            description: "Stop the Node.js application."
+            implementation:
+              artifact:
+                file: scripts/stop_app.sh
+                type: tosca.artifacts.File
+
+    nodejs_app_endpoint:
+      type: alien.nodes.PublicEndpoint
+      properties:
+        network_name: PUBLIC
+        ports:
+          - 8080:8080/tcp
+        port: 8080
+      requirements:
+        - host: my_compute
+
+    mongodb_endpoint:
+      type: alien.nodes.PublicEndpoint
+      properties:
+        network_name: PUBLIC
+        ports:
+          - 27017:27017/tcp
+        port: 27017
+      requirements:
+        - host: my_compute
+
+  outputs:
+    nodejs_application_url:
+      description: "The URL where the Node.js application can be accessed."
+      value: { concat: [ "http://", get_attribute: [ my_compute, public_address ], ":", get_property: [ nodejs_app_endpoint, port ] ] }
+
+  artifacts:
+    scripts/install_app.sh:
+      file: "scripts/install_app.sh"
+      type: tosca.artifacts.File
+    scripts/configure_app.sh:
+      file: "scripts/configure_app.sh"
+      type: tosca.artifacts.File
+    scripts/start_app.sh:
+      file: "scripts/start_app.sh"
+      type: tosca.artifacts.File
+    scripts/stop_app.sh:
+      file: "scripts/stop_app.sh"
+      type: tosca.artifacts.File

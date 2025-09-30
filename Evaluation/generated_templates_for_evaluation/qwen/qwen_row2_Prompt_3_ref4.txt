@@ -1,0 +1,80 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: |
+  TOSCA template for deploying an Apache server version 2.4 on a scalable compute node with network configuration, custom workflows, and outputs.
+
+imports:
+  - tosca-normative-types:2.0.0
+  - custom-apache-types:1.0.0
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.nfv.Compute
+      properties:
+        min_instances: 1
+        max_instances: 1
+        default_instances: 1
+        availability_zone: us-east-1a
+
+    ApacheServer:
+      type: custom-apache-types.ApacheServer
+      properties:
+        version: "2.4"
+        document_root: "/var/www"
+        listen_port: 80
+      requirements:
+        - host:
+            node: ComputeNode
+
+    DataEndpoint:
+      type: tosca.nodes.nfv.Endpoint.Data
+      properties:
+        protocol: TCP
+        network: PRIVATE
+      relationships:
+        - type: tosca.relationships.nfv.ConnectsTo
+          target: ApacheServer
+
+    AdminEndpoint:
+      type: tosca.nodes.nfv.Endpoint.Admin
+      properties:
+        protocol: TCP
+        network: PRIVATE
+        secure: true
+      relationships:
+        - type: tosca.relationships.nfv.ConnectsTo
+          target: ComputeNode
+
+  workflows:
+    custom:
+      start_apache:
+        description: Start the Apache server.
+        implementation:
+          main:
+            targets: ApacheServer
+            action: start
+      stop_apache:
+        description: Stop the Apache server.
+        implementation:
+          main:
+            targets: ApacheServer
+            action: stop
+      restart_apache:
+        description: Restart the Apache server.
+        implementation:
+          main:
+            targets: ApacheServer
+            action: restart
+      curl_welcome_page:
+        description: Curl the welcome page of the Apache server.
+        implementation:
+          main:
+            targets: ApacheServer
+            action: curl_welcome_page
+
+  outputs:
+    apache_url:
+      description: The URL of the deployed Apache server.
+      value: { get_property: [ApacheServer, public_ip] }

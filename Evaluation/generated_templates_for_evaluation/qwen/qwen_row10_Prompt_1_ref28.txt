@@ -1,0 +1,72 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of a search engine service on a virtual machine with specific requirements.
+
+topology_template:
+  node_templates:
+    VM_SearchEngine:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: "SearchEngine_VM"
+        description: "Virtual machine for the search engine service"
+        ip_address: "AUTO"
+        num_cpus: 4
+        mem_size: 8 GB
+        os_distro: Ubuntu
+        os_version: "16.04"
+        capabilities:
+          nfv:
+            vcpu:
+              min: 2
+              max: 4
+            memory:
+              min: 4 GB
+              max: 8 GB
+
+    SearchEngine_Service:
+      type: tosca.nodes.nfv.Vdu.VirtualMachine
+      properties:
+        name: "SearchEngine_Service"
+        version: "7.4.1"
+        access:
+          user: "main_user"
+          password: "main_user_password"
+        management_ip: "AUTO"
+        access_ip: "AUTO"
+        access_info:
+          - type: "http"
+            address: "AUTO"
+            port: 9200
+            protocol: "TCP"
+        interfaces:
+          management:
+            user: "system_user"
+            password: "system_user_password"
+      requirements:
+        - host:
+            node: VM_SearchEngine
+            relationship: tosca.relationships.DependsOn
+
+    Network_Interface:
+      type: tosca.nodes.nfv.Vdu.VirtualNetworkInterface
+      properties:
+        name: "SearchEngine_Interface"
+        network: "AUTO"
+        ip_address: "AUTO"
+      requirements:
+        - attach_to:
+            node: VM_SearchEngine
+            relationship: tosca.relationships.AttachesTo
+
+  groups:
+    SearchEngine_Group:
+      members: [VM_SearchEngine, SearchEngine_Service]
+      properties:
+        access_info:
+          - address: "AUTO"
+            port: 9200
+            protocol: "TCP"
+          - user: "main_user"
+            password: "main_user_password"
+          - system_user: "system_user"
+            password: "system_user_password"

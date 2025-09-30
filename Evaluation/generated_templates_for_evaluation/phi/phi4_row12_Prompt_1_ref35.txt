@@ -1,0 +1,86 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+imports:
+  - indigo_cloud_library.yaml
+
+description: >
+  A TOSCA template for deploying a Galaxy application on a virtual machine with customizable configurations.
+
+topology_template:
+
+  node_templates:
+
+    virtual_machine:
+      type: tosca.nodes.indigo.Compute
+      properties:
+        image: galaxy-server-image # Placeholder for Galaxy server base image
+        flavor:
+          default: m1.small
+          description: The size of the VM, can be overridden with specific values.
+        cpu_count:
+          default: 2
+        memory_size:
+          default: "4Gi"
+        disk_size:
+          default: "50GB"
+
+    storage:
+      type: tosca.nodes.indigo.Volume
+      properties:
+        size:
+          default: 50
+          unit: GB
+
+    admin_user:
+      type: tosca.nodes.Indigo.AdminUser
+      properties:
+        email: ""
+        api_key: ""
+
+    galaxy_application_instance:
+      type: tosca.nodes.Application.GalaxyInstance
+      properties:
+        username: "galaxy"
+        version:
+          default: latest
+        description: ""
+        ssh_public_key: ""
+        data_path: /data/galaxy
+        enable_storage_encryption: false
+        encryption_details:
+          vault_server_url: ""
+          wrapping_token: ""
+          secret_path: ""
+          secret_key_name: ""
+        tool_flavor:
+          default: standard
+        install_reference_data: false
+
+  relationships:
+
+    - type: tosca.relationships.indigo.DeployedOn
+      source: galaxy_application_instance
+      target: virtual_machine
+
+    - type: tosca.relationships.indigo.AttachedToStorage
+      source: galaxy_application_instance
+      target: storage
+
+    - type: tosca.relationships.hasAdminUser
+      source: galaxy_application_instance
+      target: admin_user
+
+  policies:
+
+    - type: tosca.policies.indigo.OutputProperties
+      targets: [ virtual_machine ]
+      properties:
+        output_properties:
+          endpoint_url: { get_attribute: [ virtual_machine, public_endpoint ] }
+          public_ip_address: { get_attribute: [ virtual_machine, ip_addresses, '0' ] }
+
+  artifacts:
+
+    - type: tosca.artifacts.File
+      file: galaxy-server-image.qcow2 # Placeholder path for Galaxy server image
+

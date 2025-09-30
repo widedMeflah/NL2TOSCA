@@ -1,0 +1,111 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  A TOSCA-compliant description for orchestrating a web application system 
+  to manage a wine cellar, accessible over the internet with secure data storage.
+
+metadata:
+  version: "1.0"
+  vendor: INDIGO
+  description: Web application system for managing wine cellar inventory.
+  
+imports:
+  - indigo-types-plugin.yaml
+
+topology_template:
+  inputs:
+    admin_username:
+      type: string
+      required: true
+
+    environment_name:
+      type: string
+      default: wine_cellar_environment
+      description: Name of the deployment environment.
+
+  node_templates:
+
+    web_server:
+      type: indigo.nodes.WebServer
+      properties:
+        image: nginx
+        http_port: 80
+
+    application_server:
+      type: indigo.nodes.ApplicationServer
+      properties:
+        image: python:3.9-slim
+        command: >
+          bash -c "pip install flask; 
+                   echo 'from flask import Flask, request;
+                            app = Flask(__name__)
+                            @app.route('/wine', methods=['GET','POST'])
+                            def manage_wine():
+                                if request.method == 'POST':
+                                    # handle wine addition
+                                    return "Wine added", 201
+                                else:
+                                    # handle wine listing
+                                    return "List of wines", 200
+
+                            if __name__ == '__main__':
+                              app.run(host='0.0.0.0', port=5000)' > /app.py; 
+                   python /app.py"
+      interfaces:
+        Standard:
+          create: |
+            echo "Application server setup complete."
+
+    database_server:
+      type: indigo.nodes.DatabaseServer
+      properties:
+        image: postgres:13
+        environment_variables:
+          POSTGRES_USER: wine_admin
+          POSTGRES_PASSWORD: securepassword123
+
+    firewall_config:
+      type: indigo.nodes.FirewallConfig
+      properties:
+        allowed_ports:
+          - 80
+          - 443
+    
+    user_auth_service:
+      type: indigo.nodes.UserService
+      properties:
+        auth_method: basic
+        users:
+          - { username: admin, password: securepassword123 }
+
+  policies:
+
+    ensure_secure_access:
+      type: indigo.policies.SecurityPolicy
+      targets: [web_server, application_server, database_server]
+      properties:
+        encryption_in_transit: true
+
+    load_balancer_setup:
+      type: indigo.policies.LoadBalancerPolicy
+      targets: [web_server]
+      properties:
+        balance_method: round_robin
+
+  relationships:
+
+    web_to_app:
+      type: indigo.relationships.ConnectsTo
+      target_node: application_server
+      source_interfaces:
+        Standard:
+          connect: |
+            echo "Connecting Web Server to Application Server."
+
+    app_to_db:
+      type: indigo.relationships.ConnectsTo
+      target_node: database_server
+      source_interfaces:
+        Standard:
+          connect: |
+            echo "Connecting Application Server to Database Server."

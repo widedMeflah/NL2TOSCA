@@ -1,0 +1,133 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Flexible Computing Environment
+  node_templates:
+    main_control_unit:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: main_control_unit_cpus }
+        mem_size: { get_input: main_control_unit_memory }
+        workload_manager: { get_input: workload_manager }
+        max_workers: { get_input: max_workers }
+      capabilities:
+        scalable:
+          properties:
+            max_instances: { get_input: max_workers }
+            min_instances: 0
+      artifacts:
+        workload_manager:
+          type: tosca.artifacts.Implementation
+          file: workload_manager.sh
+      interfaces:
+        Standard:
+          create: scripts/create_main_control_unit.sh
+          configure: scripts/configure_main_control_unit.sh
+    worker_unit:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: worker_unit_cpus }
+        mem_size: { get_input: worker_unit_memory }
+        workload_manager: { get_input: workload_manager }
+      capabilities:
+        scalable:
+          properties:
+            max_instances: { get_input: max_workers }
+            min_instances: 0
+      artifacts:
+        workload_manager:
+          type: tosca.artifacts.Implementation
+          file: workload_manager.sh
+      interfaces:
+        Standard:
+          create: scripts/create_worker_unit.sh
+          configure: scripts/configure_worker_unit.sh
+    web_interface:
+      type: tosca.nodes.WebServer
+      properties:
+        version: { get_input: web_interface_version }
+        description: { get_input: web_interface_description }
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        ssh_public_key: { get_input: ssh_public_key }
+      interfaces:
+        Standard:
+          create: scripts/create_web_interface.sh
+          configure: scripts/configure_web_interface.sh
+    data_storage:
+      type: tosca.nodes.Storage
+      properties:
+        size: { get_input: data_storage_size }
+        location: { get_input: data_storage_location }
+      interfaces:
+        Standard:
+          create: scripts/create_data_storage.sh
+          configure: scripts/configure_data_storage.sh
+
+  relationship_templates:
+    main_control_unit_to_worker_unit:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: http
+    main_control_unit_to_web_interface:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: https
+    main_control_unit_to_data_storage:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: ssh
+
+  input_templates:
+    main_control_unit_cpus:
+      type: integer
+      description: Number of CPUs for main control unit
+    main_control_unit_memory:
+      type: integer
+      description: Memory for main control unit in MB
+    workload_manager:
+      type: string
+      description: Workload manager to use (Torque, SGE, Slurm, Condor)
+      constraints:
+        - valid_values: [Torque, SGE, Slurm, Condor]
+    max_workers:
+      type: integer
+      description: Maximum number of worker units
+    worker_unit_cpus:
+      type: integer
+      description: Number of CPUs for worker unit
+    worker_unit_memory:
+      type: integer
+      description: Memory for worker unit in MB
+    web_interface_version:
+      type: string
+      description: Version of web interface
+    web_interface_description:
+      type: string
+      description: Description of web interface
+    admin_email:
+      type: string
+      description: Admin email for web interface
+    api_key:
+      type: string
+      description: API key for web interface
+    ssh_public_key:
+      type: string
+      description: SSH public key for secure access
+    data_storage_size:
+      type: integer
+      description: Size of data storage in GB
+    data_storage_location:
+      type: string
+      description: Location of data storage
+
+  output_templates:
+    public_url:
+      type: string
+      description: Public URL of the system
+      value: { get_attribute: [web_interface, public_url] }
+    credentials:
+      type: string
+      description: Credentials to access the system
+      value: { get_attribute: [web_interface, credentials] }

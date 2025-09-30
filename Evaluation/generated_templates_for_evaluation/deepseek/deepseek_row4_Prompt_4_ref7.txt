@@ -1,0 +1,106 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien4cloud-paas:1.1.0
+  - org.alien4cloud.tosca.types:1.1.0
+  - org.alien4cloud.tosca.normative:1.0.0-ALIEN20
+  - org.alien4cloud.tosca.normative-types:1.0.0-ALIEN20
+  - org.alien4cloud.tosca.capabilities:1.1.0
+  - org.alien4cloud.tosca.capabilities.Compute:1.1.0
+  - org.alien4cloud.tosca.capabilities.Network:1.1.0
+  - org.alien4cloud.tosca.capabilities.Endpoint:1.1.0
+  - org.alien4cloud.tosca.capabilities.Database:1.1.0
+  - org.alien4cloud.tosca.capabilities.Port:1.1.0
+  - org.alien4cloud.tosca.types:1.1.0
+  - org.alien4cloud.tosca.normative-types:1.0.0-ALIEN20
+  - org.alien4cloud.tosca.capabilities:1.1.0
+  - org.alien4cloud.tosca.capabilities.Compute:1.1.0
+  - org.alien4cloud.tosca.capabilities.Network:1.1.0
+  - org.alien4cloud.tosca.capabilities.Endpoint:1.1.0
+  - org.alien4cloud.tosca.capabilities.Database:1.1.0
+  - org.alien4cloud.tosca.capabilities.Port:1.1.0
+
+topology_template:
+  description: MongoDB service hosted on a Linux-based compute instance
+  node_templates:
+    compute:
+      type: tosca.nodes.Compute
+      properties:
+        os: linux
+        constraints:
+          - token: [cpu, {num_cores: 2}]
+          - token: [memory, {size: 4 GB}]
+      capabilities:
+        endpoint:
+          properties:
+            network_name: private
+            ports:
+              - 22
+      relationships:
+        - type: ConnectsTo
+          target: network
+          properties:
+            network_name: private
+            ports:
+              - 22
+    network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: private
+        cidr: 10.0.0.0/24
+      capabilities:
+        endpoint:
+          properties:
+            ports:
+              - 27017
+    mongodb:
+      type: tosca.nodes.Database
+      properties:
+        database_engine: mongodb
+        version: 4.4.3
+        port:
+          get_property: [SELF, port]
+        bind_ip: 0.0.0.0
+      capabilities:
+        endpoint:
+          type: tosca.capabilities.Network
+          properties:
+            ports:
+              - ${port}
+        port:
+          type: tosca.capabilities.Port
+          properties:
+            port_range:
+              min: 27000
+              max: 28000
+            default: 27017
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: compute
+        - type: tosca.relationships.ConnectsTo
+          target: network
+          properties:
+            ports:
+              - ${port}
+    endpoint:
+      type: tosca.nodes.Network
+      properties:
+        network_name: public
+        cidr: 0.0.0.0/0
+      capabilities:
+        endpoint:
+          properties:
+            ports:
+              - ${port}
+      relationships:
+        - type: tosca.relationships.ConnectsTo
+          target: network
+          properties:
+            ports:
+              - ${port}
+  outputs:
+    port:
+      value: { get_attribute: [mongodb, port] }
+    ip_address:
+      value: { get_attribute: [compute, ip_address] }

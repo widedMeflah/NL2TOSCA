@@ -1,0 +1,126 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a single-node Elasticsearch service on a virtual machine using INDIGO orchestrator.
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+topology_template:
+  inputs:
+    elasticsearch_version:
+      type: string
+      description: Version of Elasticsearch to deploy
+      default: "7.4.1"
+    elastic_password:
+      type: string
+      description: Password for the 'elastic' user
+      required: true
+    kibana_password:
+      type: string
+      description: Password for the 'kibana' system user
+      required: true
+    num_cpus:
+      type: integer
+      description: Number of virtual CPUs for the VM
+      default: 2
+      constraints:
+        - valid_values: [2, 4]
+    memory_size:
+      type: scalar-unit.size
+      description: Memory size for the VM
+      default: 4 GB
+      constraints:
+        - valid_values: [4 GB, 8 GB]
+
+  node_templates:
+    elasticsearch_vm:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: num_cpus }
+        mem_size: { get_input: memory_size }
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: num_cpus }
+            mem_size: { get_input: memory_size }
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: "16.04"
+      interfaces:
+        Standard:
+          create:
+            implementation: indigo::vm
+      requirements:
+        - network: public_network
+
+    public_network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: public
+
+    elasticsearch_service:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: { get_input: elasticsearch_version }
+      requirements:
+        - host: elasticsearch_vm
+      interfaces:
+        Standard:
+          create:
+            implementation: indigo::ansible
+            inputs:
+              playbook: |
+                - name: Install and configure Elasticsearch
+                  hosts: all
+                  become: yes
+                  tasks:
+                    - name: Install Elasticsearch
+                      apt:
+                        name: elasticsearch={{ elasticsearch_version }}
+                        state: present
+                    - name: Configure Elasticsearch to bind to 0.0.0.0
+                      lineinfile:
+                        path: /etc/elasticsearch/elasticsearch.yml
+                        regexp: '^network.host:.*'
+                        line: 'network.host: 0.0.0.0'
+                    - name: Set elastic user password
+                      shell: |
+                        echo "{{ elastic_password }}" | elasticsearch-keystore add "bootstrap.password" --stdin
+                    - name: Set kibana system user password
+                      shell: |
+                        echo "{{ kibana_password }}" | elasticsearch-keystore add "kibana_system.password" --stdin
+                    - name: Restart Elasticsearch
+                      service:
+                        name: elasticsearch
+                        state: restarted
+              extra_vars:
+                elasticsearch_version: { get_input: elasticsearch_version }
+                elastic_password: { get_input: elastic_password }
+                kibana_password: { get_input: kibana_password }
+
+    elasticsearch_port:
+      type: tosca.nodes.Port
+      properties:
+        protocol: tcp
+        target: 9200
+      requirements:
+        - binding: elasticsearch_vm
+        - link: public_network
+
+  outputs:
+    elasticsearch_endpoint:
+      description: Endpoint URL for accessing Elasticsearch service
+      value: { concat: ["http://", get_attribute: [elasticsearch_vm, public_address], ":9200"] }
+    public_ip:
+      description: Public IP address of the Elasticsearch VM
+      value: { get_attribute: [elasticsearch_vm, public_address] }
+    credentials:
+      description: Credentials for accessing the Elasticsearch service
+      value:
+        elastic_user: "elastic"
+        elastic_password: { get_input: elastic_password }
+        kibana_user: "kibana_system"
+        kibana_password: { get_input: kibana_password }

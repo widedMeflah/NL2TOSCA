@@ -1,0 +1,136 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for a Java application connected to a search engine, deployed in separate environments with required Java runtimes.
+
+imports:
+  - tosca-normative-types:1.0.0
+
+topology_template:
+  node_templates:
+
+    # Environment for Java application
+    app_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 10 GB
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            network_name: private
+      requirements:
+        - network:
+            node: app_network
+
+    # Environment for Search Engine
+    search_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            disk_size: 20 GB
+            mem_size: 8 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+        endpoint:
+          properties:
+            network_name: private
+      requirements:
+        - network:
+            node: search_network
+
+    # Network for app environment
+    app_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: app-net
+        ip_version: 4
+
+    # Network for search engine environment
+    search_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: search-net
+        ip_version: 4
+
+    # Java Runtime on app environment
+    app_java_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: openjdk-11-jre
+        version: 11
+      requirements:
+        - host:
+            node: app_host
+
+    # Java Runtime on search environment
+    search_java_runtime:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: openjdk-11-jre
+        version: 11
+      requirements:
+        - host:
+            node: search_host
+
+    # Main Java Application
+    java_application:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /app
+      requirements:
+        - host:
+            node: app_host
+        - dependency:
+            node: app_java_runtime
+        - connectsto:
+            node: search_engine
+        - endpoint:
+            node: app_endpoint
+
+    # Application endpoint for network access
+    app_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        protocol: tcp
+        port: 8080
+
+    # Search Engine Service
+    search_engine:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: search-engine
+        version: latest
+      requirements:
+        - host:
+            node: search_host
+        - dependency:
+            node: search_java_runtime
+        - endpoint:
+            node: search_endpoint
+
+    # Search engine network endpoint
+    search_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        protocol: tcp
+        port: 9200
+
+  outputs:
+    application_url:
+      description: URL to access the main Java application.
+      value: { concat: [ 'http://', { get_attribute: [ app_host, public_address ] }, ':', { get_attribute: [ app_endpoint, port ] } ] }
+    search_engine_url:
+      description: URL to access the search engine.
+      value: { concat: [ 'http://', { get_attribute: [ search_host, public_address ] }, ':', { get_attribute: [ search_endpoint, port ] } ] }

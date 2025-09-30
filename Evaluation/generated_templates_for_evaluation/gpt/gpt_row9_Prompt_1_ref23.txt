@@ -1,0 +1,51 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template to deploy a containerized plant classification application,
+  accessible externally and with resource allocation and load balancing.
+
+topology_template:
+  node_templates:
+    plant_classification_app:
+      type: tosca.nodes.indigo.Container.Application
+      properties:
+        image: plant-classifier:latest
+        ports:
+          - "0.0.0.0:8080:8080"
+        environment_variables: {}
+        mem_limit: 2048m
+        cpu_shares: 1024
+      requirements:
+        - host: app_container_host
+        - endpoint:
+            node: plant_classification_endpoint
+
+    app_container_host:
+      type: tosca.nodes.indigo.Container.Runtime
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+
+    plant_classification_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        port: 8080
+        protocol: tcp
+
+    plant_classification_lb:
+      type: tosca.nodes.LoadBalancer
+      properties:
+        algorithm: round_robin
+        ports:
+          - port: 8080
+            protocol: tcp
+      requirements:
+        - application: plant_classification_app
+
+  outputs:
+    app_endpoint_url:
+      description: URL for externally accessible plant classification application
+      value: { concat: [ 'http://', { get_attribute: [ plant_classification_endpoint, public_address ] }, ':8080/' ] }

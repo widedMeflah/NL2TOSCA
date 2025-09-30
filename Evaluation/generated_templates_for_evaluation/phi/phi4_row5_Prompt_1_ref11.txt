@@ -1,0 +1,129 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: |
+  A system orchestrator description using Alien4Cloud to deploy an application along with its required services.
+
+metadata:
+  template_name: ApplicationSystemTemplate
+  template_author: user
+
+imports:
+  - tosca-normative-types:1.3.0
+
+topology_template:
+
+  inputs:
+    JDK_URL:
+      type: string
+    JDK_INSTALL_DIR:
+      type: string
+    APP_SECURITY_ARGS:
+      type: string
+    APP_DOC_SETTINGS:
+      type: string
+    TEST_BRANCH:
+      type: string
+    PLUGIN_VERSION:
+      type: string
+    TEST_SUITE_NAME:
+      type: string
+
+  node_templates:
+
+    compute_node_application:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096MB
+        network:
+          properties:
+            type: IPv4
+
+    application:
+      type: tosca.nodes.Application
+      requirements:
+        - hostedOn: compute_node_application
+      artifacts:
+        jdk_artifact:
+          file: { get_input: JDK_URL }
+          type: tar.gz
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              install_dir: { get_input: JDK_INSTALL_DIR }
+              app_args: { concatenate: [{ get_input: APP_SECURITY_ARGS }, { get_input: APP_DOC_SETTINGS }] }
+
+    data_storage_service_1:
+      type: tosca.nodes.WebApplication
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    data_storage_service_2:
+      type: tosca.nodes.WebApplication
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      relationships:
+        - type: tosca.relationships.ConnectsTo
+          target: data_storage_service_1
+
+    application_data_connection:
+      type: tosca.relationships.ConnectsTo
+      source: application
+      targets: [data_storage_service_1, data_storage_service_2]
+
+    testing_component:
+      type: tosca.nodes.SoftwareComponent
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 2048MB
+        network:
+          properties:
+            type: IPv4
+
+    test_execution_node:
+      type: tosca.nodes.Compute
+      requirements:
+        - hostedOn: testing_component
+
+    integration_test:
+      type: tosca.nodes.SoftwareComponent
+      artifacts:
+        plugin_artifact:
+          file: "plugin-{{ get_input: PLUGIN_VERSION }}.jar"
+          type: jar
+      capabilities:
+        test_execute:
+          properties:
+            branch: { get_input: TEST_BRANCH }
+            suite_name: { get_input: TEST_SUITE_NAME }
+
+    application_test_run:
+      type: tosca.relationships.ConnectsTo
+      source: integration_test
+      targets: [application]
+
+  policies:
+
+    data_replication_policy:
+      type: tosca.policies.autoscaling.Scaling
+      targets: [data_storage_service_1, data_storage_service_2]
+      properties:
+        min_instances: 1
+        max_instances: 2
+
+    network_setup_policy:
+      type: tosca.policies.network.Firewall
+      targets: [compute_node_application, test_execution_node]
+      properties:
+        allow_ipv4: true

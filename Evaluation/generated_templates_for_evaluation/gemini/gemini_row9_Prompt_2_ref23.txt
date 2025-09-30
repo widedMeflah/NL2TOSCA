@@ -1,0 +1,64 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: Service for running a plant classification application accessible over the internet with specific resource allocation.
+
+node_templates:
+  PlantClassificationCompute:
+    type: tosca.nodes.Compute
+    capabilities:
+      host:
+        properties:
+          num_cpus: 2
+          mem_size: 4 GB
+      os:
+        properties:
+          architecture: x86_64
+          type: Linux
+          distribution: Ubuntu
+          version: "20.04"
+
+  PlantClassificationApp:
+    type: tosca.nodes.SoftwareComponent
+    requirements:
+      - host: PlantClassificationCompute
+    properties:
+      component_version: "1.0.0"
+    artifacts:
+      deployable:
+        file: "https://example.com/plant_classifier_app.zip"
+        type: tosca.artifacts.File
+    capabilities:
+      app_internal_endpoint:
+        type: tosca.capabilities.Endpoint.Admin
+        properties:
+          protocol: tcp
+          port: 8080
+          secure: false
+    interfaces:
+      Standard:
+        create:
+          inputs:
+            APP_LISTEN_PORT: { get_property: [ SELF, app_internal_endpoint, port ] }
+          implementation: scripts/install_plant_classifier.sh
+
+  PlantClassificationPublicIP:
+    type: tosca.nodes.Network.PublicVirtualIp
+    requirements:
+      - virtual_binding:
+          node: PlantClassificationCompute
+
+  PlantClassificationPublicPort:
+    type: tosca.nodes.Network.Port
+    requirements:
+      - host: PlantClassificationCompute
+      - link:
+          node: PlantClassificationPublicIP
+          capability: tosca.capabilities.network.Linkable
+      - connection:
+          node: PlantClassificationApp
+          capability: app_internal_endpoint
+    properties:
+      port: 80
+      protocol: tcp
+      source_port: { get_property: [ PlantClassificationApp, app_internal_endpoint, port ] }

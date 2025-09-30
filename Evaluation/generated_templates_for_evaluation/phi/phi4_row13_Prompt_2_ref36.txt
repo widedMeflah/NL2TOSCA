@@ -1,0 +1,70 @@
+tosca_definitions_version: tosca_simple_yaml_1_2
+
+description: INDIGO Orchestrator for Flexible Computing Environment Management
+
+topology_template:
+  node_templates:
+
+    main_control_unit:
+      type: tosca.nodes.Compute
+      properties:
+        resources:
+          cpu: { get_input: control_cpu }
+          memory: { get_input: control_memory }
+        description: Main unit handling dynamic resource adjustments based on workload demands.
+
+    worker_units:
+      type: tosca.nodes.Group
+      properties:
+        max_instances: { get_input: max_worker_units }
+        member_definitions:
+          - node_type: worker_unit_template
+
+    worker_unit_template:
+      type: tosca.nodes.Compute
+      properties:
+        resources:
+          cpu: { get_input: worker_cpu }
+          memory: { get_input: worker_memory }
+
+  groups:
+
+    hybrid_environment:
+      members: [main_control_unit, worker_units]
+      policies:
+        - tosca.policies.ha.HA
+
+  artifacts:
+  
+    web_interface:
+      type: tosca.artifacts.WebApplication
+      properties:
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        version: { get_input: interface_version }
+        description: Customizable web interface for system management.
+        ssh_public_key: { get_input: ssh_public_key }
+
+  relationship_templates:
+
+    uses_web_interface:
+      type: tosca.relationships.ConnectsTo
+      source: main_control_unit
+      target: web_interface
+
+data_storage_location:
+  type: tosca.nodes.Root
+  properties:
+    storage_path: { get_input: data_storage_path }
+    
+outputs:
+
+  public_url:
+    description: Public URL for accessing the system.
+    value: { concat: [ "https://", { get_property: [ main_control_unit, ip ] } ] }
+
+  credentials:
+    description: Credentials for accessing the web interface securely.
+    value: 
+      admin_email: { get_input: admin_email }
+      api_key: { get_input: api_key }

@@ -1,0 +1,98 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: kubernetes-cluster-scalable
+  template_version: 1.0.0-SNAPSHOT
+  template_author: alien4cloud
+
+imports:
+  - alien-base-types:2.0.0
+  - alien-kubernetes-plugin:2.0.0
+
+node_templates:
+  # Compute node for the Kubernetes Master
+  kubernetes_master_compute:
+    type: tosca.nodes.Compute
+    capabilities:
+      host:
+        properties:
+          os_arch: x86_64
+          os_type: Linux
+          os_distribution: Ubuntu
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 1
+      endpoint:
+        properties:
+          protocol: tcp
+          port: 22
+
+  # Compute node for Kubernetes Workers
+  kubernetes_worker_compute:
+    type: tosca.nodes.Compute
+    capabilities:
+      host:
+        properties:
+          os_arch: x86_64
+          os_type: Linux
+          os_distribution: Ubuntu
+      scalable:
+        properties:
+          min_instances: 1
+          max_instances: 5 # Scalability for worker nodes
+      endpoint:
+        properties:
+          protocol: tcp
+          port: 22
+
+  # Network configuration for the cluster
+  cluster_network:
+    type: tosca.nodes.Network
+    properties:
+      ip_version: 4 # Support IPv4
+    capabilities:
+      network_binding: {}
+
+  # Logical representation of the Kubernetes Cluster
+  kubernetes_cluster:
+    type: alien.nodes.kubernetes.Cluster
+
+  # Kubernetes Master node component
+  kubernetes_master_node:
+    type: alien.nodes.kubernetes.Master
+    requirements:
+      - host:
+          node: kubernetes_master_compute
+          capability: tosca.capabilities.Container
+      - network:
+          node: cluster_network
+          capability: tosca.capabilities.network.Linkable
+      - cluster:
+          node: kubernetes_cluster
+          capability: alien.capabilities.kubernetes.Cluster
+
+  # Kubernetes Worker node component
+  kubernetes_worker_node:
+    type: alien.nodes.kubernetes.Worker
+    requirements:
+      - host:
+          node: kubernetes_worker_compute
+          capability: tosca.capabilities.Container
+      - network:
+          node: cluster_network
+          capability: tosca.capabilities.network.Linkable
+      - cluster:
+          node: kubernetes_cluster
+          capability: alien.capabilities.kubernetes.Cluster
+
+  # Kubernetes Dashboard for monitoring and management
+  kubernetes_dashboard:
+    type: alien.nodes.kubernetes.Dashboard
+    requirements:
+      - host:
+          node: kubernetes_cluster # Deployed within the cluster
+          capability: alien.capabilities.kubernetes.Cluster
+      - network:
+          node: cluster_network
+          capability: tosca.capabilities.network.Linkable

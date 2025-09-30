@@ -1,0 +1,51 @@
+
+description: Web Application Deployment System
+
+nodes:
+  Node.TomcatServer:
+    type: custom.Alien4cloud.TomcatServer
+    properties:
+      os:
+        - linux
+        - windows
+        - macos
+      architecture:
+        - 32bit
+        - 64bit
+      tomcat_dir: /opt/tomcat
+      tomcat_package_url: <URL_TO_TOMCAT_INSTALLATION_PACKAGE>
+      java:
+        jdk_url: <URL_TO_JAVA_INSTALLATION_PACKAGE>
+        java_install_dir: /opt/java
+
+  Node.WebApplication:
+    type: custom.Alien4cloud.WebApplication
+    properties:
+      war_file: <PATH_TO_WAR_FILE>
+      tomcat_server_ref: Node.TomcatServer
+
+relationships:
+  DeployWebApplicationOnTomcat:
+    type: custom.Alien4cloud.DeployWebApplicationOnTomcat
+    members:
+      - role: web_application
+        node_ref: Node.WebApplication
+      - role: tomcat_server
+        node_ref: Node.TomcatServer
+
+interfaces:
+  WebApplicationInterface:
+    type: custom.Alien4cloud.WebApplicationInterface
+    implementations:
+      - node: Node.WebApplication
+        operaions:
+          - get_web_app_url:
+              input: {}
+              output:
+                web_app_url:
+                  type: string
+          - get_tomcat_url:
+              input: {}
+              output:
+                tomcat_url:
+                  type: string

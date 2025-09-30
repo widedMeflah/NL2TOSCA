@@ -1,0 +1,94 @@
+
+description: Galaxy cluster on CentOS 7 with SLURM, specific version, additional software, and storage options
+
+tosca_definitions_version: yamlschema22
+
+node_templates:
+  GalaxyCluster:
+    type: compute
+    properties:
+      os:
+        type: centos
+        version: 7
+      software:
+        - name: galaxy
+          version: {galaxy_version}
+        - name: slurm
+        - name: {additional_software}
+      reference_data:
+        - name: {reference_data}
+        - name: cernvm-fs
+          parameters:
+            cernvm_fs_config: {cernvm_fs_config}
+      storage:
+        type: disk
+        size: {storage_size}
+        encryption: true
+      admin_email: {admin_email}
+      api_key: {api_key}
+      ssh_public_key: {ssh_public_key}
+      tools:
+        - {galaxy_tools}
+
+  FrontendNode:
+    type: compute
+    relations:
+      - galaxy_frontend
+    properties:
+      roles:
+        - frontend
+      worker_nodes:
+        relation_parameters:
+          number_of_nodes: {number_of_worker_nodes}
+          node_template: WorkerNode
+          properties:
+            specifications: {worker_node_specifications}
+
+  WorkerNode:
+    type: compute
+    properties:
+      specifications: {worker_node_specifications}
+
+  DatabaseNode:
+    type: compute
+    properties:
+      # Database node properties here
+
+relations:
+  galaxy_frontend:
+    type: GalaxyFrontend
+    source: FrontendNode
+    target: GalaxyCluster
+
+parameters:
+  galaxy_version: {galaxy_version}
+  additional_software: {additional_software}
+  reference_data: {reference_data}
+  cernvm_fs_config: {cernvm_fs_config}
+  storage_size: {storage_size}
+  number_of_worker_nodes: {number_of_worker_nodes}
+  worker_node_specifications: {worker_node_specifications}
+  admin_email: {admin_email}
+  api_key: {api_key}
+  ssh_public_key: {ssh_public_key}
+  galaxy_tools: {galaxy_tools}
+
+interfaces:
+  GalaxyFrontend:
+    type: web
+    protocol: http
+    ports:
+      - name: galaxy_api
+        number: 8080
+      - name: galaxy_ui
+        number: 8081
+    role_template: FrontendNode
+
+capabilities:
+  GalaxyCluster:
+    - name: configure_cluster
+      action: configure the number of worker nodes, front-end and worker node specifications, and storage size
+    - name: hybrid_environment_support
+      action: support hybrid environments
+    - name: send_confirmation_email
+      action: send a confirmation email with login instructions once the setup is complete

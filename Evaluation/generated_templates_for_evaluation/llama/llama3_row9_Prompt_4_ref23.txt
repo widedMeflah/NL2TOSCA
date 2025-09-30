@@ -1,0 +1,54 @@
+
+topology_template:
+  node_templates:
+    Docker:
+      type: tosca.nodes.Container.Runtime
+      properties:
+        container_type: docker
+
+    Marathon:
+      type: tosca.nodes.Container.Orchestration
+      properties:
+        container_runtime: Docker
+        network_mode: host
+
+    MachineLearningService:
+      type: tosca.nodes.Container.Application
+      properties:
+        image: machine_learning_service
+        network_mode: host
+        port_bindings:
+          - host_port: 8080
+            container_port: 8080
+            protocol: tcp
+            host_ip: 0.0.0.0
+        cpu_arch: x86_64
+        cpu_count: 1
+        mem_size: 1 GB
+      requirements:
+        - container:
+            node: Marathon
+            relationship: tosca.relationships.Network
+        - host:
+            node: Docker
+            relationship: tosca.relationships.HostedOn
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: external_network
+
+  relationship_templates:
+    tosca.relationships.Network:
+      type: tosca.relationships.Network
+      properties:
+        network_name: external_network
+
+    tosca.relationships.HostedOn:
+      type: tosca.relationships.HostedOn
+      properties:
+        host: Docker
+  outputs:
+    app_url:
+      value: { get_attribute: [ MachineLearningService, endpoint] }
+      description: URL of the machine learning service

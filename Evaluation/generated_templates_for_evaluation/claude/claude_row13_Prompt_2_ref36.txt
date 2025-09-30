@@ -1,0 +1,163 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: INDIGO Elastic Cluster deployment
+
+topology_template:
+  inputs:
+    number_of_slaves:
+      type: integer
+      description: Maximum number of worker nodes
+      default: 5
+      required: yes
+
+    admin_email:
+      type: string
+      description: Administrator email
+      required: yes
+
+    admin_token:
+      type: string
+      description: Administrator API token
+      required: yes
+
+    cluster_name:
+      type: string
+      description: Cluster name
+      default: elastic_cluster
+      required: yes
+
+    fe_cpus:
+      type: integer
+      description: Front-end CPUs
+      default: 4
+      required: yes
+
+    fe_memory:
+      type: scalar-unit.size
+      description: Front-end memory
+      default: 8 GB
+      required: yes
+
+    slave_cpus:
+      type: integer
+      description: Slave node CPUs
+      default: 2
+      required: yes
+
+    slave_memory:
+      type: scalar-unit.size
+      description: Slave node memory
+      default: 4 GB
+      required: yes
+
+    hybrid_deployment:
+      type: boolean
+      description: Enable hybrid deployment
+      default: false
+      required: yes
+
+    wms_type:
+      type: string
+      description: Workload Management System
+      constraints:
+        - valid_values: [ torque, sge, slurm, condor ]
+      default: torque
+      required: yes
+
+    web_interface_version:
+      type: string
+      description: Web interface version
+      default: latest
+      required: yes
+
+    ssh_public_key:
+      type: string
+      description: SSH public key
+      required: yes
+
+  node_templates:
+    elastic_cluster_front_end:
+      type: tosca.nodes.indigo.ElasticCluster
+      properties:
+        deployment_id: { get_input: cluster_name }
+        web_interface: true
+        web_interface_version: { get_input: web_interface_version }
+        hybrid: { get_input: hybrid_deployment }
+        max_instances: { get_input: number_of_slaves }
+        wms: { get_input: wms_type }
+        admin_credentials:
+          email: { get_input: admin_email }
+          token: { get_input: admin_token }
+      requirements:
+        - lrms: elastic_cluster_front_end_job_scheduler
+
+    elastic_cluster_front_end_job_scheduler:
+      type: tosca.nodes.indigo.LRMS.FrontEnd
+      properties:
+        frontend_cpu: { get_input: fe_cpus }
+        frontend_memory: { get_input: fe_memory }
+      capabilities:
+        endpoint:
+          properties:
+            ports:
+              https_port: 443
+              ssh_port: 22
+        host:
+          properties:
+            num_cpus: { get_input: fe_cpus }
+            mem_size: { get_input: fe_memory }
+      requirements:
+        - host: elastic_cluster_front_end_server
+
+    elastic_cluster_front_end_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            ports:
+              ssh_port: 22
+        host:
+          properties:
+            num_cpus: { get_input: fe_cpus }
+            mem_size: { get_input: fe_memory }
+        os:
+          properties:
+            type: linux
+
+    elastic_cluster_worker_node:
+      type: tosca.nodes.indigo.LRMS.WorkerNode
+      properties:
+        front_end_ip: { get_attribute: [ elastic_cluster_front_end_server, private_address, 0 ] }
+        node_cpu: { get_input: slave_cpus }
+        node_memory: { get_input: slave_memory }
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: slave_cpus }
+            mem_size: { get_input: slave_memory }
+      requirements:
+        - host: elastic_cluster_worker_server
+
+    elastic_cluster_worker_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        scalable:
+          properties:
+            count: 0
+        host:
+          properties:
+            num_cpus: { get_input: slave_cpus }
+            mem_size: { get_input: slave_memory }
+        os:
+          properties:
+            type: linux
+
+  outputs:
+    cluster_endpoint:
+      value: { get_attribute: [ elastic_cluster_front_end_server, public_address, 0 ] }
+    cluster_creds:
+      value: { get_attribute: [ elastic_cluster_front_end, cluster_credentials ] }

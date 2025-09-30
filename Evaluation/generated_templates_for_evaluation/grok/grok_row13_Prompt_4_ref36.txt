@@ -1,0 +1,109 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA description for a virtual elastic cluster with Slurm, Galaxy portal, and hybrid environment support using INDIGO orchestrator
+
+topology_template:
+  node_templates:
+    front_end_node:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - host: slurm_controller
+      properties:
+        elasticity:
+          min_instances: 1
+          max_instances: 1
+        hybrid_support: true
+
+    slurm_controller:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: 21.08
+      requirements:
+        - host: front_end_node
+      artifacts:
+        install_script:
+          file: scripts/install_slurm.sh
+          type: tosca.artifacts.Implementation.Bash
+
+    worker_node:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      properties:
+        elasticity:
+          min_instances: 2
+          max_instances: 10
+        hybrid_support: true
+      requirements:
+        - dependency: slurm_controller
+      artifacts:
+        join_script:
+          file: scripts/join_slurm_cluster.sh
+          type: tosca.artifacts.Implementation.Bash
+
+    galaxy_portal:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: 22.05
+        port: 8080
+      requirements:
+        - host: front_end_node
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_galaxy.sh
+          start:
+            implementation: scripts/start_galaxy.sh
+      artifacts:
+        install_script:
+          file: scripts/install_galaxy.sh
+          type: tosca.artifacts.Implementation.Bash
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: private
+        cidr: 192.168.0.0/24
+      requirements:
+        - link: front_end_node
+        - link: worker_node
+
+  outputs:
+    galaxy_portal_url:
+      description: URL to access the Galaxy portal
+      value: { get_attribute: [galaxy_portal, endpoint] }
+    cluster_ip:
+      description: IP address of the front-end node for cluster access
+      value: { get_attribute: [front_end_node, ip_address] }
+
+policies:
+  - elasticity_policy:
+      type: tosca.policies.Scaling
+      targets: [worker_node]
+      properties:
+        min_instances: 2
+        max_instances: 10
+        cpu_threshold_high: 80
+        cpu_threshold_low: 20
+        scale_up_increment: 2
+        scale_down_increment: 1

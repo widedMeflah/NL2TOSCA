@@ -1,0 +1,115 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for setting up a plant classification service
+
+topology_template:
+  node_templates:
+    plant_classification_service:
+      type: tosca.nodes.INDIGO.Service
+      properties:
+        application:
+          type: tosca.nodes.INDIGO.Application
+          properties:
+            name: PlantClassifier
+            description: A service for classifying plants using a specific application
+            version: 1.0
+            main_class: org.plantclassifier.Main
+            executable: java
+            resources:
+              - plant-classifier.jar
+          requirements:
+            - host: plant_classifier_host
+            - port: plant_classifier_port
+
+      requirements:
+        - network: public_network
+        - security_group: plant_classifier_security_group
+        - floating_ip: plant_classifier_floating_ip
+
+    plant_classifier_host:
+      type: tosca.nodes.Compute
+      properties:
+        name: PlantClassifierHost
+        flavor: medium
+        image: ubuntu_20_04
+        key_name: my_key
+        networks:
+          - public_network
+        resources:
+          cpu: 2
+          memory: 4GB
+        metadata:
+          startup_script: |
+            #!/bin/bash
+            echo "Starting plant classification service..."
+            docker pull plant_classifier_image
+            docker run -d -p 5000:5000 plant_classifier_image
+
+    public_network:
+      type: tosca.networks.Network
+      properties:
+        name: Public Network
+        network_type: public
+        cidr: 10.0.0.0/24
+
+    plant_classifier_security_group:
+      type: tosca.security.groups.SecurityGroup
+      properties:
+        name: PlantClassifierSecurityGroup
+        description: Security group for plant classification service
+        rules:
+          - protocol: tcp
+            port_range_min: 5000
+            port_range_max: 5000
+            remote_ip_prefix: 0.0.0.0/0
+
+    plant_classifier_floating_ip:
+      type: tosca.networks.FloatingIP
+      properties:
+        name: PlantClassifierFloatingIP
+        description: Floating IP for plant classification service
+        ip_address: auto
+
+    plant_classifier_volume:
+      type: tosca.storage.Volume
+      properties:
+        name: PlantClassifierVolume
+        size: 10GB
+        type: ext4
+        mount_point: /data
+
+  relationship_templates:
+    - type: tosca.relationships.HostedOn
+      properties:
+        name: HostedOn
+        description: Hosted on plant_classifier_host
+      targets:
+        - plant_classifier_host
+
+    - type: tosca.relationships.BindsTo
+      properties:
+        name: BindsTo
+        description: Binds to public_network
+      targets:
+        - public_network
+
+    - type: tosca.relationships.BindsTo
+      properties:
+        name: BindsTo
+        description: Binds to plant_classifier_security_group
+      targets:
+        - plant_classifier_security_group
+
+    - type: tosca.relationships.BindsTo
+      properties:
+        name: BindsTo
+        description: Binds to plant_classifier_floating_ip
+      targets:
+        - plant_classifier_floating_ip
+
+    - type: tosca.relationships.AttachedTo
+      properties:
+        name: AttachedTo
+        description: Attached to plant_classifier_volume
+      targets:
+        - plant_classifier_volume

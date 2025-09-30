@@ -1,0 +1,153 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a two-tier Wine Cellar Application (PHP version) with Apache web server and MySQL database.
+
+imports:
+  - file: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+topology_template:
+  node_templates:
+    web_server_vm:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 1 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - local_storage:
+            node: web_server_storage
+            relationship:
+              type: tosca.relationships.AttachesTo
+
+    web_server_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 10 GB
+
+    apache_web_server:
+      type: tosca.nodes.WebServer.Apache
+      requirements:
+        - host:
+            node: web_server_vm
+      properties:
+        version: 2.4
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_apache.sh
+            inputs:
+              app_repo: https://github.com/indigo-dc/winecellar-php.git
+              db_host: { get_attribute: [mysql_db_vm, private_address] }
+              db_user: winecellar_user
+              db_password: winecellar_pass
+              db_name: winecellar_db
+
+    web_app:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host:
+            node: apache_web_server
+        - database_endpoint:
+            node: mysql_database
+            relationship:
+              type: tosca.relationships.ConnectsTo
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_app.sh
+            inputs:
+              repo_url: https://github.com/indigo-dc/winecellar-php.git
+
+    mysql_db_vm:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - local_storage:
+            node: mysql_storage
+            relationship:
+              type: tosca.relationships.AttachesTo
+
+    mysql_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 10 GB
+
+    mysql_database:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        name: winecellar_db
+        user: winecellar_user
+        password: winecellar_pass
+        port: 3306
+      requirements:
+        - host:
+            node: mysql_db_vm
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/init_db.sh
+            inputs:
+              init_script_url: https://example.com/winecellar-schema.sql
+
+    web_server_network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: public
+      requirements:
+        - binding:
+            node: web_server_vm
+            relationship:
+              type: tosca.relationships.BindsTo
+
+    web_server_port_http:
+      type: tosca.nodes.Port
+      properties:
+        protocol: tcp
+        target: 80
+      requirements:
+        - binding:
+            node: web_server_network
+
+    web_server_port_https:
+      type: tosca.nodes.Port
+      properties:
+        protocol: tcp
+        target: 443
+      requirements:
+        - binding:
+            node: web_server_network
+
+    db_network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: private
+      requirements:
+        - binding:
+            node: mysql_db_vm
+            relationship:
+              type: tosca.relationships.BindsTo
+
+  outputs:
+    web_server_ip:
+      description: Public IP address of the web server
+      value: { get_attribute: [web_server_vm, public_address] }
+    web_app_url:
+      description: URL to access the Wine Cellar Application
+      value: { concat: ["http://", { get_attribute: [web_server_vm, public_address] }, "/winecellar"] }

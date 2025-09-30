@@ -1,0 +1,137 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for deploying Galaxy with configurable resources and options
+
+metadata:
+  template_name: deploy-galaxy
+
+topology_template:
+  inputs:
+    num_cpus:
+      type: integer
+      description: Number of CPUs for the VM
+      default: 2
+    mem_size:
+      type: string
+      description: Amount of RAM (e.g. 8GB)
+      default: 8GB
+    disk_size:
+      type: string
+      description: Root disk size (e.g. 50GB)
+      default: 50GB
+    storage_size:
+      type: string
+      description: Application storage volume size (e.g. 50GB)
+      default: 50GB
+    galaxy_admin_email:
+      type: string
+      description: Email for Galaxy admin user
+      required: true
+    galaxy_admin_api_key:
+      type: string
+      description: API key for Galaxy admin access
+      required: true
+    galaxy_run_user:
+      type: string
+      description: Username to run the Galaxy application
+      required: true
+    galaxy_version:
+      type: string
+      description: Galaxy application version
+      default: '23.1'
+    instance_description:
+      type: string
+      description: Description for this Galaxy instance
+      required: true
+    ssh_public_key:
+      type: string
+      description: SSH public key for VM access
+      required: true
+    galaxy_data_path:
+      type: string
+      description: Path to store Galaxy application data
+      default: '/data/galaxy'
+    enable_storage_encryption:
+      type: boolean
+      description: Enable LUKS storage encryption with Vault integration
+      default: false
+    vault_url:
+      type: string
+      description: Vault server URL (if encryption enabled)
+      default: ''
+    vault_wrapping_token:
+      type: string
+      description: Vault wrapping token (if encryption enabled)
+      default: ''
+    vault_secret_path:
+      type: string
+      description: Vault secret path (if encryption enabled)
+      default: ''
+    vault_key_name:
+      type: string
+      description: Name of the secret key in Vault (if encryption enabled)
+      default: ''
+    tool_flavor:
+      type: string
+      description: Flavor for tool installation
+      default: 'galaxy_default'
+    install_reference_data:
+      type: boolean
+      description: Install reference data with Galaxy
+      default: false
+
+  node_templates:
+
+    galaxy_vm:
+      type: tosca.nodes.indigo.Compute
+      properties:
+        num_cpus: { get_input: num_cpus }
+        mem_size: { get_input: mem_size }
+        disk_size: { get_input: disk_size }
+        description: { get_input: instance_description }
+        public_key: { get_input: ssh_public_key }
+
+    galaxy_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: storage_size }
+        location: { get_input: galaxy_data_path }
+        encrypted: { get_input: enable_storage_encryption }
+      requirements:
+        - host: galaxy_vm
+
+    vault_secret:
+      type: tosca.nodes.indigo.VaultSecret
+      description: Vault configuration for LUKS if encryption is enabled
+      properties:
+        url: { get_input: vault_url }
+        wrapping_token: { get_input: vault_wrapping_token }
+        secret_path: { get_input: vault_secret_path }
+        key_name: { get_input: vault_key_name }
+      requirements:
+        - host: galaxy_vm
+      directives: [ create_if, enable_storage_encryption ]
+
+    galaxy_app:
+      type: tosca.nodes.indigo.Galaxy
+      properties:
+        admin_email: { get_input: galaxy_admin_email }
+        admin_api_key: { get_input: galaxy_admin_api_key }
+        run_user: { get_input: galaxy_run_user }
+        version: { get_input: galaxy_version }
+        data_path: { get_input: galaxy_data_path }
+        description: { get_input: instance_description }
+        storage_flavor: { get_input: tool_flavor }
+        install_reference_data: { get_input: install_reference_data }
+      requirements:
+        - host: galaxy_vm
+        - local_storage: galaxy_storage
+
+  outputs:
+    endpoint_url:
+      description: Galaxy portal endpoint URL
+      value: { concat: ['http://', { get_attribute: [galaxy_vm, public_ip_address] }, ':8080'] }
+    public_ip_address:
+      description: Public IP address of the virtual machine
+      value: { get_attribute: [galaxy_vm, public_ip_address] }

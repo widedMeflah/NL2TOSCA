@@ -1,0 +1,91 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA blueprint for deploying a web server (v2.4) with lifecycle and monitoring capabilities, 
+  hosted on a single compute instance, supporting private network admin access and public web endpoint.
+
+imports:
+  - tosca-normative-types:1.3.0
+
+topology_template:
+  inputs:
+    admin_network_cidr:
+      type: string
+      description: CIDR for private admin network access
+
+  node_templates:
+    web_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: 10 GB
+            mem_size: 2 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - network:
+            node: admin_private_network
+
+    admin_private_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: admin_net
+        cidr: { get_input: admin_network_cidr }
+        ip_version: 4
+
+    website_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 2 GB
+        location: /var/www
+
+    web_server:
+      type: tosca.nodes.WebServer
+      properties:
+        component_version: 2.4
+        port: 80
+        document_root: /var/www
+      requirements:
+        - host: web_host
+        - dependency:
+            node: website_storage
+        - network:
+            node: public_network
+
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/start_webserver.sh
+          stop:
+            implementation: scripts/stop_webserver.sh
+          restart:
+            implementation: scripts/restart_webserver.sh
+        Monitoring:
+          check:
+            implementation: scripts/check_welcome_page.sh
+
+    public_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: public_web
+        cidr: 0.0.0.0/0
+        ip_version: 4
+
+    web_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        protocol: http
+        port: 80
+        url_path: /
+      requirements:
+        - hosted_on: web_server
+
+  outputs:
+    web_server_url:
+      description: URL for accessing the deployed web server's welcome page
+      value: { concat: [ 'http://', { get_attribute: [ web_server, public_address ] }, ':' , '80', '/' ] }

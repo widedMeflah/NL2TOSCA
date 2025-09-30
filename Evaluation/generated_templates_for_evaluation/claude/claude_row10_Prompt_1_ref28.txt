@@ -1,0 +1,48 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying a Search Engine Service
+
+topology_template:
+  inputs:
+    admin_password:
+      type: string
+      description: Admin user password
+      required: true
+      
+    system_password:
+      type: string
+      description: System user password
+      required: true
+
+  node_templates:
+    search_engine_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { valid_values: [ 2, 4 ] }
+            mem_size: { valid_values: [ "4 GB", "8 GB" ] }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: "16.04"
+
+    search_engine:
+      type: tosca.nodes.indigo.SearchEngine
+      properties:
+        version: "7.4.1"
+        admin_password: { get_input: admin_password }
+        system_password: { get_input: system_password }
+        network_mode: "0.0.0.0"
+      requirements:
+        - host: search_engine_server
+
+  outputs:
+    search_engine_endpoint:
+      value: { get_attribute: [ search_engine, search_endpoint ] }
+    search_engine_credentials:
+      value: { get_attribute: [ search_engine, credentials ] }

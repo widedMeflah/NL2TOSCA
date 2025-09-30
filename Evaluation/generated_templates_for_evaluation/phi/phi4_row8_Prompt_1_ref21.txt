@@ -1,0 +1,64 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA description for setting up a web server with a PHP application and MySQL database.
+
+imports:
+  - indigo.nodes.indigo.webserver.Apache:0.1.0-SNAPSHOT
+  - indigo.nodes.indigo.database.MySQLDatabase:0.1.0-SNAPSHOT
+  - indigo.relationships.indigo.webserver.ServingWebContent:0.1.0-SNAPSHOT
+
+topology_template:
+  node_templates:
+    web_server:
+      type: indigo.nodes.indigo.webserver.Apache
+      properties:
+        http_port: 80
+        https_port: 443
+        php_application_path: "/var/www/html/wine_cellar"
+        max_cpu_cores: 2
+        min_memory_gb: 1
+        disk_space_gb: 10
+
+    database_server:
+      type: indigo.nodes.indigo.database.MySQLDatabase
+      properties:
+        db_name: wine_cellar_db
+        db_user: wine_app_user
+        db_password: securepassword1234
+        root_password: supersecurerootpass
+        min_memory_gb: 2
+        disk_space_gb: 20
+
+    php_application:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: "latest"
+        application_name: Wine Cellar Application
+
+    serving_php_application:
+      type: indigo.relationships.indigo.webserver.ServingWebContent
+      source: web_server
+      target: php_application
+
+    database_connection:
+      type: tosca.relationships.ConnectsTo
+      description: Connect the PHP application with MySQL database for data storage and retrieval.
+      source: php_application
+      target: database_server
+
+  policies:
+    - type: indigo.policies.indigo.scaling.CpuScalingPolicy
+      targets: web_server
+      properties:
+        min_cpu_cores: 1
+        max_cpu_cores: 4
+
+    - type: indigo.policies.indigo.scaling.MemoryScalingPolicy
+      targets: database_server
+      properties:
+        min_memory_gb: 2
+        max_memory_gb: 8
+
+  outputs:
+    application_url:
+      value: { get_attribute: [ web_server, public_ip ] }

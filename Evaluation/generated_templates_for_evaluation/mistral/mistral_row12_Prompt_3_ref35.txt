@@ -1,0 +1,131 @@
+
+definition:
+  $id: indigo_galaxy_deployment
+  $version: 1.0.0
+  $metadata:
+    label: INDIGO Galaxy Docker Deployment
+
+  properties:
+    public_network:
+      type: string
+      description: Public network endpoint for the virtual machine
+    ssh_port:
+      type: int
+      description: SSH access port for the virtual machine
+    http_port:
+      type: int
+      description: HTTP access port for the Galaxy instance
+    ftp_port:
+      type: int
+      description: FTP access port for the Galaxy instance
+    lukas_api_port:
+      type: int
+      description: LUKS API access port
+    cpu:
+      type: int
+      description: CPU instance flavor setting
+    memory:
+      type: int
+      description: Memory instance flavor setting
+    disk:
+      type: int
+      description: Disk instance flavor setting
+    storage_size:
+      type: int
+      description: Block storage size
+    admin_email:
+      type: string
+      description: Admin email for Galaxy configuration
+    api_key:
+      type: string
+      description: API key for Galaxy configuration
+    version:
+      type: string
+      description: Galaxy version
+    instance_description:
+      type: string
+      description: Description of the Galaxy instance
+    encrypt_secrets:
+      type: boolean
+      default: false
+      description: Enable encryption using LUKS for secrets storage in HashiCorp Vault
+    reference_data:
+      type: boolean
+      default: false
+      description: Enable installation of reference data as part of the Galaxy setup
+
+  topology_template:
+    type: compute
+    name: INDIGO_Galaxy_VM
+    properties:
+      os:
+        type: ubuntu
+        version: 16.04
+      size:
+        cpu:  cpu
+        memory:  memory
+        disk:  disk
+      network_config:
+        public_network: public_network
+        ports:
+          - name: ssh
+            port:  ssh_port
+          - name: http
+            port:  http_port
+          - name: ftp
+            port:  ftp_port
+          - name: lukas_api
+            port:  lukas_api_port
+      block_storage:
+        size:  storage_size
+      containers:
+        - name: galaxy
+          image: galaxy-docker-image
+          docker_config:
+            ports:
+              - name: galaxy_http
+                host:  http_port
+                container: 8080
+              - name: galaxy_ftp
+                host: ftp_port
+                container: 21
+          environment:
+            - NAME=API_KEY
+              VALUE=api_key
+            - NAME=ADMIN_EMAIL
+              VALUE=admin_email
+            - NAME=GALAXY_VERSION
+              VALUE= version
+            - NAME=INSTANCE_DESCRIPTION
+              VALUE= instance_description
+          resources:
+            cpu: 1
+            memory: 512 MB
+            disk: 10 GB
+      vault:
+        type: hashicorp_vault
+        properties:
+          encrypt_secrets: encrypt_secrets
+          config:
+            api_address: http://127.0.0.1:8200
+            auth_method: token
+            role_id: galaxy-role
+            token_ttl: "1h"
+            token_path: auth/token
+            token_policies:
+              - galaxy-policy
+            secret_path: secret/galaxy
+            encryption_key_path: secret/encryption_key
+            encryption_key_ttl: 1w
+            encryption_key_reencrypt: true
+      reference_data:
+        if: reference_data
+        script:
+          type: bash
+          inputs:
+            - name: galaxy_container
+              value: "!get container galaxy"
+          commands:
+            - apt-get update
+            - apt-get install -y galaxy-data
+            - galaxy-data-install

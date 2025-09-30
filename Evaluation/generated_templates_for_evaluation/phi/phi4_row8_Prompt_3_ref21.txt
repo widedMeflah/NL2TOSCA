@@ -1,0 +1,77 @@
+tosca_definitions_version: cloudify_dsl_1_4
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/5.0.8/types.yaml
+
+inputs:
+  db_username:
+    type: string
+    description: Username for the MySQL database.
+  db_password:
+    type: string
+    description: Password for the MySQL database.
+  sql_file_url:
+    type: string
+    description: URL of the SQL file to initialize the database.
+
+node_templates:
+
+  web_server_vm:
+    type: cloudify.nodes.Compute
+    properties:
+      image: ubuntu-20.04
+      flavor:
+        id: m1.micro
+      num_cpus: 1
+      ram: 1024
+
+  db_server_vm:
+    type: cloudify.nodes.Compute
+    properties:
+      image: ubuntu-20.04
+      flavor:
+        id: m1.small
+      num_cpus: 1
+      ram: 4096
+      disk_size: 10240
+
+  apache_server:
+    type: cloudify.nodes.Apache.War
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: web_server_vm
+    properties:
+      port: 80
+      secure_port: 443
+      host: 0.0.0.0
+
+  mysql_database:
+    type: cloudify.nodes.Database.Mysql
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: db_server_vm
+    properties:
+      username: { get_input: db_username }
+      password: { get_input: db_password }
+
+  initialize_db:
+    type: cloudify.workflows.shell.exec
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            command: |
+              wget -qO- { sql_file_url } | mysql -u{ db_username } -p{ db_password }
+          relationship: target
+
+  deploy_application:
+    type: cloudify.nodes.Application.Deployer
+    relationships:
+      - type: cloudify.relationships.connected_to
+        target: apache_server
+      - type: cloudify.relationships.depends_on
+        source: initialize_db
+        target: mysql_database
+    properties:
+      repository_url: https://github.com/your-repo/wine-cellar-app.git
+      application_path: /var/www/html

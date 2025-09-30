@@ -1,0 +1,116 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA description for a scalable, secure, web-accessible data analysis application with storage, backup, automated testing, and visualization capabilities.
+
+topology_template:
+  node_templates:
+
+    app_frontend:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: app_server
+      properties:
+        port: 80
+        secure: true
+
+    app_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 16 GB
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 10
+        endpoint:
+          properties:
+            protocol: tcp
+            port: 80
+
+    data_analysis_app:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: app_server
+        - dependency: database
+      interfaces:
+        Standard:
+          create: scripts/install_data_analysis_app.sh
+          configure: scripts/configure_data_analysis_app.sh
+      artifacts:
+        - name: data_analysis_app_package
+          file: files/data_analysis_app.zip
+          type: tosca.artifacts.File
+
+    database:
+      type: tosca.nodes.Database
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+      properties:
+        db_name: analysis_results
+        db_user: user
+        db_password: changeme
+        backup_policy: daily
+        backup_retention: 30
+        secure: true
+
+    backup:
+      type: tosca.nodes.Backup
+      requirements:
+        - backup_source: database
+      properties:
+        schedule: daily
+        retention_days: 30
+        encrypted: true
+
+    test_runner:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: app_server
+      interfaces:
+        Standard:
+          test: scripts/run_automated_tests.sh
+
+    data_visualization:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: app_server
+        - dependency: database
+      properties:
+        port: 8080
+        visualization_enabled: true
+
+  workflows:
+    deploy_and_test:
+      steps:
+        - deploy_app_frontend
+        - deploy_data_analysis_app
+        - deploy_database
+        - run_tests
+        - configure_backup
+
+      deploy_app_frontend:
+        target: app_frontend
+        operation: Standard.create
+
+      deploy_data_analysis_app:
+        target: data_analysis_app
+        operation: Standard.create
+
+      deploy_database:
+        target: database
+        operation: Standard.create
+
+      run_tests:
+        target: test_runner
+        operation: Standard.test
+
+      configure_backup:
+        target: backup
+        operation: Standard.create

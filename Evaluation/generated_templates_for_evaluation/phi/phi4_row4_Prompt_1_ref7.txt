@@ -1,0 +1,67 @@
+node_types:
+  MyCompany:DataStorageNode:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      ip_address:
+        type: string
+        description: The IP address of the server.
+      port:
+        type: integer
+        default: 27017
+        constraints:
+          - valid_range: [1, 65535]
+        description: Port number for data operations.
+
+    requirements:
+      - host:
+          node: tosca.nodes.Compute
+
+    interfaces:
+      Standard:
+        create:
+          inputs:
+            config_file_path:
+              type: string
+              required: false
+              default: "/etc/my_service/config.yml"
+          implementation:
+            primary: scripts/install.sh
+            files:
+              - source: install_script_content
+                target: /tmp/install_my_service.sh
+      GetInfo:
+        get_ip_address:
+          implementation: scripts/get_ip_address.sh
+
+node_templates:
+  DataStorageNode:
+    type: MyCompany:DataStorageNode
+    requirements:
+      - host:
+          node: LinuxUbuntuServer
+    properties:
+      ip_address: { get_input: server_ip }
+      port: { get_property: [ this, port ] }
+
+  LinuxUbuntuServer:
+    type: tosca.nodes.Compute
+    capabilities:
+      hosts:
+        properties:
+          architecture: x86_64
+          os: ubuntu
+    interfaces:
+      Standard:
+        create:
+          implementation: scripts/setup_linux.sh
+
+inputs:
+  server_ip:
+    type: string
+    required: true
+
+outputs:
+  server_info:
+    value:
+      ip_address: { get_property: [ DataStorageNode, ip_address ] }
+      port: { get_property: [ DataStorageNode, port ] }

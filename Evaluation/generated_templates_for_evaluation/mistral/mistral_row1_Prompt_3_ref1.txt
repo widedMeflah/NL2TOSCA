@@ -1,0 +1,49 @@
+topology_template_version: "2.0.0"
+
+description: Alien4Cloud Deployment Topology with Remote Elasticsearch Node
+
+nodes:
+  - type: linux_server
+    name: server1
+    properties:
+      jdk: installed
+      ip_address: ${server1_ip}
+
+  - type: linux_server
+    name: server2
+    properties:
+      jdk: installed
+      ip_address: ${server2_ip}
+
+  - type: alien4cloud_app
+    name: alien4cloud_app
+    properties:
+      jdk: ${server1_ip}
+      elasticsearch: ${elasticsearch_ip}
+    requirements:
+      host: ${server1_ip}
+
+  - type: elasticsearch
+    name: elasticsearch
+    properties:
+      jdk: ${server2_ip}
+    requirements:
+      host: ${server2_ip}
+
+relationships:
+  - type: 'hosts'
+    id: jdk_hosting
+    source: jdk
+    targets:
+      - server1
+      - server2
+
+  - type: 'internal_connection'
+    id: internal_connection
+    source: server1
+    target: server2
+
+  - type: 'dependency'
+    id: app_dependency
+    source: alien4cloud_app
+    target: elasticsearch

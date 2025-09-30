@@ -1,0 +1,82 @@
+
+topology_template_file: alien4cloud_template.yaml
+
+description: Deployment setup for an application using Alien4Cloud with a replicated ElasticSearch setup, Java runtime environment, testing component, and network configuration.
+
+nodes:
+  - type: elasticsearch
+    name: es01
+    properties:
+      replicas: 2
+      discovery.type: zen
+      cluster.name: elasticsearch-cluster
+      node.name: es01
+      network:
+        port: 9300
+        public_port: 9300
+        fixed_ip: 10.0.0.1
+
+  - type: elasticsearch
+    name: es02
+    properties:
+      replicas: 2
+      discovery.type: zen
+      cluster.name: elasticsearch-cluster
+      node.name: es02
+      network:
+        port: 9300
+        public_port: 9300
+        fixed_ip: 10.0.0.2
+
+  - type: java
+    name: app-server
+    properties:
+      jvm_options: "-Xms512M -Xmx1024M -XX:+UseG1GC"
+      jdk_home: /opt/jdk
+      artifact: /path/to/app.jar
+      run_command: java -jar app.jar
+      network:
+        port: 8080
+        public_port: 8080
+        fixed_ip: 10.0.0.3
+
+  - type: elasticsearch
+    links:
+      - name: elasticsearch-app
+        to: app-server
+        properties:
+          host: es01
+          port: 9300
+
+  - type: test
+    name: integration-test
+    properties:
+      test_framework: junit
+      test_artifact: /path/to/tests.jar
+      run_command: java -cp tests.jar:app.jar org.junit.runner.JUnitCore
+      links:
+        - name: elasticsearch-test
+          to: es01
+          properties:
+            host: es01
+            port: 9300
+        - name: app-test
+          to: app-server
+          properties:
+            host: 10.0.0.3
+            port: 8080
+
+  - type: network
+    name: vlan1
+    properties:
+      subnet: 10.0.0.0/24
+
+relationships:
+  - src: es01
+    trg: vlan1
+  - src: es02
+    trg: vlan1
+  - src: app-server
+    trg: vlan1
+  - src: integration-test
+    trg: vlan1

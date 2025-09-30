@@ -1,0 +1,97 @@
+topology_template:
+  node_templates:
+    Galaxy_VM:
+      type: tosca.nodes.Compute
+      properties:
+        flavor: { get_input: flavor }
+        disk_size: { get_input: storage_size }
+      capabilities:
+        endpoint:
+          properties:
+            network_name: private
+        scalable:
+          properties:
+            count: 1
+        os:
+          properties:
+            type: ubuntu
+            distribution: ubuntu
+            version: 20.04
+    Docker_container:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        image: galaxy
+        environment:
+          GALAXY_CONFIG_ADMIN_EMAIL: { get_input: admin_email }
+          GALAXY_CONFIG_API_KEY: { get_input: api_key }
+      requirements:
+        - host: Galaxy_VM
+    MySQL_DB:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        root_password: { get_input: db_root_password }
+        database_name: galaxy
+        username: galaxy
+        password: { get_input: db_password }
+      requirements:
+        - host: Galaxy_VM
+    Encrypted_Storage:
+      type: tosca.nodes.Storage.BlockDevice
+      properties:
+        size: { get_input: storage_size }
+        device_type: disk
+        format: ext4
+        snapshot_id: ''
+        encrypted: true
+      requirements:
+        - host: Galaxy_VM
+    Reference_Data:
+      type: tosca.nodes.File
+      properties:
+        destination: /opt/galaxy/reference_data
+        source: { get_input: reference_data_url }
+      requirements:
+        - host: Galaxy_VM
+
+  relationship_templates:
+    Galaxy_DB_Rel:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        ports: 3306
+    Docker_MySQL_Rel:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+        ports: 3306
+
+  input_templates:
+    flavor:
+      type: string
+      description: Flavor of the instance
+    storage_size:
+      type: integer
+      description: Size of the storage
+    admin_email:
+      type: string
+      description: Admin email for Galaxy
+    api_key:
+      type: string
+      description: API key for Galaxy
+    db_root_password:
+      type: string
+      description: Root password for MySQL
+    db_password:
+      type: string
+      description: Password for MySQL
+    reference_data_url:
+      type: string
+      description: URL of the reference data
+
+  output_templates:
+    vm_ip:
+      value: { get_attribute: [Galaxy_VM, public_address] }
+    db_host:
+      value: { get_attribute: [MySQL_DB, host] }
+    db_port:
+      value: { get_attribute: [MySQL_DB, port] }

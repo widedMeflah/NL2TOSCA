@@ -1,0 +1,115 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA description for a web application to manage a wine cellar using INDIGO orchestrator
+
+metadata:
+  template_name: WineCellarApp
+  template_version: 1.0.0
+  template_author: INDIGO Orchestrator
+
+imports:
+  - file: tosca-normative-types.yml
+
+topology_template:
+  node_templates:
+    web_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /winecellar
+      requirements:
+        - host:
+            node: web_server
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.HostedOn
+        - database:
+            node: db_service
+            capability: tosca.capabilities.Endpoint.Database
+            relationship: tosca.relationships.ConnectsTo
+
+    web_server:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 8080
+      capabilities:
+        host:
+          type: tosca.capabilities.Endpoint
+      requirements:
+        - host:
+            node: compute_node
+            capability: tosca.capabilities.Compute
+            relationship: tosca.relationships.HostedOn
+
+    db_service:
+      type: tosca.nodes.Database
+      properties:
+        name: winecellar_db
+        user: admin
+        password: secure_password
+        port: 3306
+      capabilities:
+        database_endpoint:
+          type: tosca.capabilities.Endpoint.Database
+      requirements:
+        - host:
+            node: db_server
+            capability: tosca.capabilities.Compute
+            relationship: tosca.relationships.HostedOn
+
+    db_server:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 20 GB
+      capabilities:
+        host:
+          type: tosca.capabilities.Compute
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+
+    compute_node:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 10 GB
+      capabilities:
+        host:
+          type: tosca.capabilities.Compute
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 10 GB
+
+    network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: public
+        cidr: 0.0.0.0/0
+      capabilities:
+        connection:
+          type: tosca.capabilities.Endpoint.Public
+
+  policies:
+    - security_policy:
+        type: tosca.policies.Security
+        description: Security policy for user authentication and data protection
+        properties:
+          authentication: true
+          encryption: TLS
+        targets: [web_app, db_service]
+
+    - performance_policy:
+        type: tosca.policies.Performance
+        description: Performance policy for reliability and scalability
+        properties:
+          response_time: 200 ms
+          availability: 99.9%
+        targets: [web_app, web_server, compute_node]
+
+  outputs:
+    web_app_url:
+      description: URL to access the Wine Cellar Management Application
+      value: { get_attribute: [web_server, host, endpoint, url_path] }

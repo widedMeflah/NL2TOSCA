@@ -1,0 +1,74 @@
+
+definition_templates:
+  ElasticsearchOnVM:
+    description: Template for Elasticsearch on Virtual Machine
+    type: nodes.CustomScript
+    properties:
+      implementation_artefacts:
+        script:
+          - url: elasticsearch-7.4.1-linux-x86_64.tar.gz
+          - url: jdk-8u251-linux-x64.tar.gz
+          - url: kibana-7.4.1-linux-x86_64.tar.gz
+          - url: openjdk-8u251-linux-x64.tar.gz
+
+    topology_template:
+      node_templates:
+        ElasticsearchNode:
+          type: nodes.CustomScript
+          properties:
+            implementation_artefacts:
+              script:
+                - command: |
+                    # Install prerequisites
+                    tar -xzf jdk-8u251-linux-x64.tar.gz
+                    tar -xzf openjdk-8u251-linux-x64.tar.gz
+
+                    # Download and extract Elasticsearch
+                    wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.4.1-linux-x86_64.tar.gz
+                    tar -xzf elasticsearch-7.4.1-linux-x86_64.tar.gz
+
+                    # Download and extract Kibana
+                    wget https://artifacts.elastic.co/downloads/kibana/kibana-7.4.1-linux-x86_64.tar.gz
+                    tar -xzf kibana-7.4.1-linux-x86_64.tar.gz
+
+                    # Set environment variables
+                    export ES_JAVA_OPTS="-Xms512m -Xmx512m"
+                    export JAVA_HOME=/usr/local/jdk1.8.0_251
+                    export ELASICSEARCH_HOME=/opt/elasticsearch-7.4.1
+                    export PATH=$PATH:$ELASICSEARCH_HOME/bin
+                    export KIBANA_HOME=/opt/kibana-7.4.1
+
+                    # Start Elasticsearch
+                    nohup $ELASICSEARCH_HOME/bin/elasticsearch &
+
+                    # Start Kibana
+                    nohup $KIBANA_HOME/bin/kibana --v &
+
+            requirements:
+              host: Any
+              memory_mib: 4096|8192
+              cpus: 2|4
+
+            capabilities:
+              os:
+                family: linux
+
+            interfaces:
+              - type: network
+                name: eth0
+                properties:
+                  subnet: any
+                  ip_address_type: public
+
+          inputs:
+            user_passwords:
+              Elasticsearch: <Elasticsearch Password>
+              Kibana: <Kibana Password>
+
+    node_types:
+      nodes.CustomScript:
+        description: A custom script node
+        interfaces:
+          - name: user_passwords
+            type: password
+            multiplicity: 1..*

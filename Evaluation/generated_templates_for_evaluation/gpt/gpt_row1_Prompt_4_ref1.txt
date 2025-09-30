@@ -1,0 +1,59 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+topology_template:
+  node_templates:
+
+    app_network:
+      type: tosca.nodes.Network
+
+    compute_app:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4096 MB
+      requirements:
+        - host: app_network
+
+    compute_db:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4096 MB
+      requirements:
+        - host: app_network
+
+    jdk_app:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: openjdk-11
+      requirements:
+        - host: compute_app
+
+    jdk_db:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: openjdk-11
+      requirements:
+        - host: compute_db
+
+    alien4cloud:
+      type: org.alien4cloud.nodes.Alien4Cloud
+      requirements:
+        - host: compute_app
+        - dependency:
+            node: jdk_app
+            capability: tosca.capabilities.Container
+
+    elasticsearch_node:
+      type: org.elasticsearch.nodes.Elasticsearch
+      requirements:
+        - host: compute_db
+        - dependency:
+            node: jdk_db
+            capability: tosca.capabilities.Container
+
+  outputs:
+    alien4cloud_endpoint:
+      value: { get_attribute: [ alien4cloud, endpoint ] }
+    elasticsearch_endpoint:
+      value: { get_attribute: [ elasticsearch_node, endpoint ] }

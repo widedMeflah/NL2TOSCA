@@ -1,0 +1,92 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    galaxy:
+      type: tosca.nodes.INDIGO.Galaxy
+      properties:
+        admin_email: admin@admin.com
+        admin_api_key: not_very_secret_api_key
+        galaxy_version: release_18.05
+        instance_description: ELIXIR-ITALY
+        ssh_public_key: your_ssh_public_key
+        export_directory: /export
+        enable_storage_encryption: false
+        hashicorp_vault_server_url: changeit
+        hashicorp_vault_wrapping_token: not_a_wrapping_token
+        hashicorp_vault_secret_path: subject/depuuid
+        hashicorp_vault_secret_key_name: secret
+        galaxy_flavor: galaxy-no-tools
+        install_reference_data: true
+        cvmfs_configuration: cvmfs_preconfigured
+        cvmfs_repository_name: elixir-italy.galaxy.refdata
+        cvmfs_server_url: 90.147.102.186
+        cvmfs_public_key_file: elixir-italy.galaxy.refdata.pub
+        cvmfs_proxy_url: DIRECT
+        cvmfs_proxy_port: 80
+        reference_data_directory: /cvmfs
+        cluster:
+          worker_nodes: 2
+          front_end_instance_flavor: small
+          worker_nodes_instance_flavor: small
+          storage_size: 50
+          hybrid_environment: false
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            ports:
+              default: 80
+
+    os:
+      type: tosca.nodes.INDIGO.OperatingSystem
+      properties:
+        os_family: CentOS
+        os_version: 7
+
+    resource_manager:
+      type: tosca.nodes.INDIGO.ResourceManager
+      properties:
+        resource_manager_type: SLURM
+
+    networking:
+      type: tosca.nodes.INDIGO.Networking
+      properties:
+        security_group_rules: []
+        networks: []
+
+  relationship_templates:
+    - type: tosca.relationships.ConnectsTo
+      source: galaxy
+      target: os
+    - type: tosca.relationships.ConnectsTo
+      source: galaxy
+      target: resource_manager
+    - type: tosca.relationships.ConnectsTo
+      source: galaxy
+      target: networking
+
+  outputs:
+    confirmation_email_sent:
+      type: string
+      value: >
+        A confirmation email has been sent with instructions on how to provide the passphrase (if encryption is enabled) and log in to the new Galaxy instance. If no email is received after a few hours, please check the spam folder.
+      description: Confirmation email sent
+
+  workflow:
+    - step:
+        - task:
+            - action: tosca.actions.Create
+              target: galaxy
+              input:
+                - param1: galaxy
+              output:
+                - confirmation_email_sent
+        - on_failure:
+            - action: tosca.actions.Rollback
+              target: galaxy
+              input:
+                - param1: galaxy
+              output:
+                - confirmation_email_sent

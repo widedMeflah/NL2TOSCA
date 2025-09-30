@@ -1,0 +1,71 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA template for deploying a containerized machine learning service using Docker and Marathon.
+
+imports:
+  - indigo-profiles.yaml
+
+topology_template:
+
+  inputs:
+    external_tcp_port:
+      type: integer
+      description: The TCP port on which the application will be accessible externally.
+      required: true
+
+  node_templates:
+
+    docker_image:
+      type: tosca.nodes.indigo.DockerImage
+      properties:
+        repository: "your-docker-repo/machine-learning-service"
+        tag: "latest"
+
+    marathon_app:
+      type: tosca.nodes.indigo.MarathonApp
+      properties:
+        id: "/machine-learning-service"
+        container:
+          docker:
+            image: { get_input: external_tcp_port }
+            parameters:
+              - key: network_mode
+                value: bridge
+
+        env:
+          PORT: { get_input: external_tcp_port }
+
+        resources:
+          instances: 1
+          cpus: 1.0
+          mem: 1024
+
+        health_checks:
+          - path: "/"
+            protocol: HTTP
+            portIndex: 0
+            gracePeriodSeconds: 30
+            intervalSeconds: 10
+            timeoutSeconds: 5
+            maxConsecutiveFailures: 3
+          
+        labels:
+          HAPROXY_GROUP: external
+
+    external_port_mapping:
+      type: tosca.nodes.indigo.MarathonPortMapping
+      properties:
+        containerPort: { get_input: external_tcp_port }
+        hostPort: { get_input: external_tcp_port }
+
+  policies:
+
+    expose_to_external_network:
+      type: tosca.policies.indigo.ExposeToExternalNetwork
+
+    auto_scaling_policy:
+      type: tosca.policies.indigo.AutoScale
+      properties:
+        cpu_percent: "80"
+

@@ -1,0 +1,95 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A system deployment consisting of a Java application and a search engine service, each in separate environments.
+
+topology_template:
+  node_templates:
+    javaRuntimeMain:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        number_of_instances: 1
+        flavor: small
+        image: ubuntu-20.04
+        deployment_flavor: virtual
+        mgmt_driver: ssh
+        virtual_link:
+          mgmt:
+            network_name: mgmt_network
+      interfaces:
+        Std:
+          create:
+            implementation: scripts/create.sh
+            inputs:
+              install_java: true
+              java_version: 11
+
+    javaApplication:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        number_of_instances: 1
+        flavor: small
+        image: ubuntu-20.04
+        deployment_flavor: virtual
+        mgmt_driver: ssh
+        virtual_link:
+          mgmt:
+            network_name: mgmt_network
+      interfaces:
+        Std:
+          create:
+            implementation: scripts/create.sh
+            inputs:
+              install_java_app: true
+              java_app_location: /opt/myapp
+              java_app_jar: myapp.jar
+      requirements:
+        - host: javaRuntimeMain
+        - connection:
+            node: searchEngine
+            relationship: tosca.relationships.ConnectsTo
+
+    searchEngine:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        number_of_instances: 1
+        flavor: medium
+        image: ubuntu-20.04
+        deployment_flavor: virtual
+        mgmt_driver: ssh
+        virtual_link:
+          mgmt:
+            network_name: mgmt_network
+      interfaces:
+        Std:
+          create:
+            implementation: scripts/create.sh
+            inputs:
+              install_search_engine: true
+              search_engine_type: elasticsearch
+              search_engine_version: 7.10.0
+
+    javaRuntimeSearch:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        number_of_instances: 1
+        flavor: small
+        image: ubuntu-20.04
+        deployment_flavor: virtual
+        mgmt_driver: ssh
+        virtual_link:
+          mgmt:
+            network_name: mgmt_network
+      interfaces:
+        Std:
+          create:
+            implementation: scripts/create.sh
+            inputs:
+              install_java: true
+              java_version: 11
+
+  groups:
+    mainEnvironment:
+      members: [ javaRuntimeMain, javaApplication ]
+    searchEnvironment:
+      members: [ javaRuntimeSearch, searchEngine ]

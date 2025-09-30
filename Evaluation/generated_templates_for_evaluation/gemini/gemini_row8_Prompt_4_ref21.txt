@@ -1,0 +1,134 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template to deploy a two-tier PHP Wine Cellar application with Apache and MySQL.
+
+imports:
+  - tosca_profiles/cap_and_storage_profile_1_3.yaml
+
+topology_template:
+  inputs:
+    db_root_password:
+      type: string
+      description: The root password for the MySQL database.
+      required: true
+      default: ChangeThisSecurely!
+      # sensitive: true
+
+    wine_cellar_app_url:
+      type: string
+      description: URL to download the Wine Cellar application archive (e.g., .zip or .tar.gz).
+      required: true
+      default: https://github.com/dperny/winecellar/archive/refs/heads/master.zip
+
+  node_templates:
+    web_server_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          architecture: x86_64
+          type: linux
+          distribution: ubuntu
+          version: 20.04
+        capabilities:
+          host:
+            disk_size: 20 GB
+            mem_size: 2 GB
+            num_cpus: 1
+          endpoint:
+            properties:
+              protocol: tcp
+              network_name: PUBLIC
+            ports:
+              http_port:
+                protocol: tcp
+                source_port: 80
+                target_port: 80
+              https_port:
+                protocol: tcp
+                source_port: 443
+                target_port: 443
+
+    apache_web_server:
+      type: tosca.nodes.WebServer
+      requirements:
+        - host: web_server_compute
+      interfaces:
+        Standard:
+          create: scripts/install_web_server_env.sh
+
+    php_wine_cellar_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /
+      requirements:
+        - host: apache_web_server
+        - database:
+            node: mysql_database
+            capability: tosca.capabilities.Database
+            relationship: tosca.relationships.ConnectsTo
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/deploy_app_files.sh
+            inputs:
+              APP_URL: { get_input: wine_cellar_app_url }
+          configure:
+            implementation: scripts/configure_app_db_and_schema.sh
+            inputs:
+              DB_HOST: { get_attribute: [ mysql_database, host, private_address ] }
+              DB_NAME: { get_attribute: [ mysql_database, database_name ] }
+              DB_USER: { get_attribute: [ mysql_database, user ] }
+              DB_PASSWORD: { get_attribute: [ mysql_database, password ] }
+              WEB_SERVER_IP: { get_attribute: [ web_server_compute, public_address ] }
+
+    db_server_compute:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          architecture: x86_64
+          type: linux
+          distribution: ubuntu
+          version: 20.04
+        capabilities:
+          host:
+            disk_size: 20 GB
+            mem_size: 2 GB
+            num_cpus: 1
+          endpoint:
+            properties:
+              protocol: tcp
+              network_name: PRIVATE
+            ports:
+              mysql_port:
+                protocol: tcp
+                source_port: 3306
+                target_port: 3306
+
+    mysql_database:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        root_password: { get_input: db_root_password }
+        port: 3306
+        database_name: winecellar_db
+        user: wineuser
+        password: WineUserPass!
+      requirements:
+        - host: db_server_compute
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_mysql.sh
+            inputs:
+              DB_ROOT_PASSWORD: { get_input: db_root_password }
+              DB_NAME: { get_attribute: [ SELF, database_name ] }
+              DB_USER: { get_attribute: [ SELF, user ] }
+              DB_PASSWORD: { get_attribute: [ SELF, password ] }
+
+  outputs:
+    web_app_url:
+      description: The HTTP URL of the deployed Wine Cellar application.
+      value: { concat: [ 'http://', get_attribute: [ web_server_compute, public_address ], '/', { get_attribute: [ php_wine_cellar_app, context_root ] } ] }
+    web_app_https_url:
+      description: The HTTPS URL of the deployed Wine Cellar application.
+      value: { concat: [ 'https://', get_attribute: [ web_server_compute, public_address ], '/', { get_attribute: [ php_wine_cellar_app, context_root ] } ] }

@@ -1,0 +1,118 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WebAppWithSearchEngine
+  template_version: 1.0.0
+  template_author: User
+
+description: A TOSCA topology for a web application platform with a search engine.
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+topology_template:
+  node_templates:
+    WebServer:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+      requirements:
+        - network: Network
+
+    JavaWebAppPlatform:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /webapp
+      requirements:
+        - host: WebServer
+        - connectTo: SearchEngineService
+      artifacts:
+        - war_file:
+            type: tosca.artifacts.Deployment.WAR
+            file: webapp.war
+
+    SearchEngineServer:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+            disk_size: 100 GB
+      requirements:
+        - network: Network
+
+    SearchEngineService:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: 7.0
+      requirements:
+        - host: SearchEngineServer
+      capabilities:
+        data_endpoint:
+          properties:
+            protocol: http
+            port: 9200
+            url_path: /search
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: 192.168.1.0/24
+        gateway_ip: 192.168.1.1
+
+  workflows:
+    install:
+      steps:
+        install_WebServer:
+          target: WebServer
+          activities:
+            - install
+        install_SearchEngineServer:
+          target: SearchEngineServer
+          activities:
+            - install
+        install_Network:
+          target: Network
+          activities:
+            - install
+        install_JavaWebAppPlatform:
+          target: JavaWebAppPlatform
+          activities:
+            - install
+          preceding_phases:
+            - install_WebServer
+        install_SearchEngineService:
+          target: SearchEngineService
+          activities:
+            - install
+          preceding_phases:
+            - install_SearchEngineServer
+
+    uninstall:
+      steps:
+        uninstall_JavaWebAppPlatform:
+          target: JavaWebAppPlatform
+          activities:
+            - uninstall
+        uninstall_SearchEngineService:
+          target: SearchEngineService
+          activities:
+            - uninstall
+        uninstall_WebServer:
+          target: WebServer
+          activities:
+            - uninstall
+        uninstall_SearchEngineServer:
+          target: SearchEngineServer
+          activities:
+            - uninstall
+        uninstall_Network:
+          target: Network
+          activities:
+            - uninstall

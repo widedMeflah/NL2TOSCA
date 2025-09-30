@@ -1,0 +1,150 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_2
+
+description: >
+  Deployment environment for Alien4Cloud with two replicated ElasticSearch instances, 
+  Oracle JDK installation, IT testing component, compute and network setup.
+
+imports:
+  - tosca-normative-types:1.0.0
+
+topology_template:
+  inputs:
+    oracle_jdk_url:
+      type: string
+      default: "https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz"
+    jdk_install_path:
+      type: string
+      default: "/opt/oracle-jdk"
+    it_plugin_branch:
+      type: string
+      default: "develop"
+    it_plugin_version:
+      type: string
+      default: "1.3.0-RC5"
+    alien_context_root:
+      type: string
+      default: "/"
+    alien_profiles:
+      type: list
+      default: [ "security-demo", "noApiDoc" ]
+
+  node_templates:
+    network_ipv4:
+      type: tosca.nodes.network.Network
+      properties:
+        network_type: ipv4
+
+    # Compute node for Alien4Cloud frontend
+    alien4cloud_frontend_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8192 MB
+            disk_size: 100 GB
+        endpoint:
+          properties:
+            network: { get_reference: network_ipv4 }
+
+    # Compute node for ElasticSearch instance 1
+    elasticsearch1_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 50 GB
+        endpoint:
+          properties:
+            network: { get_reference: network_ipv4 }
+
+    # Compute node for ElasticSearch instance 2
+    elasticsearch2_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 50 GB
+        endpoint:
+          properties:
+            network: { get_reference: network_ipv4 }
+
+    # JDK installed on frontend host
+    oracle_jdk_frontend:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        url: { get_input: oracle_jdk_url }
+        install_path: { get_input: jdk_install_path }
+      requirements:
+        - host: alien4cloud_frontend_host
+
+    # JDK installed on elasticsearch1 host
+    oracle_jdk_elasticsearch1:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        url: { get_input: oracle_jdk_url }
+        install_path: { get_input: jdk_install_path }
+      requirements:
+        - host: elasticsearch1_host
+
+    # JDK installed on elasticsearch2 host
+    oracle_jdk_elasticsearch2:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        url: { get_input: oracle_jdk_url }
+        install_path: { get_input: jdk_install_path }
+      requirements:
+        - host: elasticsearch2_host
+
+    alien4cloud:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: { get_input: alien_context_root }
+        profiles: { get_input: alien_profiles }
+      requirements:
+        - host: alien4cloud_frontend_host
+        - dependency: oracle_jdk_frontend
+        - connectsto_es1: elasticsearch1
+        - connectsto_es2: elasticsearch2
+
+    elasticsearch1:
+      type: tosca.nodes.Database.Elasticsearch
+      properties:
+        cluster_name: "alien4cloud-cluster"
+        node_name: "es-node-1"
+        replication: "remote"
+      requirements:
+        - host: elasticsearch1_host
+        - dependency: oracle_jdk_elasticsearch1
+        - replicates_to: elasticsearch2
+
+    elasticsearch2:
+      type: tosca.nodes.Database.Elasticsearch
+      properties:
+        cluster_name: "alien4cloud-cluster"
+        node_name: "es-node-2"
+        replication: "remote"
+      requirements:
+        - host: elasticsearch2_host
+        - dependency: oracle_jdk_elasticsearch2
+        - replicates_from: elasticsearch1
+
+    it_testing_component:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        plugin_branch: { get_input: it_plugin_branch }
+        plugin_version: { get_input: it_plugin_version }
+        test_suite: "RunCloudify3AmazonLongRunIT"
+      requirements:
+        - host: alien4cloud_frontend_host
+        - dependency: alien4cloud
+
+  outputs:
+    alien4cloud_endpoint:
+      description: Alien4Cloud application endpoint URL
+      value: { concat: [ 'http://', { get_attribute: [ alien4cloud_frontend_host, public_address ] }, '/', { get_property: [ alien4cloud, context_root ] } ] }

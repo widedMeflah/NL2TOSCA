@@ -1,0 +1,80 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    Web_Application:
+      type: tosca.nodes.WebApplication
+      properties:
+        application_location: { get_attribute: [ WAR_file, location ] }
+
+    Tomcat_Server:
+      type: tosca.nodes.WebServer
+      properties:
+        server_name: Tomcat
+        server_type: application
+        download_url: { get_input: tomcat_download_url }
+        installation_dir: /opt/tomcat
+      requirements:
+        - host: Machine
+        - dependency: Java
+
+    Java:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_name: Java
+        download_url: { get_input: java_download_url }
+        installation_dir: /usr/lib/jvm
+
+    Machine:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 1
+        mem_size: 2 GB
+        os_type: { get_input: os_type }
+        os_arch: { get_input: os_arch }
+
+    WAR_file:
+      type: tosca.nodes.Artifact
+      properties:
+        location: { get_input: war_file_url }
+
+  relationship_templates:
+    -host:
+      type: tosca.relationships.HostedOn
+      target: Machine
+
+    -dependency:
+      type: tosca.relationships.DependsOn
+      target: Java
+
+  output_templates:
+    web_app_url:
+      value: { concat: [ 'http://', { get_attribute: [ Machine, public_address ] }, ':8080/', { get_attribute: [ Web_Application, application_name ] } ] }
+    tomcat_url:
+      value: { concat: [ 'http://', { get_attribute: [ Machine, public_address ] }, ':8080' ] }
+
+  input_templates:
+    os_type:
+      type: string
+      description: Operating System Type (Linux, Windows, Mac OS)
+      constraints:
+        - valid_values: [ Linux, Windows, Mac OS ]
+
+    os_arch:
+      type: string
+      description: Operating System Architecture (32-bit, 64-bit)
+      constraints:
+        - valid_values: [ '32-bit', '64-bit' ]
+
+    tomcat_download_url:
+      type: string
+      description: Tomcat download URL
+
+    java_download_url:
+      type: string
+      description: Java download URL
+
+    war_file_url:
+      type: string
+      description: WAR file URL

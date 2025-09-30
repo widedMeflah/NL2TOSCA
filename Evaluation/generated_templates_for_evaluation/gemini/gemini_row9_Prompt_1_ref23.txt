@@ -1,0 +1,66 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+topology_template:
+  node_templates:
+    # 1. Compute node to host the containerized application
+    plant_classifier_compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: Linux
+            distribution: Ubuntu
+            version: "20.04"
+
+    # 2. Containerized Application for Plant Classification
+    plant_classification_app:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        image: "my-private-registry.com/plant-classifier-app:1.0"
+        ports:
+          - source: 8080  # Port exposed on the container host for external access
+            target: 8080  # Port inside the container where the application listens
+            protocol: tcp
+      requirements:
+        - host: plant_classifier_compute # Deploy this container on the specified compute node
+
+      # Define an endpoint capability that the Load Balancer can target
+      capabilities:
+        application_endpoint:
+          type: tosca.capabilities.Endpoint.Public
+          properties:
+            protocol: tcp
+            port: 8080 # The specific port the application exposes
+
+    # 3. Load Balancer for external access and request distribution
+    plant_classifier_load_balancer:
+      type: tosca.nodes.Network.LoadBalancer
+      properties:
+        rules:
+          - source_port: 80 # External port for clients to connect to the Load Balancer
+            target_port: 8080 # Internal port of the application instances targeted by the LB
+            protocol: tcp
+            balancing_method: round-robin # Method to balance incoming requests
+      requirements:
+        - targets: # The Load Balancer targets the application's exposed endpoint
+            node: plant_classification_app
+            capability: application_endpoint
+            relationship: tosca.relationships.RoutesTo # Defines the routing relationship
+
+    # 4. Public Network for external accessibility
+    public_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+
+  relationships:
+    # Link the Load Balancer to the public network for external access
+    - lb_to_public_network_link:
+        type: tosca.relationships.Network.LinksTo
+        source_node: plant_classifier_load_balancer
+        target_node: public_network

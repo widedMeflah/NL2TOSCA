@@ -1,0 +1,111 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of the Wine Cellar Application (PHP version) with Apache and MySQL on separate Ubuntu-based VMs.
+
+topology_template:
+  node_templates:
+
+    web_vm:
+      type: tosca.nodes.nfv.Vdu.Compute
+      capabilities:
+        nfv_compute:
+          properties:
+            num_cpus: 1
+            memory_mb: 1024
+      properties:
+        name: web-vm
+        image: ubuntu:20.04
+        mgmt_driver: None
+        nfv_virtual_link:
+          network: public
+        nfv_virtual_binding:
+          zone: default
+        nfv_initialisation:
+          user_data:
+            content: |
+              #!/bin/bash
+              sudo apt update && sudo apt install -y apache2 php php-mysql git
+              git clone https://github.com/your-repo/wine-cellar.git /var/www/html/wine-cellar
+              sudo chown -R www-data:www-data /var/www/html/wine-cellar
+              sudo systemctl restart apache2
+
+    db_vm:
+      type: tosca.nodes.nfv.Vdu.Compute
+      capabilities:
+        nfv_compute:
+          properties:
+            num_cpus: 1
+            memory_mb: 4096
+            storage_gb: 10
+      properties:
+        name: db-vm
+        image: ubuntu:20.04
+        mgmt_driver: None
+        nfv_virtual_link:
+          network: private
+        nfv_virtual_binding:
+          zone: default
+        nfv_initialisation:
+          user_data:
+            content: |
+              #!/bin/bash
+              sudo apt update && sudo apt install -y mysql-server
+              sudo mysql -e "CREATE DATABASE winecellar;"
+              sudo mysql -e "CREATE USER 'dbuser'@'%' IDENTIFIED BY 'dbpassword';"
+              sudo mysql -e "GRANT ALL PRIVILEGES ON winecellar.* TO 'dbuser'@'%';"
+              sudo mysql -e "FLUSH PRIVILEGES;"
+              curl -O http://example.com/path/to/initialize.sql
+              sudo mysql winecellar < initialize.sql
+
+    web_server:
+      type: tosca.nodes.WebServer.Apache
+      requirements:
+        - host: web_vm
+
+    database:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        root_password: securepassword
+        user: dbuser
+        password: dbpassword
+        database_name: winecellar
+      requirements:
+        - host: db_vm
+
+    wine_cellar_app:
+      type: tosca.nodes.Application
+      properties:
+        app_url: http://web-vm/wine-cellar
+        db_host: db-vm
+        db_user: dbuser
+        db_password: dbpassword
+        db_name: winecellar
+      requirements:
+        - host: web_vm
+        - database: database
+
+    public_ip:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: public
+        network_type: public
+        address: 192.168.1.100
+      requirements:
+        - attached_to: web_vm
+
+    private_ip:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: private
+        network_type: private
+        address: 192.168.2.100
+      requirements:
+        - attached_to: db_vm
+
+    connection_web_to_db:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: web_to_db
+        network_type: private
+      requirements:
+        - attached_to: [web_vm, db_vm]

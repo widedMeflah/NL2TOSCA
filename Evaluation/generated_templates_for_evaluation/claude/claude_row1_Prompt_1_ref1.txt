@@ -1,0 +1,87 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: java_search_system
+  template_version: 1.0.0
+  template_author: auto-generated
+
+description: Java application system with search engine service
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+topology_template:
+  node_templates:
+    JavaHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "2 GB"
+            disk_size: "10 GB"
+
+    SearchEngineHost:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "2 GB"
+            disk_size: "10 GB"
+
+    JavaRuntime_App:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: JavaHost
+      interfaces:
+        Standard:
+          create:
+            implementation:
+              file: scripts/install_java.sh
+
+    JavaRuntime_Search:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: SearchEngineHost
+      interfaces:
+        Standard:
+          create:
+            implementation:
+              file: scripts/install_java.sh
+
+    JavaApplication:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: JavaHost
+        - dependency: JavaRuntime_App
+        - search_service: SearchEngine
+      capabilities:
+        app_endpoint:
+          type: tosca.capabilities.Endpoint
+          properties:
+            protocol: tcp
+            port: 8080
+            network_name: PRIVATE
+
+    SearchEngine:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: SearchEngineHost
+        - dependency: JavaRuntime_Search
+      capabilities:
+        search_endpoint:
+          type: tosca.capabilities.Endpoint
+          properties:
+            protocol: tcp
+            port: 9200
+            network_name: PRIVATE
+
+  outputs:
+    java_app_url:
+      description: URL of the Java application
+      value: { get_attribute: [JavaApplication, app_endpoint, url] }
+    search_engine_url:
+      description: URL of the search engine service
+      value: { get_attribute: [SearchEngine, search_endpoint, url] }

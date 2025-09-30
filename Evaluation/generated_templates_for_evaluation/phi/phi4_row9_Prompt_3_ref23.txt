@@ -1,0 +1,53 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA-compliant description for deploying a deep learning application using INDIGO orchestrator.
+
+imports:
+  - indigo_custom_types://https://indigo-datacloud.github.io/tosca-indigo-types/
+
+topology_template:
+
+  node_templates:
+
+    docker_runtime_environment:
+      type: tosca.nodes.indigo.DockerRuntime
+      properties:
+        cpu_allocation: 1
+        memory_allocation: 1024
+        port_mappings:
+          - target_port: 5000
+            protocol: tcp
+
+    deep_learning_application_container:
+      type: tosca.nodes.indigo.DockerContainer
+      requirements:
+        - host:
+            node: docker_runtime_environment
+      properties:
+        image: deephdc/deep-oc-plant-classification-theano
+        command: deepaas-run --listen-ip 0.0.0.0
+
+    marathon_job:
+      type: tosca.nodes.indigo.MarathonJob
+      requirements:
+        - host:
+            node: docker_runtime_environment
+        - container:
+            node: deep_learning_application_container
+      properties:
+        labels:
+          HAPROXY_GROUP: external
+        environment_variables: {}
+
+  policies:
+
+    deploy_marathon_job_policy:
+      type: tosca.policies.indigo.DeployJobPolicy
+      targets: [marathon_job]
+
+    configure_load_balancer_policy:
+      type: tosca.policies.indigo.ConfigureLoadBalancerPolicy
+      properties:
+        target_container: deep_learning_application_container
+      targets: []

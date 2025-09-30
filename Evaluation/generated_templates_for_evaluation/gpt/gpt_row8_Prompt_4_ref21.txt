@@ -1,0 +1,148 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template to deploy a two-tier PHP-based Wine Cellar web application
+  with Apache and MySQL on Ubuntu servers.
+
+metadata:
+  template_name: winecellar_two_tier_app
+
+imports:
+  - indigo_types: indigo_types.yaml
+
+topology_template:
+  inputs:
+    app_artifact_url:
+      type: string
+      description: URL to download the Wine Cellar application artifact
+    db_root_password:
+      type: string
+      description: MySQL root password
+
+  node_templates:
+    web_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - local_storage:
+            node: web_storage
+        - dependency:
+            node: db_server
+        - network:
+            node: web_network
+
+    web_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 10 GB
+
+    web_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: web_network
+
+    web_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /
+      requirements:
+        - host: web_server
+      artifacts:
+        app:
+          file: { get_input: app_artifact_url }
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_web_app.sh
+            inputs:
+              artifact_url: { get_input: app_artifact_url }
+          start:
+            implementation: scripts/start_apache.sh
+
+    apache:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: 2.4
+        admin_credential:
+          user: www-data
+      requirements:
+        - host: web_server
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_apache_php.sh
+
+    db_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 2 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      requirements:
+        - local_storage:
+            node: db_storage
+        - network:
+            node: db_network
+
+    db_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 10 GB
+
+    db_network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: db_network
+
+    mysql:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        root_password: { get_input: db_root_password }
+        port: 3306
+      requirements:
+        - host: db_server
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_mysql.sh
+            inputs:
+              root_password: { get_input: db_root_password }
+
+    db_schema:
+      type: tosca.nodes.Database
+      properties:
+        name: winecellar_db
+      requirements:
+        - host: mysql
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create_schema.sh
+            inputs:
+              db_name: winecellar_db
+              db_user: root
+              db_password: { get_input: db_root_password }
+
+  outputs:
+    web_server_public_ip:
+      description: Public IP address of the web server
+      value: { get_attribute: [ web_server, public_address ] }
+    web_app_url:
+      description: URL to access the Wine Cellar web application
+      value: { concat: [ "http://", get_attribute: [ web_server, public_address ] ] }

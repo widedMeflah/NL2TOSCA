@@ -1,0 +1,196 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: DataAnalysisWebApp
+  template_version: 1.0.0
+  template_author: Generated
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.WebApp:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      app_version:
+        type: string
+        default: "1.0.0"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - database:
+          capability: tosca.capabilities.Endpoint.Database
+          relationship: tosca.relationships.ConnectsTo
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            app_version: { get_property: [SELF, app_version] }
+        stop:
+          inputs:
+            app_version: { get_property: [SELF, app_version] }
+
+  Custom.Database:
+    derived_from: tosca.nodes.Database
+    properties:
+      db_name:
+        type: string
+        default: "analysis_db"
+      db_user:
+        type: string
+        default: "admin"
+      db_password:
+        type: string
+        default: "securepassword"
+    capabilities:
+      database_endpoint:
+        type: tosca.capabilities.Endpoint.Database
+
+  Custom.TestFramework:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      test_suite:
+        type: string
+        default: "automated_tests"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - target_app:
+          capability: tosca.capabilities.Endpoint
+          relationship: tosca.relationships.ConnectsTo
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            test_suite: { get_property: [SELF, test_suite] }
+
+  Custom.BackupService:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      backup_frequency:
+        type: string
+        default: "daily"
+    requirements:
+      - target_db:
+          capability: tosca.capabilities.Endpoint.Database
+          relationship: tosca.relationships.ConnectsTo
+    interfaces:
+      Standard:
+        start:
+          inputs:
+            backup_frequency: { get_property: [SELF, backup_frequency] }
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+            disk_size: 100 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    WebApp:
+      type: Custom.WebApp
+      requirements:
+        - host: ComputeNode
+        - database: Database
+      properties:
+        app_version: "1.0.0"
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/start_webapp.sh
+          stop:
+            implementation: scripts/stop_webapp.sh
+
+    Database:
+      type: Custom.Database
+      requirements:
+        - host: ComputeNode
+      properties:
+        db_name: "analysis_db"
+        db_user: "admin"
+        db_password: "securepassword"
+      capabilities:
+        database_endpoint:
+          properties:
+            port: 5432
+            protocol: tcp
+
+    TestFramework:
+      type: Custom.TestFramework
+      requirements:
+        - host: ComputeNode
+        - target_app: WebApp
+      properties:
+        test_suite: "automated_tests"
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/run_tests.sh
+
+    BackupService:
+      type: Custom.BackupService
+      requirements:
+        - host: ComputeNode
+        - target_db: Database
+      properties:
+        backup_frequency: "daily"
+      interfaces:
+        Standard:
+          start:
+            implementation: scripts/start_backup.sh
+
+    LoadBalancer:
+      type: tosca.nodes.LoadBalancer
+      requirements:
+        - host: ComputeNode
+        - application: WebApp
+      capabilities:
+        endpoint:
+          properties:
+            port: 80
+            protocol: http
+            secure: true
+
+  groups:
+    SecurityGroup:
+      type: tosca.groups.Root
+      members: [WebApp, Database, LoadBalancer]
+      policies:
+        - security_policy:
+            type: tosca.policies.Security
+            properties:
+              encryption: true
+              firewall_rules:
+                - protocol: tcp
+                  port: 80
+                  source: 0.0.0.0/0
+                - protocol: tcp
+                  port: 5432
+                  source: 192.168.0.0/24
+
+  policies:
+    - scaling_policy:
+        type: tosca.policies.Scaling
+        targets: [ComputeNode, WebApp]
+        properties:
+          min_instances: 1
+          max_instances: 5
+          cpu_utilization_threshold: 70
+
+  outputs:
+    webapp_url:
+      value: { get_attribute: [LoadBalancer, endpoint, url] }
+    database_endpoint:
+      value: { get_attribute: [Database, database_endpoint, ip_address] }

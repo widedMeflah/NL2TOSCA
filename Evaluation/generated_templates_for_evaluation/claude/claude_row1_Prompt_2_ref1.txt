@@ -1,0 +1,68 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: web_search_system
+  template_version: 1.0.0
+  template_author: alien4cloud
+
+description: Web application platform with search engine system
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+topology_template:
+  node_templates:
+    java_app_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+      requirements:
+        - network: web_network
+
+    java_platform:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: "11"
+      requirements:
+        - host: java_app_server
+
+    web_application:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: java_platform
+        - dependency: search_engine
+
+    search_engine_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+            disk_size: 100 GB
+      requirements:
+        - network: web_network
+
+    search_engine:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: search_engine_server
+
+    web_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        network_name: web_search_network
+
+  outputs:
+    web_application_url:
+      description: URL of the web application
+      value: { get_attribute: [web_application, url] }
+    search_engine_endpoint:
+      description: Endpoint of the search engine
+      value: { get_attribute: [search_engine, endpoint] }

@@ -1,0 +1,153 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a Galaxy instance with clustering support using INDIGO orchestrator
+
+topology_template:
+  inputs:
+    admin_email:
+      type: string
+      description: Admin email for notifications and login instructions
+    api_key:
+      type: string
+      description: API key for Galaxy instance administration
+    galaxy_version:
+      type: string
+      description: Specific Galaxy version to deploy
+    instance_description:
+      type: string
+      description: Description of the Galaxy instance
+    ssh_public_key:
+      type: string
+      description: SSH public key for secure access
+    worker_nodes_count:
+      type: integer
+      description: Number of worker nodes in the cluster
+      default: 2
+    frontend_specs:
+      type: map
+      description: Specifications for the front-end node (e.g., CPU, RAM)
+      default:
+        cpu: 4
+        ram: 8GB
+    worker_specs:
+      type: map
+      description: Specifications for worker nodes (e.g., CPU, RAM)
+      default:
+        cpu: 2
+        ram: 4GB
+    storage_size:
+      type: string
+      description: Amount of storage needed (e.g., 500GB)
+      default: 500GB
+    storage_encryption:
+      type: boolean
+      description: Enable storage encryption
+      default: false
+    hybrid_environment:
+      type: boolean
+      description: Enable support for hybrid cloud environments
+      default: false
+    cvmfs_reference_data:
+      type: boolean
+      description: Enable CernVM-FS for reference data
+      default: false
+    galaxy_tools:
+      type: list
+      description: List of specific Galaxy tools to install
+      default: []
+    reference_data:
+      type: list
+      description: List of reference data to include
+      default: []
+    confirmation_email:
+      type: boolean
+      description: Send confirmation email with login instructions
+      default: true
+
+  node_templates:
+    galaxy_frontend:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: CentOS
+          version: "7"
+        specs:
+          cpu: { get_input: frontend_specs.cpu }
+          ram: { get_input: frontend_specs.ram }
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: frontend_specs.cpu }
+            mem_size: { get_input: frontend_specs.ram }
+      requirements:
+        - storage: galaxy_storage
+
+    galaxy_worker:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: CentOS
+          version: "7"
+        specs:
+          cpu: { get_input: worker_specs.cpu }
+          ram: { get_input: worker_specs.ram }
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: worker_specs.cpu }
+            mem_size: { get_input: worker_specs.ram }
+      requirements:
+        - storage: galaxy_storage
+      instances:
+        deploy: { get_input: worker_nodes_count }
+
+    galaxy_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: storage_size }
+        encryption: { get_input: storage_encryption }
+
+    slurm_cluster:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: galaxy_frontend
+        - host: galaxy_worker
+      properties:
+        component_version: latest
+
+    galaxy_instance:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: galaxy_frontend
+      properties:
+        version: { get_input: galaxy_version }
+        admin_email: { get_input: admin_email }
+        api_key: { get_input: api_key }
+        description: { get_input: instance_description }
+        ssh_key: { get_input: ssh_public_key }
+        tools: { get_input: galaxy_tools }
+        reference_data: { get_input: reference_data }
+        cvmfs_enabled: { get_input: cvmfs_reference_data }
+
+    hybrid_support:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: galaxy_frontend
+      properties:
+        enabled: { get_input: hybrid_environment }
+
+    notification_service:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: galaxy_frontend
+      properties:
+        send_confirmation: { get_input: confirmation_email }
+        recipient_email: { get_input: admin_email }
+
+  outputs:
+    galaxy_endpoint:
+      description: Endpoint URL for the deployed Galaxy instance
+      value: { get_attribute: [galaxy_instance, endpoint] }
+    login_instructions:
+      description: Login instructions for the Galaxy instance
+      value: { get_attribute: [notification_service, instructions] }

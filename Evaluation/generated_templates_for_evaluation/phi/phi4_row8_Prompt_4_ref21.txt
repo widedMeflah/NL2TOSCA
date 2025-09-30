@@ -1,0 +1,96 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Two-tier PHP-based Wine Cellar web app on Apache with MySQL
+
+imports:
+  - indigo.nodes.indigodsl:1.0.0-SNAPSHOT
+
+topology_template:
+
+  node_templates:
+
+    WebServer:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu:latest
+        flavor: m1.medium
+        exposed_ports:
+          - HTTP_PORT: 80
+          - HTTPS_PORT: 443
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+
+    DatabaseServer:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu:latest
+        flavor: m1.small
+      capability:
+        endpoint:
+          properties:
+            protocol: mysql
+
+  groups:
+
+    WebGroup:
+      members: [WebServer]
+      policies:
+        - type: tosca.policies.nfv.VirtualLinkable
+          properties:
+            virtual_links:
+              - default_virtual_link
+
+    DatabaseGroup:
+      members: [DatabaseServer]
+
+  artifacts:
+
+    WineCellarArtifacts:
+      file: https://example.com/winecellar-artifacts.tar.gz
+      type: tosca.artifacts.File
+
+  workflows:
+
+    deploy:
+      mapping:
+        inputs:
+          - image
+          - flavor
+        steps:
+          - create_nodes:
+              targets: [WebServer, DatabaseServer]
+          - upload_and_deploy:
+              targets: [WebServer]
+              artifacts: [WineCellarArtifacts]
+
+  policies:
+
+    VirtualLinkPolicy:
+      targets: [default_virtual_link]
+      properties:
+        physical_network: default
+
+  interfaces:
+
+    WebInterface:
+      inputs:
+        root_password: { description: "Root password for MySQL" }
+      outputs:
+        web_server_ip:
+          value: WebServer.interfaces.0/0
+      tasks:
+        - deploy_web_application:
+            implementation:
+              input_templates:
+                image: { get_property: [WebServer, image] }
+                flavor: { get_property: [WebServer, flavor] }
+
+  deployment_policies:
+
+    HTTPSPolicy:
+      targets: [default_virtual_link]
+      properties:
+        ports:
+          HTTPS_PORT: 443

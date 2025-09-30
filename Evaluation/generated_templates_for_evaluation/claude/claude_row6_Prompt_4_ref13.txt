@@ -1,0 +1,97 @@
+tosca_definitions_version: alien_dsl_3_0_0
+metadata:
+  template_name: kubernetes-cluster
+  template_version: 1.0.0
+  template_author: alien4cloud
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:3.0.0
+
+node_types:
+  org.kubernetes.types.Master:
+    derived_from: tosca.nodes.Compute
+    properties:
+      api_port:
+        type: integer
+        required: true
+        default: 6443
+      etcd_port:
+        type: integer
+        required: true
+        default: 2379
+    capabilities:
+      host:
+        type: tosca.capabilities.Container
+        valid_source_types: [org.kubernetes.types.Worker]
+
+  org.kubernetes.types.Worker:
+    derived_from: tosca.nodes.Compute
+    properties:
+      kubelet_port:
+        type: integer
+        required: true
+        default: 10250
+
+  org.kubernetes.types.Dashboard:
+    derived_from: tosca.nodes.Root
+    properties:
+      port:
+        type: integer
+        required: true
+        default: 30000
+
+topology_template:
+  node_templates:
+    docker:
+      type: org.docker.nodes.Engine
+      requirements:
+        - host: master_node
+
+    etcd:
+      type: tosca.nodes.Root
+      requirements:
+        - host: master_node
+      properties:
+        port: 2379
+
+    master_node:
+      type: org.kubernetes.types.Master
+      properties:
+        api_port: 6443
+        etcd_port: 2379
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    worker_nodes:
+      type: org.kubernetes.types.Worker
+      properties:
+        kubelet_port: 10250
+      requirements:
+        - host: master_node
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 2
+            max_instances: 5
+
+    kubernetes_dashboard:
+      type: org.kubernetes.types.Dashboard
+      properties:
+        port: 30000
+      requirements:
+        - host: master_node
+
+    flannel_overlay:
+      type: tosca.nodes.Root
+      requirements:
+        - host: master_node
+
+  outputs:
+    kubernetes_api_endpoint:
+      value: { concat: ['https://', get_attribute: [master_node, public_ip], ':', get_property: [master_node, api_port]] }
+    dashboard_url:
+      value: { concat: ['http://', get_attribute: [master_node, public_ip], ':', get_property: [kubernetes_dashboard, port]] }

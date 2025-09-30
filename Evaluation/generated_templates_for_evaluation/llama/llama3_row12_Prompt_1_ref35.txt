@@ -1,0 +1,122 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    Galaxy:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        admin_email:
+          type: string
+          description: Email for admin access
+        admin_api_key:
+          type: string
+          description: API key for admin access
+        app_version:
+          type: string
+          default: 'default_version'
+          description: Version of the application
+        description:
+          type: string
+          description: Description of the application instance
+        enable_storage_encryption:
+          type: boolean
+          default: false
+          description: Enable storage encryption
+        flavor:
+          type: string
+          default: 'default_flavor'
+          description: Flavor for tool installation
+        install_reference_data:
+          type: boolean
+          default: false
+          description: Install reference data
+        ssh_public_key:
+          type: string
+          description: SSH public key for accessing the instance
+        storage_path:
+          type: string
+          description: Path to store application data
+        storage_size:
+          type: integer
+          default: 50
+          description: Size of the storage in GB
+        username:
+          type: string
+          description: Username to run the application
+        vault_server_url:
+          type: string
+          description: URL of the Vault server
+        vault_wrapping_token:
+          type: string
+          description: Wrapping token for the Vault server
+        secret_path:
+          type: string
+          description: Path to the secret in the Vault server
+        secret_key_name:
+          type: string
+          description: Name of the secret key
+
+    VirtualMachine:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus:
+          type: integer
+          default: 1
+          description: Number of CPUs
+        memory_size:
+          type: integer
+          default: 1024
+          description: Size of the memory in MB
+        disk_size:
+          type: integer
+          default: 10
+          description: Size of the disk in GB
+      capabilities:
+        endpoint:
+          type: tosca.capabilities.Endpoint
+          properties:
+            protocol: http
+          attributes:
+            public_address:
+              type: string
+              description: Public IP address of the virtual machine
+            public_port:
+              type: integer
+              value: 80
+        network:
+          type: tosca.capabilities.Network
+          properties:
+            network_name: private
+        scalable:
+          type: tosca.capabilities.Scalable
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    Storage:
+      type: tosca.nodes.Storage
+      properties:
+        size:
+          type: integer
+          default: 50
+          description: Size of the storage in GB
+        enable_encryption:
+          type: boolean
+          default: false
+          description: Enable storage encryption
+
+  relationship_templates:
+    - type: tosca.relationships.HostedOn
+      source: Galaxy
+      target: VirtualMachine
+    - type: tosca.relationships.BoundTo
+      source: Storage
+      target: VirtualMachine
+
+  output_templates:
+    endpoint_url:
+      type: string
+      value: { get_attribute: [ VirtualMachine, endpoint, public_address ] }
+    public_ip:
+      type: string
+      value: { get_attribute: [ VirtualMachine, endpoint, public_address ] }

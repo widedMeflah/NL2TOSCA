@@ -1,0 +1,81 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    VirtualMachine:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: cpu_count }
+        memory_size: { get_input: memory_size }
+      capabilities:
+        endpoint:
+          properties:
+            network_name: public
+            ports:
+              elasticsearch: 9200
+              kibana: 5601
+      artifacts:
+        my_vm:
+          type: tosca.artifacts.OperatingSystem
+          properties:
+            os_type: linux
+      requirements:
+        - network:
+            node: Network
+            relationship: tosca.relationships.Network
+            properties:
+              network_name: public
+        - elasticsearch:
+            node: Elasticsearch
+            relationship: tosca.relationships.DependsOn
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: public
+    Elasticsearch:
+      type: tosca.nodes.DBMS
+      properties:
+        version: 7.4.1
+        port: 9200
+        username: { get_input: es_username }
+        password: { get_input: es_password }
+        kibana_username: { get_input: kibana_username }
+        kibana_password: { get_input: kibana_password }
+      requirements:
+        - host:
+            node: VirtualMachine
+            relationship: tosca.relationships.HostedOn
+        - network:
+            node: Network
+            relationship: tosca.relationships.Network
+            properties:
+              network_name: public
+  input_parameters:
+    cpu_count:
+      type: integer
+      description: Number of CPUs
+      constraints:
+        - valid_values: [ 2, 4 ]
+    memory_size:
+      type: integer
+      description: Memory size in MB
+      constraints:
+        - valid_values: [ 4096, 8192 ]
+    es_username:
+      type: string
+      description: Elasticsearch username
+    es_password:
+      type: string
+      description: Elasticsearch password
+    kibana_username:
+      type: string
+      description: Kibana system username
+    kibana_password:
+      type: string
+      description: Kibana system password
+  outputs:
+    public_address:
+      value: { get_attribute: [ VirtualMachine, public_address ] }
+    access_credentials:
+      value: { get_attribute: [ VirtualMachine, access_credentials ] }

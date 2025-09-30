@@ -1,0 +1,113 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: NodejsMongoDBApp
+  template_version: 1.0.0
+  template_author: Anonymous
+
+description: A TOSCA template for deploying a Node.js application with MongoDB on Linux infrastructure.
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.NodejsApp:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      port:
+        type: integer
+        default: 3000
+        constraints:
+          - greater_or_equal: 1024
+            less_or_equal: 65535
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - database:
+          capability: tosca.capabilities.Endpoint.Database
+          relationship: tosca.relationships.ConnectsTo
+    capabilities:
+      app_endpoint:
+        type: tosca.capabilities.Endpoint
+        properties:
+          protocol: http
+          port: { get_property: [SELF, port] }
+          secure: false
+
+  Custom.MongoDB:
+    derived_from: tosca.nodes.Database
+    properties:
+      port:
+        type: integer
+        default: 27017
+        constraints:
+          - greater_or_equal: 1024
+            less_or_equal: 65535
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+    capabilities:
+      db_endpoint:
+        type: tosca.capabilities.Endpoint.Database
+        properties:
+          protocol: tcp
+          port: { get_property: [SELF, port] }
+          secure: false
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: Linux
+            distribution: ubuntu
+            version: 20.04
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: 192.168.1.0/24
+        gateway_ip: 192.168.1.1
+      requirements:
+        - binding:
+            target: ComputeNode
+            relationship: tosca.relationships.NetworkBindsTo
+
+    MongoDB:
+      type: Custom.MongoDB
+      properties:
+        port: 27017
+      requirements:
+        - host:
+            target: ComputeNode
+            relationship: tosca.relationships.HostedOn
+
+    NodejsApp:
+      type: Custom.NodejsApp
+      properties:
+        port: 3000
+      requirements:
+        - host:
+            target: ComputeNode
+            relationship: tosca.relationships.HostedOn
+        - database:
+            target: MongoDB
+            relationship: tosca.relationships.ConnectsTo
+            properties:
+              connection_string: { concat: [ 'mongodb://', get_attribute: [MongoDB, ip_address], ':', get_property: [MongoDB, port] ] }
+
+  outputs:
+    app_url:
+      description: URL to access the Node.js application
+      value: { concat: [ 'http://', get_attribute: [ComputeNode, public_ip_address], ':', get_property: [NodejsApp, port] ] }

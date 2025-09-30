@@ -1,0 +1,80 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Efficient Data Storage and Management System
+  node_templates:
+    Server:
+      type: tosca.nodes.Compute
+      properties:
+        os: ubuntu
+        os_version: '20.04'
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports:
+              data_port: { get_property: [DataPort, port] }
+        network:
+          properties:
+            network_name: managed_network
+
+    DataPort:
+      type: tosca.nodes.NetworkPort
+      properties:
+        protocol: tcp
+        port_range: 1024-65535
+        port: 8080
+
+    DataStorage:
+      type: tosca.nodes.Database
+      properties:
+        database_type: relational
+        username: admin
+        password: password
+      requirements:
+        - host: Server
+        - port: DataPort
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: managed_network
+
+  relationship_templates:
+    ConnectsTo:
+      type: tosca.relationships.ConnectsTo
+      properties:
+        protocol: tcp
+
+  output_templates:
+    server_ip:
+      value: { get_attribute: [Server, private_address] }
+    data_port:
+      value: { get_property: [DataPort, port] }
+
+  relationship_templates:
+    HostedOn:
+      type: tosca.relationships.HostedOn
+      properties:
+        protocol: tcp
+
+  node_templates:
+    Server:
+      relationships:
+        - type: HostedOn
+          target: DataStorage
+        - type: ConnectsTo
+          target: Network
+    DataStorage:
+      relationships:
+        - type: ConnectsTo
+          target: DataPort
+    DataPort:
+      relationships:
+        - type: ConnectsTo
+          target: Server
+    Network:
+      relationships:
+        - type: ConnectsTo
+          target: Server

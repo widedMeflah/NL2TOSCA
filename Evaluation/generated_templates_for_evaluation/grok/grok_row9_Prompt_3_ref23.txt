@@ -1,0 +1,59 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for deploying a deep learning application using Docker and Marathon on a Mesos cluster with INDIGO orchestrator.
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+topology_template:
+  node_templates:
+    deep_learning_app:
+      type: indigo.mesos.MarathonJob
+      properties:
+        image: deephdc/deep-oc-plant-classification-theano
+        command: deepaas-run --listen-ip 0.0.0.0
+        cpus: 1.0
+        mem: 1024
+        instances: 1
+        labels:
+          HAPROXY_GROUP: external
+        container:
+          type: DOCKER
+          portMappings:
+            - containerPort: 5000
+              hostPort: 0
+              protocol: tcp
+      requirements:
+        - host:
+            node: mesos_cluster
+            capability: indigo.mesos.Cluster
+            relationship: indigo.relationships.HostedOnMesos
+
+    mesos_cluster:
+      type: indigo.mesos.Cluster
+      properties:
+        marathon_endpoint: { get_input: marathon_endpoint }
+        mesos_endpoint: { get_input: mesos_endpoint }
+
+    load_balancer:
+      type: indigo.LoadBalancer
+      properties:
+        algorithm: round-robin
+      requirements:
+        - target:
+            node: deep_learning_app
+            capability: indigo.capabilities.Endpoint
+            relationship: indigo.relationships.BindsTo
+
+  outputs:
+    application_endpoint:
+      description: Endpoint for accessing the deployed deep learning application
+      value: { concat: [ 'http://', get_attribute: [ load_balancer, ip_address ], ':', get_attribute: [ deep_learning_app, portMappings, 0, hostPort ] ] }
+
+inputs:
+  marathon_endpoint:
+    type: string
+    description: Endpoint URL for Marathon service
+  mesos_endpoint:
+    type: string
+    description: Endpoint URL for Mesos cluster

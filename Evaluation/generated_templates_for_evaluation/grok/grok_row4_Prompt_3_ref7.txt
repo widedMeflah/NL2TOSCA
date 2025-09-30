@@ -1,0 +1,86 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: MongoDB Deployment
+  template_version: 1.0.0
+  template_author: Anonymous
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  custom.types.MongoDB:
+    derived_from: tosca.nodes.Database
+    properties:
+      port:
+        type: integer
+        default: 27017
+        constraints:
+          - in_range: [8000, 65535]
+    capabilities:
+      database_endpoint:
+        type: tosca.capabilities.Endpoint.Database
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: tosca.nodes.Compute
+          relationship: tosca.relationships.HostedOn
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+      requirements:
+        - network:
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+            node: PrivateNetwork
+
+    MongoDBInstance:
+      type: custom.types.MongoDB
+      properties:
+        port: { get_input: mongodb_port }
+      requirements:
+        - host: ComputeNode
+      capabilities:
+        database_endpoint:
+          properties:
+            protocol: tcp
+            port: { get_property: [SELF, port] }
+            secure: false
+
+    PrivateNetwork:
+      type: tosca.nodes.Network
+      properties:
+        network_type: private
+
+  outputs:
+    host_ip:
+      description: IP address of the Compute Node hosting MongoDB
+      value: { get_attribute: [ComputeNode, ip_address] }
+    mongodb_port:
+      description: Port on which MongoDB is running
+      value: { get_property: [MongoDBInstance, port] }
+
+  inputs:
+    mongodb_port:
+      type: integer
+      description: Port for MongoDB instance
+      default: 27017
+      constraints:
+        - in_range: [8000, 65535]

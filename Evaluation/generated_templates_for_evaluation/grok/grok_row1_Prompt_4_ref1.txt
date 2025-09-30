@@ -1,0 +1,154 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: BasicAppTopology
+  template_version: 1.0.0
+  template_author: User
+
+description: A basic topology for an application with JDK, Alien4Cloud, and remote Elasticsearch integration.
+
+node_types:
+  Custom.Compute:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_arch:
+        type: string
+        default: x86_64
+      os_type:
+        type: string
+        default: linux
+      os_distribution:
+        type: string
+        default: ubuntu
+      os_version:
+        type: string
+        default: 20.04
+
+  Custom.Network:
+    derived_from: tosca.nodes.Network
+    properties:
+      cidr:
+        type: string
+        default: 192.168.1.0/24
+
+  Custom.JDK:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        default: "11"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.Alien4Cloud:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        default: "2.2.0"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - jdk:
+          capability: tosca.capabilities.Dependency
+          relationship: tosca.relationships.DependsOn
+
+  Custom.Elasticsearch:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        default: "7.10.2"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+topology_template:
+  node_templates:
+    AppServer:
+      type: Custom.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+
+    DbServer:
+      type: Custom.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+
+    RemoteElasticsearchServer:
+      type: Custom.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+
+    Network:
+      type: Custom.Network
+      properties:
+        cidr: 192.168.1.0/24
+      requirements:
+        - connect:
+            node: AppServer
+            relationship: tosca.relationships.ConnectsTo
+        - connect:
+            node: DbServer
+            relationship: tosca.relationships.ConnectsTo
+        - connect:
+            node: RemoteElasticsearchServer
+            relationship: tosca.relationships.ConnectsTo
+
+    JDK_AppServer:
+      type: Custom.JDK
+      properties:
+        version: "11"
+      requirements:
+        - host:
+            node: AppServer
+            relationship: tosca.relationships.HostedOn
+
+    JDK_DbServer:
+      type: Custom.JDK
+      properties:
+        version: "11"
+      requirements:
+        - host:
+            node: DbServer
+            relationship: tosca.relationships.HostedOn
+
+    Alien4Cloud:
+      type: Custom.Alien4Cloud
+      properties:
+        version: "2.2.0"
+      requirements:
+        - host:
+            node: AppServer
+            relationship: tosca.relationships.HostedOn
+        - jdk:
+            node: JDK_AppServer
+            relationship: tosca.relationships.DependsOn
+
+    Elasticsearch:
+      type: Custom.Elasticsearch
+      properties:
+        version: "7.10.2"
+      requirements:
+        - host:
+            node: RemoteElasticsearchServer
+            relationship: tosca.relationships.HostedOn
+
+  relationships:
+    Alien4Cloud_ConnectsTo_Elasticsearch:
+      type: tosca.relationships.ConnectsTo
+      source: Alien4Cloud
+      target: Elasticsearch

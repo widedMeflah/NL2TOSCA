@@ -1,0 +1,118 @@
+tosca_definitions_version: alien4cloud-1.4
+
+topology_template:
+  description: Kubernetes Cluster Setup
+  inputs:
+    compute:
+      type: Compute
+    private_network:
+      type: Network
+      constraints:
+        - network_name: private
+
+  node_templates:
+    master:
+      type: alien4cloud.nodes.Compute
+      properties:
+        image: ubuntu
+        networks:
+          - network: private_network
+      components:
+        - docker
+        - kubernetes_master
+        - etcd
+        - kubernetes_dashboard
+
+    workers:
+      type: alien4cloud.nodes.Compute
+      properties:
+        image: ubuntu
+        networks:
+          - network: private_network
+        scalability:
+          min_instances: 1
+          max_instances: 5
+      components:
+        - docker
+        - kubernetes_worker
+
+  relationship_templates:
+    kubernetes_master:
+      type: alien4cloud.relationships.Deploy
+      properties:
+        script: |
+          apt-get update && apt-get install -y docker.io
+          dockerd & 
+          systemctl start docker
+          curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+          echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list
+          apt-get update && apt-get install -y kubectl=1.5.3-0
+          kubectl version --client
+          curl -sfL https://storage.googleapis.com/kubernetes-the-hard-way/rbac.yaml | sed "s/apiserver:.*$/apiserver: $(kubectl config view --minify | grep server | cut -d/ -f3 | tr -d ':')/" | kubectl apply -f -
+          curl -sfL https://storage.googleapis.com/kubernetes-the-hard-way/certificate-authority.yaml | sed "s/apiserver:.*$/apiserver: $(kubectl config view --minify | grep server | cut -d/ -f3 | tr -d ':')/" | kubectl apply -f -
+          curl -sfL https://storage.googleapis.com/kubernetes-the-hard-way/bootstrap.yaml | sed "s/apiserver:.*$/apiserver: $(kubectl config view --minify | grep server | cut -d/ -f3 | tr -d ':')/" | kubectl apply -f -
+          systemctl enable docker
+          systemctl start docker
+          docker run -d --name etcd quay.io/coreos/etcd:v2.2.1
+          kubectl config set-cluster default-cluster --server=http://localhost:8080
+          kubectl config set-context default-context --cluster=default-cluster
+          kubectl config use-context default-context
+          kubectl create namespace kube-system
+          kubectl create -f https://rawgit.com/kubernetes/dashboard/master/src/deploy/kubernetes/dashboard.yaml
+
+    docker:
+      type: alien4cloud.relationships.Deploy
+      properties:
+        script: |
+          apt-get update && apt-get install -y docker.io
+          dockerd & 
+          systemctl start docker
+
+    kubernetes_worker:
+      type: alien4cloud.relationships.Deploy
+      properties:
+        script: |
+          apt-get update && apt-get install -y docker.io
+          dockerd & 
+          systemctl start docker
+          curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+          echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list
+          apt-get update && apt-get install -y kubectl=1.5.3-0
+          kubectl version --client
+          curl -sfL https://storage.googleapis.com/kubernetes-the-hard-way/rbac.yaml | sed "s/apiserver:.*$/apiserver: $(kubectl config view --minify | grep server | cut -d/ -f3 | tr -d ':')/" | kubectl apply -f -
+          curl -sfL https://storage.googleapis.com/kubernetes-the-hard-way/certificate-authority.yaml | sed "s/apiserver:.*$/apiserver: $(kubectl config view --minify | grep server | cut -d/ -f3 | tr -d ':')/" | kubectl apply -f -
+          curl -sfL https://storage.googleapis.com/kubernetes-the-hard-way/bootstrap.yaml | sed "s/apiserver:.*$/apiserver: $(kubectl config view --minify | grep server | cut -d/ -f3 | tr -d ':')/" | kubectl apply -f -
+          systemctl enable docker
+          systemctl start docker
+          kubectl config set-cluster default-cluster --server=http://localhost:8080
+          kubectl config set-context default-context --cluster=default-cluster
+          kubectl config use-context default-context
+
+    flannel:
+      type: alien4cloud.relationships.Deploy
+      properties:
+        script: |
+          curl -sfL https://rawgit.com/coreos/flannel/master/Documentation/kube-flannel.yml | sed "s/quay.io\/coreos\/flannel:.*$/quay.io\/coreos\/flannel:v0.5.5/" | kubectl apply -f -
+          kubectl rollout status daemonset/kube-flannel-ds --namespace=kube-system
+
+    etcd:
+      type: alien4cloud.relationships.Deploy
+      properties:
+        script: |
+          docker run -d --name etcd quay.io/coreos/etcd:v2.2.1
+
+    kubernetes_dashboard:
+      type: alien4cloud.relationships.Deploy
+      properties:
+        script: |
+          kubectl create namespace kube-system
+          kubectl create -f https://rawgit.com/kubernetes/dashboard/master/src/deploy/kubernetes/dashboard.yaml
+
+  outputs:
+    kubernetes_ui_endpoint:
+      type: string
+      value: $(kubectl get svc kubernetes-dashboard --namespace=kube-system -o jsonpath='{.status.ingress[0].hostname}')
+
+    kubernetes_api_endpoint:
+      type: string
+      value: $(kubectl config view --minify | grep server | cut -d/ -f3 | tr -d ':')

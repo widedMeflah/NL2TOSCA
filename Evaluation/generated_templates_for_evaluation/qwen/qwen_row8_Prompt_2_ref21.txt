@@ -1,0 +1,283 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A system to run a web application for managing a wine cellar inventory.
+
+topology_template:
+  node_templates:
+    web_server:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: web-server
+        description: Hosts the web application for wine cellar management.
+        number_of_instances: 1
+        virtualization_requirements:
+          - virtual_binding: 
+              virtual_link: internal_network
+        sw_image: ubuntu-server
+        cpu: 
+          architecture: x86_64
+          num_cpus: 2
+        memory: 4096 MB
+        storage: 20 GB
+
+    database_server:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: database-server
+        description: Stores wine cellar data securely.
+        number_of_instances: 1
+        virtualization_requirements:
+          - virtual_binding: 
+              virtual_link: internal_network
+        sw_image: ubuntu-server
+        cpu: 
+          architecture: x86_64
+          num_cpus: 2
+        memory: 4096 MB
+        storage: 50 GB
+
+    internal_network:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: internal-vl
+        description: Internal network connecting web and database servers.
+        network_type: VLAN
+        bandwidth: 100 Mbps
+
+    external_network:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: external-vl
+        description: External network for internet access to the web application.
+        network_type: E-Line
+        bandwidth: 1 Gbps
+
+    application_deployment:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: app-deployment
+        description: Deployment of the web application on the web server.
+        depends_on: web_server
+
+    database_deployment:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: db-deployment
+        description: Deployment of the database on the database server.
+        depends_on: database_server
+
+    security_group:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: security-group
+        description: Enforces secure access to the system.
+        rules:
+          - protocol: TCP
+            port_range_min: 80
+            port_range_max: 80
+            direction: ingress
+            remote_ip_prefix: 0.0.0.0/0
+          - protocol: TCP
+            port_range_min: 443
+            port_range_max: 443
+            direction: ingress
+            remote_ip_prefix: 0.0.0.0/0
+          - protocol: TCP
+            port_range_min: 3306
+            port_range_max: 3306
+            direction: ingress
+            remote_ip_prefix: internal_network
+          - protocol: SSH
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+            remote_ip_prefix: 0.0.0.0/0
+
+    load_balancer:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: load-balancer
+        description: Distributes traffic to the web server and provides HTTPS support.
+        number_of_instances: 1
+        virtualization_requirements:
+          - virtual_binding: 
+              virtual_link: external_network
+        sw_image: ubuntu-server
+        cpu: 
+          architecture: x86_64
+          num_cpus: 1
+        memory: 2048 MB
+        storage: 10 GB
+
+    ssl_certificate:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: ssl-cert
+        description: Provides SSL/TLS encryption for secure communication.
+        certificate_type: x509
+        issuer: trusted-ca
+
+    user_authentication:
+      type: tosca.nodes.nfv.Vdu.VirtualLink
+      properties:
+        name: user-auth
+        description: Manages user authentication and access control.
+        depends_on: web_server
+
+    monitoring_system:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: monitoring-system
+        description: Monitors the performance and reliability of the system.
+        number_of_instances: 1
+        virtualization_requirements:
+          - virtual_binding: 
+              virtual_link: internal_network
+        sw_image: monitoring-agent
+        cpu: 
+          architecture: x86_64
+          num_cpus: 1
+        memory: 1024 MB
+        storage: 10 GB
+
+  relationships:
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: web_server
+      target_element: internal_network
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: database_server
+      target_element: internal_network
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: load_balancer
+      target_element: external_network
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: load_balancer
+      target_element: web_server
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: monitoring_system
+      target_element: internal_network
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: web_server
+      target_element: application_deployment
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: database_server
+      target_element: database_deployment
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: web_server
+      target_element: user_authentication
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: web_server
+      target_element: ssl_certificate
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: database_server
+      target_element: security_group
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: load_balancer
+      target_element: security_group
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: monitoring_system
+      target_element: security_group
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: monitoring_system
+      target_element: web_server
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: monitoring_system
+      target_element: database_server
+
+    - type: tosca.relationships.nfv.Vdu.VirtualLinkToVirtualLink
+      source_element: monitoring_system
+      target_element: load_balancer
+
+  constraints:
+    - type: tosca.constraints.nfv.HostedOn
+      source: web_server
+      target: internal_network
+
+    - type: tosca.constraints.nfv.HostedOn
+      source: database_server
+      target: internal_network
+
+    - type: tosca.constraints.nfv.HostedOn
+      source: load_balancer
+      target: external_network
+
+    - type: tosca.constraints.nfv.HostedOn
+      source: monitoring_system
+      target: internal_network
+
+    - type: tosca.constraints.nfv.Access
+      source: web_server
+      target: database_server
+
+    - type: tosca.constraints.nfv.Access
+      source: load_balancer
+      target: web_server
+
+    - type: tosca.constraints.nfv.Access
+      source: monitoring_system
+      target: web_server
+
+    - type: tosca.constraints.nfv.Access
+      source: monitoring_system
+      target: database_server
+
+    - type: tosca.constraints.nfv.Access
+      source: monitoring_system
+      target: load_balancer
+
+    - type: tosca.constraints.nfv.AccessControl
+      source: web_server
+      target: security_group
+
+    - type: tosca.constraints.nfv.AccessControl
+      source: database_server
+      target: security_group
+
+    - type: tosca.constraints.nfv.AccessControl
+      source: load_balancer
+      target: security_group
+
+    - type: tosca.constraints.nfv.AccessControl
+      source: monitoring_system
+      target: security_group
+
+    - type: tosca.constraints.nfv.SecureCommunication
+      source: web_server
+      target: database_server
+
+    - type: tosca.constraints.nfv.SecureCommunication
+      source: web_server
+      target: user_authentication
+
+    - type: tosca.constraints.nfv.SecureCommunication
+      source: web_server
+      target: ssl_certificate
+
+    - type: tosca.constraints.nfv.SecureCommunication
+      source: load_balancer
+      target: web_server
+
+    - type: tosca.constraints.nfv.SecureCommunication
+      source: monitoring_system
+      target: web_server
+
+    - type: tosca.constraints.nfv.SecureCommunication
+      source: monitoring_system
+      target: database_server
+
+    - type: tosca.constraints.nfv.SecureCommunication
+      source: monitoring_system
+      target: load_balancer

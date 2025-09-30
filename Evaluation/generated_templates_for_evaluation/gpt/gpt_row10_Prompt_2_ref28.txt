@@ -1,0 +1,91 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template to deploy an Elasticsearch 7.4.1 instance on a configurable VM,
+  accessible publicly with user-supplied credentials for Elasticsearch and Kibana.
+
+metadata:
+  template_name: elasticsearch_vm_deployment
+  template_version: 1.0
+
+topology_template:
+  inputs:
+    vm_cpu:
+      type: integer
+      description: Number of virtual CPUs (2 or 4)
+      constraints:
+        - valid_values: [2, 4]
+      default: 2
+    vm_memory:
+      type: integer
+      description: Amount of RAM in MB (4096 or 8192)
+      constraints:
+        - valid_values: [4096, 8192]
+      default: 4096
+    elastic_password:
+      type: string
+      description: Password for the Elasticsearch 'elastic' user
+      required: true
+    kibana_system_password:
+      type: string
+      description: Password for the Kibana system user
+      required: true
+
+  node_templates:
+    elastic_vm:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            ports:
+              elasticsearch_port:
+                protocol: tcp
+                source: 9200
+                target: 9200
+        host:
+          properties:
+            num_cpus: { get_input: vm_cpu }
+            mem_size: { get_input: vm_memory }
+            disk_size: 50 GB
+            os_type: linux
+            os_distribution: ubuntu
+            os_version: 20.04
+
+    elasticsearch:
+      type: tosca.nodes.WebServer
+      requirements:
+        - host: elastic_vm
+      properties:
+        component_version: 7.4.1
+        admin_user: elastic
+        admin_password: { get_input: elastic_password }
+        port: 9200
+      interfaces:
+        Standard:
+          create:
+            implementation: https://github.com/indigo-dc/elasticsearch-tosca/archive/refs/heads/master.zip
+            inputs:
+              elastic_password: { get_input: elastic_password }
+              kibana_system_password: { get_input: kibana_system_password }
+
+  outputs:
+    vm_public_address:
+      description: The public IP address or DNS name of the deployed virtual machine
+      value: { get_attribute: [ elastic_vm, public_address ] }
+    elasticsearch_endpoint:
+      description: Public endpoint URL for Elasticsearch
+      value: { concat: [ "http://", { get_attribute: [ elastic_vm, public_address ] }, ":9200" ] }
+    elasticsearch_user:
+      description: The user to access Elasticsearch
+      value: "elastic"
+    elasticsearch_password:
+      description: The password for the Elasticsearch user
+      value: { get_input: elastic_password }
+    kibana_system_user:
+      description: The Kibana system user
+      value: "kibana_system"
+    kibana_system_password:
+      description: The password for the Kibana system user
+      value: { get_input: kibana_system_password }

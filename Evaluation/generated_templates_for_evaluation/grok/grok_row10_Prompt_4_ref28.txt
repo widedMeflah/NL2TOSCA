@@ -1,0 +1,60 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying Elasticsearch on a VM using INDIGO orchestrator
+
+topology_template:
+  node_templates:
+    elasticsearch_vm:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    elasticsearch:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: 7.10.0
+      requirements:
+        - host: elasticsearch_vm
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure_elasticsearch.sh
+            inputs:
+              elasticsearch_password: "secure_password_elastic"
+              kibana_password: "secure_password_kibana"
+      artifacts:
+        scripts:
+          type: tosca.artifacts.File
+          file: scripts/configure_elasticsearch.sh
+
+    elasticsearch_network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: public
+      requirements:
+        - binding: elasticsearch_vm
+
+  outputs:
+    elasticsearch_endpoint:
+      description: Endpoint for Elasticsearch service
+      value: { get_attribute: [elasticsearch_vm, public_address] }
+    elasticsearch_port:
+      description: Port for Elasticsearch service
+      value: 9200
+    kibana_endpoint:
+      description: Endpoint for Kibana service
+      value: { get_attribute: [elasticsearch_vm, public_address] }
+    kibana_port:
+      description: Port for Kibana service
+      value: 5601

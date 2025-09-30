@@ -1,0 +1,74 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Web Application Deployment Topology
+
+  node_templates:
+    Compute_Node:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        disk_size: 10 GB
+        mem_size: 4 GB
+        operating_system:
+          type: string
+          constraints:
+            - valid_values: [ Linux, AIX, Mac OS, Windows ]
+        architecture:
+          type: string
+          constraints:
+            - valid_values: [ x86_32, x86_64 ]
+
+    Operating_System:
+      type: tosca.nodes.OperatingSystem
+      properties:
+        type: string
+        constraints:
+          - valid_values: [ Linux, AIX, Mac OS, Windows ]
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: Compute_Node
+
+    JDK:
+      type: tosca.nodes.Java
+      properties:
+        version: 8
+        distribution: Oracle
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: Operating_System
+
+    Tomcat_Server:
+      type: tosca.nodes.WebServer
+      properties:
+        version: 9
+        distribution: Apache
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: JDK
+
+    WAR_File:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: 1.0
+        distribution: WAR
+      relationships:
+        - type: tosca.relationships.HostedOn
+          target: Tomcat_Server
+
+  relationship_templates:
+    HostedOn:
+      type: tosca.relationships.HostedOn
+
+  output_templates:
+    war_url:
+      value: { get_attribute: [ WAR_File, url ] }
+    tomcat_url:
+      value: { get_attribute: [ Tomcat_Server, url ] }
+
+  repository:
+    apache:
+      url: https://archive.apache.org/dist/tomcat/tomcat-9
+    oracle:
+      url: https://www.oracle.com/java/technologies/javase-jdk11-downloads.html

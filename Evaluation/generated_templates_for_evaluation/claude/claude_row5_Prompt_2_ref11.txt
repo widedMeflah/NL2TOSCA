@@ -1,0 +1,105 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: data_analysis_system
+  template_version: 1.0.0
+  template_author: generated
+
+description: Data Analysis System with Web Interface
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - org.alien4cloud.nodes.Apache:2.0.0
+  - org.alien4cloud.nodes.PostgreSQL:2.0.0
+  - org.alien4cloud.nodes.LoadBalancer:2.0.0
+
+node_types:
+  app.nodes.DataAnalysisApplication:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      app_version:
+        type: string
+        default: "1.0"
+      memory_requirement:
+        type: integer
+        default: 4096
+    attributes:
+      url: { get_operation_output: [ SELF, Standard, create, url ] }
+
+topology_template:
+  node_templates:
+    LoadBalancer:
+      type: org.alien4cloud.nodes.LoadBalancer
+      properties:
+        port: 80
+
+    WebServer:
+      type: org.alien4cloud.nodes.Apache
+      requirements:
+        - host: AppServer
+      capabilities:
+        http_endpoint:
+          properties:
+            port: 80
+            protocol: http
+
+    AppServer:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+            disk_size: 100 GB
+
+    Database:
+      type: org.alien4cloud.nodes.PostgreSQL
+      properties:
+        port: 5432
+        db_name: analysis_db
+        db_user: admin
+      requirements:
+        - host: DBServer
+      capabilities:
+        database_endpoint:
+          properties:
+            port: 5432
+
+    DBServer:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 8
+            mem_size: 16 GB
+            disk_size: 1000 GB
+
+    AnalysisApplication:
+      type: app.nodes.DataAnalysisApplication
+      requirements:
+        - host: AppServer
+        - database: Database
+      capabilities:
+        app_endpoint:
+          properties:
+            protocol: http
+            port: 8080
+
+    BackupService:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: DBServer
+
+  relationships:
+    - type: tosca.relationships.DependsOn
+      source: WebServer
+      target: AnalysisApplication
+    
+    - type: tosca.relationships.DependsOn
+      source: LoadBalancer
+      target: WebServer
+
+  outputs:
+    application_url:
+      description: URL for accessing the application
+      value: { get_attribute: [ LoadBalancer, url ] }

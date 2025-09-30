@@ -1,0 +1,73 @@
+
+tosca_definitions_version: tosca_simple_profile_for_implementation_in_yaml_1_0
+
+description: A system that includes a web application platform for Java and a search engine with indexing capabilities.
+
+topology_template:
+
+  node_templates:
+
+    web_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          type: tosca.capabilities.Container
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/start_web_server.sh
+            inputs: {}
+          delete:
+            implementation: scripts/stop_web_server.sh
+            inputs: {}
+
+    web_platform:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: web_server
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_web_platform.sh
+            inputs: {}
+          delete:
+            implementation: scripts/uninstall_web_platform.sh
+            inputs: {}
+
+    search_engine:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: web_server
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/install_search_engine.sh
+            inputs: {}
+          delete:
+            implementation: scripts/uninstall_search_engine.sh
+            inputs: {}
+
+    network:
+      type: tosca.nodes.Network
+      interfaces:
+        Standard:
+          create:
+            implementation: scripts/create_network.sh
+            inputs: {}
+          delete:
+            implementation: scripts/delete_network.sh
+            inputs: {}
+
+  relationships:
+
+    web_server_connected_to_network:
+      type: tosca.relationships.ConnectsTo
+      source_element: web_server
+      target_element: network
+      interfaces:
+        Configure:
+          configure:
+            implementation: scripts/connect_to_network.sh
+            inputs: {}

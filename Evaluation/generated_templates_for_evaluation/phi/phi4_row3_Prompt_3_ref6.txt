@@ -1,0 +1,68 @@
+imports:
+  - http://www Alien4cloud.org/tosca-normative-types.yaml
+  - https://raw.githubusercontent.com/alien4cloud/alien-tutorials/master/apache-appliance/types/Custom_Apache_Server_Normative_Type_1.0.tosca
+
+topology_template:
+  node_templates:
+    ComputeNode:
+      type: tosca.nodes.Compute
+      properties:
+        min_instances: 1
+        max_instances: 1
+        default_instance_count: 1
+
+    ApacheServer:
+      type: Custom_Apache_Server_Normative_Type_1.0
+      requirements:
+        - host: ComputeNode
+      properties:
+        http_port: 80
+        doc_root: /var/www
+        version: '2.4'
+
+    NetworkConfig:
+      type: tosca.nodes.network.NetworkConfig
+      properties:
+        protocol_type: TCP
+        network_name: PRIVATE
+
+  relationships:
+    - type: tosca.relationships.HostedOn
+      target: ComputeNode
+
+  groups:
+    ApacheServerGroup:
+      members: [ApacheServer]
+      policies:
+        - type: tosca.policies.autoscaling.AutoscaleBase
+          targets: [ComputeNode]
+
+  workflows:
+    custom_workflow:
+      steps:
+        - stop_apache_server:
+            target_node: ApacheServer
+            implementation: 
+              inputs:
+                command: stop
+
+        - start_apache_server:
+            target_node: ApacheServer
+            implementation: 
+              inputs:
+                command: start
+
+        - restart_apache_server:
+            target_node: ApacheServer
+            implementation: 
+              inputs:
+                command: restart
+
+
+  artifacts:
+    - type: Web
+      file: /var/www/index.html
+
+  outputs:
+    ApacheServerURL:
+      value: { get_attribute: [ApacheServer, address] }

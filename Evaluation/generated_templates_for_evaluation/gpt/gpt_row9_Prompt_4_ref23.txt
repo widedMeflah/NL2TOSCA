@@ -1,0 +1,51 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template for deploying a containerized machine learning service using Docker and Marathon.
+  The service will listen on all network interfaces, be externally accessible, and run with 1 CPU and 1GB memory on a specific TCP port.
+
+topology_template:
+  inputs:
+    docker_image:
+      type: string
+      description: Docker image for the machine learning service
+      default: myregistry/ml-service:latest
+    service_port:
+      type: integer
+      description: The TCP port the application will listen on
+      default: 8080
+
+  node_templates:
+
+    ml_service_host:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        endpoint:
+          properties:
+            network_name: PUBLIC
+        host:
+          properties:
+            num_cpus: 1
+            mem_size: 1 GB
+
+    ml_service_docker:
+      type: tosca.nodes.indigo.Container.Application.Docker.Marathon
+      requirements:
+        - host: ml_service_host
+      properties:
+        image: { get_input: docker_image }
+        ports:
+          - { get_input: service_port }
+        env:
+          SERVICE_PORT: { get_input: service_port }
+        network: HOST
+
+    ml_service_endpoint:
+      type: tosca.nodes.network.Port
+      properties:
+        protocol: tcp
+        target: { get_input: service_port }
+        source: { get_input: service_port }
+      requirements:
+        - binding: ml_service_docker

@@ -1,0 +1,172 @@
+
+definition_templates:
+  Elasticsearch_VM:
+    type: computer
+    description: Elasticsearch Virtual Machine
+    virtual_machine_types:
+      - name: ubuntu
+
+  Elasticsearch_Node_Template:
+    type: node
+    description: Elasticsearch Node
+    topology_template:
+      NodeTemplate:
+        node_type: Elasticsearch_Node
+        artifact_library:
+          - name: ubuntu
+          - name: elasticsearch
+        requirements:
+          - name: Elasticsearch_VM
+
+  Elasticsearch_Node_Config:
+    type: node.config
+    description: Elasticsearch Node Configuration
+    properties:
+      version: 7.10.2
+      memory_gb: 8
+      cpu: 2
+      network:
+        port:
+          - name: elasticsearch
+            port: 9200
+            protocol: tcp
+          - name: kibana
+            port: 5601
+            protocol: tcp
+      password: es_kibana
+
+  SystemUser_Elasticsearch:
+    type: node.config
+    description: Elasticsearch System User Configuration
+    properties:
+      username: elasticsearch
+      password: {password: es_password}
+      groups:
+        - sudo
+        - elasticsearch
+
+  SystemUser_Kibana:
+    type: node.config
+    description: Kibana System User Configuration
+    properties:
+      username: kibana
+      password: {password: kibana_password}
+      groups:
+        - sudo
+        - kibana
+
+  Elasticsearch_Install:
+    type: node.config
+    description: Elasticsearch Install Configuration
+    properties:
+      version: {get_param: version}
+      repository: "https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.10.2-ubuntu-xenial.deb"
+      install_command: "dpkg -i {{{repository}}}"
+      service_name: elasticsearch
+      service_start: true
+
+  Elasticsearch_Config:
+    type: node.config
+    description: Elasticsearch Configuration
+    properties:
+      cluster.name: elastic-cluster
+      discovery.seed_hosts: ["localhost"]
+      path.data: /var/lib/elasticsearch
+      path.logs: /var/log/elasticsearch
+      network.host: 0.0.0.0
+      http.port: 9200
+      http.enabled: true
+      xpack.security.enabled: true
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.transport.ssl.keystore.path: /dev/null
+      xpack.security.transport.ssl.truststore.path: /dev/null
+
+  Kibana_Install:
+    type: node.config
+    description: Kibana Install Configuration
+    properties:
+      version: {get_param: version}
+      repository: "https://artifacts.elastic.co/downloads/kibana/kibana-7.10.2-ubuntu-xenial.deb"
+      install_command: "dpkg -i {{{repository}}}"
+      service_name: kibana
+      service_start: true
+
+  Kibana_Config:
+    type: node.config
+    description: Kibana Configuration
+    properties:
+      server.host: "0.0.0.0"
+      server.port: 5601
+      elasticsearch.hosts: ["http://localhost:9200"]
+      xpack.security.enabled: true
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.transport.ssl.keystore.path: /dev/null
+      xpack.security.transport.ssl.truststore.path: /dev/null
+
+node_templates:
+  Elasticsearch_Node:
+    type: Elasticsearch_Node_Template
+    config:
+      - name: Elasticsearch_Node_Config
+      - name: SystemUser_Elasticsearch
+      - name: Elasticsearch_Install
+      - name: Elasticsearch_Config
+    relations:
+      - type: stdio
+        target: Elasticsearch_Node_Template
+
+  Kibana_Node:
+    type: computer
+    description: Kibana Virtual Machine
+    virtual_machine_types:
+      - name: ubuntu
+
+  Kibana_Node_Template:
+    type: node
+    description: Kibana Node
+    topology_template:
+      NodeTemplate:
+        node_type: Kibana_Node
+        artifact_library:
+          - name: ubuntu
+
+  Kibana_Config_Node:
+    type: node.config
+    description: Kibana Node Configuration
+    properties:
+      system_users:
+        - name: elasticsearch
+          password: {get_param: es_password}
+        - name: kibana
+          password: {get_param: kibana_password}
+
+  Kibana_Install_Node:
+    type: node.config
+    description: Kibana Install Configuration
+    relations:
+      - type: stdio
+        target: Elasticsearch_Node_Template
+    properties:
+      node: Elasticsearch_Node_Template
+      node_property: config
+      node_relation: stdio
+    config:
+      - name: Kibana_Install
+      - name: Kibana_Config_Node
+
+  Kibana_Node_Template_Relation:
+    type: stdio
+    description: Kibana Node Template Relation
+    relations:
+      - type: stdio
+        target: Kibana_Install_Node
+
+topology_template:
+  Elasticsearch_Topology:
+    nodes:
+      - ref: Elasticsearch_Node_Template
+      - ref: Kibana_Node
+    relations:
+      - type: stdio
+        source: Elasticsearch_Node_Template
+        target: Kibana_Node

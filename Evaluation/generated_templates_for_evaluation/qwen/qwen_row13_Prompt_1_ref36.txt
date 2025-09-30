@@ -1,0 +1,88 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: |
+  A TOSCA template for deploying a scalable virtual computing environment with INDIGO.
+  The environment consists of a management node and multiple worker nodes.
+  It supports hybrid deployment, provides a web-based interface, and allows secure access via API key and email.
+
+topology_template:
+
+  node_templates:
+
+    ManagementNode:
+      type: tosca.nodes.Compute
+      properties:
+        number_of_cpus: 4
+        memory_size: 8 GB
+        disk_size: 50 GB
+        endpoints:
+          management:
+            protocol: SSH
+            port: 22
+            interface: eth0
+        description: "Management node for orchestrating the cluster"
+      interfaces:
+        Standard:
+          create:
+            implementation: manage_node.py
+            inputs:
+              admin_email: admin@example.com
+              ssh_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC..."
+              software_version: "1.0.0"
+
+    WorkerNode:
+      type: tosca.nodes.Compute
+      properties:
+        number_of_cpus: 2
+        memory_size: 4 GB
+        disk_size: 20 GB
+        max_count: 10
+        endpoints:
+          worker:
+            protocol: SSH
+            port: 22
+            interface: eth0
+        description: "Worker node for executing tasks in the cluster"
+
+    WebInterface:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        url: "https://orchestrator.indigo.example.com"
+        admin_email: admin@example.com
+        api_key: "1234567890abcdef"
+        software_version: "1.0.0"
+        description: "Web-based interface for managing the cluster"
+      interfaces:
+        Standard:
+          configure:
+            implementation: configure_web_interface.sh
+            inputs:
+              ssh_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC..."
+              data_directory: "/var/indigo/data"
+
+    HybridSupport:
+      type: tosca.nodes.Container
+      properties:
+        description: "Hybrid deployment support if needed"
+        enabled: true
+
+    DataStorage:
+      type: tosca.nodes.Storage
+      properties:
+        directory_path: "/var/indigo/data"
+        description: "Designated directory for storing system data"
+
+  outputs:
+    cluster_url:
+      description: "URL to access the web interface"
+      value: { get_property: [ WebInterface, url ] }
+
+    cluster_ip:
+      description: "IP address of the management node"
+      value: { get_attribute: [ ManagementNode, endpoints, management, ip_address ] }
+
+    admin_credentials:
+      description: "Admin credentials for managing the environment"
+      value:
+        email: { get_property: [ ManagementNode, admin_email ] }
+        api_key: { get_property: [ WebInterface, api_key ] }

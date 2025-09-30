@@ -1,0 +1,100 @@
+
+tosca_definitions_version: alien4cloud-2.0.0
+
+description: A system composed of a Java web application platform and a search engine, connected via a network.
+
+node_types:
+  # Custom type for a Search Engine, deriving from a generic SoftwareComponent
+  org.alien4cloud.nodes.SearchEngine:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        required: false
+        default: "7.10.2" # Example: Elasticsearch version
+    capabilities:
+      # Defines the endpoint for the search engine
+      search_api:
+        type: tosca.capabilities.Endpoint.Database # Using Database endpoint as a suitable generic type
+        properties:
+          protocol: http
+          port: 9200 # Default port for Elasticsearch
+          secure: false
+          url_path: "/"
+
+topology_template:
+  node_templates:
+    compute_web_app_server:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        num_cpus: 1
+        mem_size: 2 GB
+        disk_size: 10 GB
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    java_web_application_platform:
+      type: tosca.nodes.WebServer.Tomcat # Specific type for Java Web Application platform
+      properties:
+        version: "9.0" # Example Tomcat version
+        java_version: "11" # Java version requirement for the web app
+      requirements:
+        - host:
+            node: compute_web_app_server
+            capability: tosca.capabilities.Container.OperatesOn
+            relationship: tosca.relationships.HostedOn
+        - network_connection:
+            node: application_network
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.ConnectsTo
+        - search_engine_access:
+            node: search_engine_instance
+            capability: org.alien4cloud.nodes.SearchEngine.search_api
+            relationship: tosca.relationships.ConnectsTo
+
+    compute_search_engine_server:
+      type: tosca.nodes.Compute
+      properties:
+        os_arch: x86_64
+        os_type: linux
+        num_cpus: 2
+        mem_size: 4 GB
+        disk_size: 50 GB # Increased disk size for data storage and indexing
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    search_engine_instance:
+      type: org.alien4cloud.nodes.SearchEngine
+      requirements:
+        - host:
+            node: compute_search_engine_server
+            capability: tosca.capabilities.Container.OperatesOn
+            relationship: tosca.relationships.HostedOn
+        - network_connection:
+            node: application_network
+            capability: tosca.capabilities.Network
+            relationship: tosca.relationships.ConnectsTo
+      capabilities:
+        search_api:
+          properties:
+            protocol: http
+            port: 9200
+            secure: false
+            url_path: "/"
+
+    application_network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: "10.0.0.0/24" # Example CIDR for the internal network
+      capabilities:
+        network_capability:
+          type: tosca.capabilities.Network

@@ -1,0 +1,74 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: js-app-system
+  template_version: 1.0.0
+  template_author: alien4cloud
+
+description: JavaScript application system with Node.js and persistent storage
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - docker-types:2.0.0
+
+node_types:
+  js.app.nodes.Application:
+    derived_from: tosca.nodes.Container.Application
+    properties:
+      port:
+        type: integer
+        required: true
+        default: 3000
+    attributes:
+      url: { concat: ["http://", get_attribute: [HOST, public_address], ":", get_property: [SELF, port]] }
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: tosca.nodes.Container.Runtime
+          relationship: tosca.relationships.HostedOn
+      - database:
+          capability: tosca.capabilities.Endpoint.Database
+          relationship: tosca.relationships.ConnectsTo
+
+topology_template:
+  node_templates:
+    NodeJS:
+      type: tosca.nodes.Container.Runtime
+      properties:
+        image: node:latest
+        cpu_share: 1
+        mem_share: 1024 MB
+
+    MongoDB:
+      type: tosca.nodes.Database
+      properties:
+        port: 27017
+      requirements:
+        - host: LinuxHost
+      capabilities:
+        database_endpoint:
+          properties:
+            port: 27017
+
+    JSApplication:
+      type: js.app.nodes.Application
+      properties:
+        port: 3000
+      requirements:
+        - host: NodeJS
+        - database: MongoDB
+
+    LinuxHost:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: linux
+        os_distribution: ubuntu
+        os_version: 20.04
+
+  outputs:
+    application_url:
+      description: URL of the deployed application
+      value: { get_attribute: [JSApplication, url] }
+    database_url:
+      description: URL of the database
+      value: { get_attribute: [MongoDB, database_endpoint, url] }

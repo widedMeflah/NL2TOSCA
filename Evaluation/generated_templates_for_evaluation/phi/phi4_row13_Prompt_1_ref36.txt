@@ -1,0 +1,60 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/5.2.0/types.yaml
+
+node_types:
+  indigo.vce:
+    derived_from: cloudify.nodes.Root
+    properties:
+      management_node_cpus: { type: integer, default: 4 }
+      management_node_memory: { type: string, default: '8GB' }
+      worker_node_cpus: { type: integer, default: 2 }
+      worker_node_memory: { type: string, default: '4GB' }
+      max_worker_nodes: { type: integer, default: 10 }
+      hybrid_support: { type: boolean, default: false }
+      software_version: { type: string }
+      admin_email: { type: string }
+      api_key: { type: string }
+      description: { type: string, default: 'Virtual Computing Environment' }
+      ssh_public_key: { type: string }
+      data_directory: { type: string, default: '/data/vce/' }
+
+    interfaces:
+      cloudify.interfaces.lifecycle.configure:
+        inputs:
+          url: { type: string }
+          cluster_ip: { type: string }
+        implementation: scripts/configure_vce.py
+
+nodes:
+  vce_environment:
+    type: indigo.vce
+    properties:
+      management_node_cpus: 4
+      management_node_memory: '8GB'
+      worker_node_cpus: 2
+      worker_node_memory: '4GB'
+      max_worker_nodes: 10
+      hybrid_support: true
+      software_version: '1.0'
+      admin_email: 'admin@example.com'
+      api_key: 'secure_api_key_12345'
+      description: 'Automatically scalable virtual computing environment.'
+      ssh_public_key: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC...'
+      data_directory: '/data/vce/'
+
+relationships:
+  uses_interface:
+    type: cloudify.relationships.depends_on
+    target: vce_environment
+
+workflows:
+  setup_vce:
+    mapping: workflows/setup_vce.yaml
+
+outputs:
+  web_interface_url: { get_property: [vce_environment, url] }
+  cluster_ip: { get_attribute: [vce_environment, ip_address] }
+  credentials:
+    api_key: { get_property: [vce_environment, api_key] }

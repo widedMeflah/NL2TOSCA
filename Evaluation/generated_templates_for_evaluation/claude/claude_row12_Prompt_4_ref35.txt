@@ -1,0 +1,80 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_custom_types: https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+description: TOSCA template for deploying Galaxy with Docker
+
+topology_template:
+  inputs:
+    admin_email:
+      type: string
+      description: Galaxy admin email
+      required: true
+    admin_api_key:
+      type: string
+      description: Galaxy admin API key
+      required: true
+    instance_flavor:
+      type: string
+      description: Flavor of the compute instance
+      default: medium
+    storage_size:
+      type: integer
+      description: Size of the storage volume in GB
+      default: 100
+    reference_data:
+      type: boolean
+      description: Install reference data
+      default: false
+
+  node_templates:
+    galaxy_server:
+      type: tosca.nodes.indigo.Compute
+      capabilities:
+        host:
+          properties:
+            instance_type: { get_input: instance_flavor }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    galaxy_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: storage_size }
+        encrypted: true
+      requirements:
+        - attachment:
+            node: galaxy_server
+            relationship: tosca.relationships.AttachesTo
+
+    mysql_database:
+      type: tosca.nodes.DBMS.MySQL
+      properties:
+        root_password: { get_function: [ generate_password ] }
+      requirements:
+        - host: galaxy_server
+
+    galaxy_docker:
+      type: tosca.nodes.Container.Application.Docker
+      properties:
+        image: bgruening/galaxy-stable:latest
+        environment:
+          GALAXY_CONFIG_ADMIN_USERS: { get_input: admin_email }
+          GALAXY_CONFIG_MASTER_API_KEY: { get_input: admin_api_key }
+          GALAXY_CONFIG_INSTALL_REFDATA: { get_input: reference_data }
+          MYSQL_ROOT_PASSWORD: { get_property: [ mysql_database, root_password ] }
+      requirements:
+        - host: galaxy_server
+        - database:
+            node: mysql_database
+            relationship: tosca.relationships.DependsOn
+
+  outputs:
+    galaxy_url:
+      value: { concat: [ 'http://', get_attribute: [ galaxy_server, public_address ], ':80' ] }
+    galaxy_api_key:
+      value: { get_input: admin_api_key }

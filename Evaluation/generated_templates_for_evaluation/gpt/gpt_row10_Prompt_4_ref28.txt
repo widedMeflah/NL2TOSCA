@@ -1,0 +1,87 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  Basic Elasticsearch deployment on an Ubuntu virtual machine,
+  customizable version, with secure passwords and network exposure,
+  compliant with INDIGO orchestrator.
+
+topology_template:
+  inputs:
+    elasticsearch_version:
+      type: string
+      description: Version of Elasticsearch to deploy
+      default: 8.13.4
+    elasticsearch_password:
+      type: string
+      description: Password for the Elasticsearch system user
+      required: true
+    kibana_password:
+      type: string
+      description: Password for the Kibana system user
+      required: true
+    vm_cpu:
+      type: integer
+      description: Number of CPUs for the VM
+      default: 2
+    vm_ram:
+      type: integer
+      description: Amount of RAM for the VM (MB)
+      default: 4096
+
+  node_templates:
+    elastic_vm:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: vm_cpu }
+            mem_size: { get_input: vm_ram }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: 22.04
+      requirements:
+        - local_storage:
+            node: elastic_storage
+        - endpoint:
+            node: elastic_network
+
+    elastic_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 50 GB
+
+    elastic_network:
+      type: tosca.nodes.network.Port
+      properties:
+        network_name: PUBLIC
+        ip_requirements:
+          - "public"
+
+    elasticsearch_app:
+      type: tosca.nodes.indigo.ElasticSearch
+      properties:
+        version: { get_input: elasticsearch_version }
+        elasticsearch_password: { get_input: elasticsearch_password }
+        kibana_password: { get_input: kibana_password }
+      requirements:
+        - host: elastic_vm
+        - endpoint:
+            node: elastic_endpoint
+
+    elastic_endpoint:
+      type: tosca.nodes.Endpoint.Public
+      properties:
+        protocol: tcp
+        ports: [9200, 9300]
+        network_name: PUBLIC
+
+  outputs:
+    elasticsearch_public_ip:
+      value: { get_attribute: [ elastic_network, ip_address ] }
+    elasticsearch_endpoint:
+      value: { concat: [ "http://", { get_attribute: [ elastic_network, ip_address ] }, ":9200" ] }
+    kibana_endpoint:
+      value: { concat: [ "http://", { get_attribute: [ elastic_network, ip_address ] }, ":5601" ] }

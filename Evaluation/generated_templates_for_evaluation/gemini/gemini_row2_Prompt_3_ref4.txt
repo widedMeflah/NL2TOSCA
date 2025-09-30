@@ -1,0 +1,136 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+imports:
+  - tosca-normative-types:1.0.0.wd06
+  - alien-base-types:1.0.0
+
+node_types:
+  org.alien4cloud.nodes.ApacheServer:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      version:
+        type: string
+        description: The Apache server version.
+        default: "2.4"
+      port:
+        type: integer
+        description: The port on which Apache listens.
+        default: 80
+      document_root:
+        type: string
+        description: The document root directory for Apache.
+        default: "/var/www"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: tosca.nodes.Compute
+          relationship: tosca.relationships.HostedOn
+    interfaces:
+      Standard:
+        operations:
+          create:
+            description: Installs and configures Apache.
+            implementation:
+              primary: scripts/apache_install.sh
+              dependencies: []
+          configure:
+            description: Configures Apache with specified port and doc root.
+            implementation:
+              primary: scripts/apache_configure.sh
+              dependencies: []
+          start:
+            description: Starts the Apache server.
+            implementation:
+              primary: scripts/apache_start.sh
+              dependencies: []
+          stop:
+            description: Stops the Apache server.
+            implementation:
+              primary: scripts/apache_stop.sh
+              dependencies: []
+          restart:
+            description: Restarts the Apache server.
+            implementation:
+              primary: scripts/apache_restart.sh
+              dependencies: []
+      ApacheCustom:
+        operations:
+          curl_welcome_page:
+            description: Curls the Apache welcome page.
+            implementation:
+              primary: scripts/apache_curl.sh
+              dependencies: []
+
+topology_template:
+  node_templates:
+    compute:
+      type: tosca.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        endpoint_data:
+          properties:
+            protocol: tcp
+            network_name: PRIVATE
+            secure: false
+        endpoint_admin:
+          properties:
+            protocol: tcp
+            network_name: PRIVATE
+            secure: true
+
+    apache_server:
+      type: org.alien4cloud.nodes.ApacheServer
+      properties:
+        version: "2.4"
+        port: 80
+        document_root: "/var/www"
+      requirements:
+        - host:
+            node: compute
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+
+  workflows:
+    stop_apache:
+      description: Stops the Apache server.
+      steps:
+        stop_server:
+          target: apache_server
+          activities:
+            - call_operation: Standard.stop
+    start_apache:
+      description: Starts the Apache server.
+      steps:
+        start_server:
+          target: apache_server
+          activities:
+            - call_operation: Standard.start
+    restart_apache:
+      description: Restarts the Apache server.
+      steps:
+        restart_server:
+          target: apache_server
+          activities:
+            - call_operation: Standard.restart
+    curl_welcome_page_wf:
+      description: Curls the welcome page of the Apache server.
+      steps:
+        curl_page:
+          target: apache_server
+          activities:
+            - call_operation: ApacheCustom.curl_welcome_page
+
+  outputs:
+    apache_url:
+      description: The URL to access the Apache server.
+      value:
+        concat:
+          - "http://"
+          - get_attribute: [compute, endpoint_data, network_data, ip_address]
+          - ":"
+          - get_property: [apache_server, port]

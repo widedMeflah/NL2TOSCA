@@ -1,0 +1,172 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: CustomApplicationSystem
+  template_version: 1.0.0
+  template_author: User
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+topology_template:
+  node_templates:
+    Compute1:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+        endpoint:
+          properties:
+            network_name: PRIVATE
+            initiator: source
+      requirements:
+        - network: Network
+
+    Compute2:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+        endpoint:
+          properties:
+            network_name: PRIVATE
+            initiator: source
+      requirements:
+        - network: Network
+
+    Compute3:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+        endpoint:
+          properties:
+            network_name: PRIVATE
+            initiator: source
+      requirements:
+        - network: Network
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+
+    JDK:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: 11
+      artifacts:
+        - jdk_installer:
+            file: <specified_jdk_url>
+            type: tosca.artifacts.File
+      requirements:
+        - host: Compute1
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              install_dir: /opt/java
+
+    Application:
+      type: tosca.nodes.WebApplication
+      properties:
+        context_root: /
+        application_args:
+          security: enabled
+          documentation: enabled
+      requirements:
+        - host: Compute1
+        - dependency: JDK
+        - connectTo: DataStorage1
+        - connectTo: DataStorage2
+      interfaces:
+        Standard:
+          start:
+            inputs:
+              args: ["--security=enabled", "--documentation=enabled"]
+
+    DataStorage1:
+      type: tosca.nodes.Database
+      properties:
+        replication: true
+      requirements:
+        - host: Compute2
+        - connectTo: DataStorage2
+      capabilities:
+        endpoint:
+          properties:
+            network_name: PRIVATE
+            initiator: source
+
+    DataStorage2:
+      type: tosca.nodes.Database
+      properties:
+        replication: true
+      requirements:
+        - host: Compute3
+        - connectTo: DataStorage1
+      capabilities:
+        endpoint:
+          properties:
+            network_name: PRIVATE
+            initiator: source
+
+    TestingComponent:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        branch: dev
+        plugin_version: 1.2.3
+        test_suite: integration
+      requirements:
+        - host: Compute3
+        - dependency: Application
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              branch: dev
+              plugin_version: 1.2.3
+              test_suite: integration
+          start:
+            inputs:
+              test_suite: integration
+
+  relationships:
+    AppToDataStorage1:
+      type: tosca.relationships.ConnectsTo
+      source: Application
+      target: DataStorage1
+
+    AppToDataStorage2:
+      type: tosca.relationships.ConnectsTo
+      source: Application
+      target: DataStorage2
+
+    DataStorageReplication:
+      type: tosca.relationships.ConnectsTo
+      source: DataStorage1
+      target: DataStorage2
+
+    Compute1ToNetwork:
+      type: tosca.relationships.Network
+      source: Compute1
+      target: Network
+
+    Compute2ToNetwork:
+      type: tosca.relationships.Network
+      source: Compute2
+      target: Network
+
+    Compute3ToNetwork:
+      type: tosca.relationships.Network
+      source: Compute3
+      target: Network

@@ -1,0 +1,85 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: alien4cloud-with-remote-elasticsearch
+  template_version: 1.0.0
+  template_author: admin
+
+description: Alien4Cloud deployment with remote Elasticsearch
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+topology_template:
+  node_templates:
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: 4
+        cidr: "192.168.1.0/24"
+
+    ApplicationServer:
+      type: tosca.nodes.Compute
+      requirements:
+        - network: Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "4 GB"
+            disk_size: "20 GB"
+
+    ElasticsearchServer:
+      type: tosca.nodes.Compute
+      requirements:
+        - network: Network
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: "4 GB"
+            disk_size: "20 GB"
+
+    JDK_Application:
+      type: tosca.nodes.Software.Java
+      properties:
+        java_version: "8"
+        java_home: "/usr/lib/jvm/java-8-openjdk"
+      requirements:
+        - host: ApplicationServer
+
+    JDK_Elasticsearch:
+      type: tosca.nodes.Software.Java
+      properties:
+        java_version: "8"
+        java_home: "/usr/lib/jvm/java-8-openjdk"
+      requirements:
+        - host: ElasticsearchServer
+
+    Elasticsearch:
+      type: tosca.nodes.Database.Elasticsearch
+      properties:
+        cluster_name: "elastic-cluster"
+        elasticsearch_port: 9300
+      requirements:
+        - host: ElasticsearchServer
+        - java: JDK_Elasticsearch
+
+    Alien4Cloud:
+      type: tosca.nodes.Application.Alien4Cloud
+      properties:
+        port: 8088
+        context_path: "/"
+      requirements:
+        - host: ApplicationServer
+        - java: JDK_Application
+        - search_endpoint: Elasticsearch
+
+  outputs:
+    alien4cloud_url:
+      description: URL for accessing Alien4Cloud
+      value: { get_attribute: [ Alien4Cloud, url ] }
+    elasticsearch_endpoint:
+      description: Elasticsearch endpoint
+      value: { get_attribute: [ Elasticsearch, endpoint ] }

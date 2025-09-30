@@ -1,0 +1,130 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: JavaAppWithSearchEngine
+  template_version: 1.0.0
+  template_author: User
+
+description: A topology for a Java application connected to a search engine service in separate environments.
+
+node_types:
+  Custom.JavaRuntime:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: Java Runtime Environment for running Java applications.
+    properties:
+      version:
+        type: string
+        default: "11"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+
+  Custom.JavaApplication:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: A Java application to be deployed.
+    properties:
+      jar_file:
+        type: string
+        description: Path or URL to the Java application JAR file.
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - java_runtime:
+          capability: tosca.capabilities.Feature
+          relationship: tosca.relationships.DependsOn
+      - search_engine:
+          capability: tosca.capabilities.Endpoint
+          relationship: tosca.relationships.ConnectsTo
+
+  Custom.SearchEngine:
+    derived_from: tosca.nodes.SoftwareComponent
+    description: A search engine service like Elasticsearch.
+    properties:
+      version:
+        type: string
+        default: "7.10.0"
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          relationship: tosca.relationships.HostedOn
+      - java_runtime:
+          capability: tosca.capabilities.Feature
+          relationship: tosca.relationships.DependsOn
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint
+        properties:
+          protocol: http
+          port: 9200
+
+topology_template:
+  node_templates:
+    MainApp_Compute:
+      type: tosca.nodes.Compute
+      properties:
+        name: MainApp_VM
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            initiator: source
+
+    SearchEngine_Compute:
+      type: tosca.nodes.Compute
+      properties:
+        name: SearchEngine_VM
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            initiator: source
+
+    MainApp_JavaRuntime:
+      type: Custom.JavaRuntime
+      requirements:
+        - host: MainApp_Compute
+
+    SearchEngine_JavaRuntime:
+      type: Custom.JavaRuntime
+      requirements:
+        - host: SearchEngine_Compute
+
+    JavaApplication:
+      type: Custom.JavaApplication
+      properties:
+        jar_file: "path/to/your/app.jar"
+      requirements:
+        - host: MainApp_Compute
+        - java_runtime: MainApp_JavaRuntime
+        - search_engine:
+            node: SearchEngine
+            capability: endpoint
+            relationship:
+              type: tosca.relationships.ConnectsTo
+              properties:
+                target_port: 9200
+
+    SearchEngine:
+      type: Custom.SearchEngine
+      requirements:
+        - host: SearchEngine_Compute
+        - java_runtime: SearchEngine_JavaRuntime
+
+  groups:
+    MainApp_Environment:
+      type: tosca.groups.Root
+      members: [MainApp_Compute, MainApp_JavaRuntime, JavaApplication]
+
+    SearchEngine_Environment:
+      type: tosca.groups.Root
+      members: [SearchEngine_Compute, SearchEngine_JavaRuntime, SearchEngine]

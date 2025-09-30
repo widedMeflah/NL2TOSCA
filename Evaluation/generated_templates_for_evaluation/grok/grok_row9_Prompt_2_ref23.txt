@@ -1,0 +1,84 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA description for a plant classification application service using INDIGO orchestrator
+
+topology_template:
+  node_templates:
+    plant_classification_app:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        endpoint:
+          properties:
+            network_name: PUBLIC
+            ports:
+              app_port:
+                protocol: tcp
+                target: 8080
+      requirements:
+        - host:
+            node: cloud_resource
+            relationship:
+              type: tosca.relationships.HostedOn
+
+    plant_classification_software:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host:
+            node: plant_classification_app
+            relationship:
+              type: tosca.relationships.HostedOn
+      artifacts:
+        app_image:
+          file: plant_classification_app_image.tar
+          type: tosca.artifacts.Deployment.Image.Container.Docker
+      interfaces:
+        Standard:
+          configure:
+            implementation: scripts/configure.sh
+          start:
+            implementation: scripts/start.sh
+          stop:
+            implementation: scripts/stop.sh
+
+    cloud_resource:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+      properties:
+        resource_type: vm
+
+    public_network:
+      type: tosca.nodes.Network
+      properties:
+        network_type: public
+        cidr: 0.0.0.0/0
+
+  policies:
+    - scalability:
+        type: tosca.policies.Scaling
+        targets: [ plant_classification_app ]
+        properties:
+          min_instances: 1
+          max_instances: 3
+          default_instances: 1
+
+  outputs:
+    app_endpoint:
+      description: Public endpoint for the plant classification application
+      value: { get_attribute: [ plant_classification_app, endpoint, public_address ] }
+    app_port:
+      description: Port on which the application is accessible
+      value: 8080

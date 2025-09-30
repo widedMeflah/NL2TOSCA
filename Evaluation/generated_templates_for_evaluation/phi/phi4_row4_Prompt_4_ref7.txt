@@ -1,0 +1,63 @@
+metadata:
+  template_name: mongodb-service-template
+
+description: >
+  This topology template defines a MongoDB service hosted on a Linux-based compute instance. 
+  It includes configurable access ports within a specified range, establishes a basic TCP endpoint, 
+  and provides the IP address of the host machine and port as outputs.
+
+topology_template:
+  inputs:
+    port_range_min:
+      type: integer
+      description: Minimum value for MongoDB service port.
+      default: 27017
+
+    port_range_max:
+      type: integer
+      description: Maximum value for MongoDB service port.
+      default: 27019
+
+    mongodb_version:
+      type: string
+      description: The version of MongoDB to deploy.
+      default: "4.4"
+
+    linux_image:
+      type: string
+      description: The Linux image name or identifier for the compute instance.
+      default: ubuntu-20.04
+
+  node_templates:
+    ComputeInstance:
+      type: cloudify.nodes.Compute
+      properties:
+        image: { get_input: linux_image }
+        flavor: medium
+
+    MongodbService:
+      type: tosca.nodes.Database.MongoDB
+      requirements:
+        - host: ComputeInstance
+      properties:
+        version: { get_input: mongodb_version }
+        port:
+          constraints:
+            - greater_or_equal_than: { get_input: port_range_min }
+            - less_or_equal_than: { get_input: port_range_max }
+
+    MongodbEndpoint:
+      type: tosca.nodes.network.TCP
+      properties:
+        protocol: TCP
+        host: ComputeInstance
+        port: { get_property: [MongodbService, port] }
+
+  outputs:
+    mongo_db_ip_address:
+      value: { get_attribute: [ComputeInstance, ip] }
+      description: IP address of the MongoDB service's host machine.
+
+    mongo_db_port:
+      value: { get_property: [MongodbService, port] }
+      description: Port on which the MongoDB service is accessible.

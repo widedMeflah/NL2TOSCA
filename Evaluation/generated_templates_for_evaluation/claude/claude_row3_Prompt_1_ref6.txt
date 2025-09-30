@@ -1,0 +1,75 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: javascript-app-system
+  template_version: 1.0.0
+  template_author: auto-generated
+
+description: JavaScript application system with data storage capabilities
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+  - alien-base-types:3.0.0
+
+node_types:
+  org.app.nodes.JavaScriptRuntime:
+    derived_from: tosca.nodes.SoftwareComponent
+    properties:
+      port:
+        type: integer
+        required: true
+        default: 3000
+    capabilities:
+      app_endpoint:
+        type: tosca.capabilities.Endpoint
+        properties:
+          protocol: tcp
+          port: { get_property: [SELF, port] }
+
+  org.app.nodes.DataStorage:
+    derived_from: tosca.nodes.Database
+    properties:
+      port:
+        type: integer
+        required: true
+        default: 27017
+    capabilities:
+      database_endpoint:
+        type: tosca.capabilities.Endpoint.Database
+        properties:
+          protocol: tcp
+          port: { get_property: [SELF, port] }
+
+topology_template:
+  node_templates:
+    OS:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 50 GB
+
+    JavaScriptApp:
+      type: org.app.nodes.JavaScriptRuntime
+      properties:
+        port: 3000
+      requirements:
+        - host: OS
+        - dependency: DataStorage
+
+    DataStorage:
+      type: org.app.nodes.DataStorage
+      properties:
+        port: 27017
+      requirements:
+        - host: OS
+
+  outputs:
+    application_url:
+      description: URL to access the JavaScript application
+      value: { concat: ['http://', get_attribute: [OS, public_ip_address], ':', get_property: [JavaScriptApp, port]] }
+    database_endpoint:
+      description: Database connection endpoint
+      value: { concat: ['mongodb://', get_attribute: [OS, public_ip_address], ':', get_property: [DataStorage, port]] }

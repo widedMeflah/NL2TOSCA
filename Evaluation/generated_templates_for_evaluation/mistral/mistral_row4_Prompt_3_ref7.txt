@@ -1,0 +1,57 @@
+
+definition_templates:
+  MongoDBDeployment:
+    type: cm:ali4cloud.templates.Node
+    tags:
+      name: MongoDBDeployment
+    properties:
+      cloud_resource:
+        type: cm:ali4cloud.templates.CloudResource
+        properties:
+          type: linux
+          architecture: x86_64
+          os: ubuntu
+          network:
+            type: private
+
+      node_template:
+        type: cm:ali4cloud.templates.NodeTemplate
+        properties:
+          os: ubuntu
+          package_install:
+            - apt-get -y update
+            - apt-get -y install mongodb
+
+      service_template:
+        type: cm:ali4cloud.templates.ServiceTemplate
+        properties:
+          cloud_service_type: mongodb
+          service_properties:
+            mongodb_bind_ip: 0.0.0.0
+            mongodb_port:
+              type: integer
+              default: 27017
+              min_value: 8000
+              max_value: 65535
+            mongodb_no_security: true
+
+    topology_template:
+      nodes:
+        - ref: MongoDBDeployment/cloud_resource
+      links:
+        - source: MongoDBDeployment/cloud_resource
+          target: MongoDBDeployment/node_template
+          relation: power_on
+        - source: MongoDBDeployment/node_template
+          target: MongoDBDeployment/service_template
+
+outputs:
+  MongoDBIP:
+    type: string
+    description: IP address of the MongoDB host
+    target: MongoDBDeployment/cloud_resource/ip_address
+
+  MongoDBPort:
+    type: string
+    description: Port number of the MongoDB service
+    target: MongoDBDeployment/service_template/mongodb_port

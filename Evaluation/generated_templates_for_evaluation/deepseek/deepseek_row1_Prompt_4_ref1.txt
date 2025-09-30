@@ -1,0 +1,98 @@
+
+tosca_definitions_version: alien4cloud-1.3
+
+topology_template:
+  description: Basic topology for an application with JDK, Alien4Cloud, and remote Elasticsearch integration.
+
+  inputs:
+    image:
+      type: string
+      description: Image for the VMs
+    flavor:
+      type: string
+      description: Flavor for the VMs
+    public_network:
+      type: string
+      description: Public network for internet access
+
+  node_templates:
+    private_network:
+      type: tosca.nodes.network.Network
+      properties:
+        name: Private Network
+        cidr: 10.0.0.0/16
+      relationships:
+        - type: tosca.relationships.network.Bind
+          target: public_network
+          properties:
+            network_name: Private Network
+
+    application_server:
+      type: tosca.nodes.Compute
+      properties:
+        name: Application Server
+        image: { get_input: image }
+        flavor: { get_input: flavor }
+      capabilities:
+        endpoint:
+          properties:
+            network: { get_input: public_network }
+            ports:
+              - 22
+      software:
+        - jdk
+        - application_server
+      relationships:
+        - type: tosca.relationships.ConnectsTo
+          target: database_server
+          properties:
+            network: { get_property: [private_network, cidr] }
+
+    database_server:
+      type: tosca.nodes.Compute
+      properties:
+        name: Database Server
+        image: { get_input: image }
+        flavor: { get_input: flavor }
+      capabilities:
+        endpoint:
+          properties:
+            network: { get_input: public_network }
+            ports:
+              - 22
+              - 3306
+      software:
+        - jdk
+        - mysql
+      relationships:
+        - type: tosca.relationships.network.Bind
+          target: private_network
+
+    alien4cloud_instance:
+      type: tosca.nodes.Compute
+      properties:
+        name: Alien4Cloud Instance
+        image: { get_input: image }
+        flavor: { get_input: flavor }
+      capabilities:
+        endpoint:
+          properties:
+            network: { get_input: public_network }
+            ports:
+              - 22
+              - 8080
+      software:
+        - jdk
+        - alien4cloud
+      relationships:
+        - type: tosca.relationships.network.Bind
+          target: private_network
+        - type: tosca.relationships.ConnectsTo
+          target: elasticsearch_node
+          properties:
+            url: ${elasticsearch_url}
+
+    elasticsearch_node:
+      type: tosca.nodes.ExternalResource
+      properties:
+        url: ${elasticsearch_url}

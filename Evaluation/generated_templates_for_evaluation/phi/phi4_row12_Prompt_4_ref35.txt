@@ -1,0 +1,76 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/5.2.4/types.yaml
+  - plugin:cloudify-docker-plugin
+
+inputs:
+  image_name:
+    description: The name of the Docker image for Galaxy application.
+    default: "bgruening/galaxy-stable"
+  database_image_name:
+    description: The name of the Docker image for MySQL database.
+    default: "mysql:5.7"
+  instance_flavor:
+    type: string
+    description: The flavor of the virtual machine to be used.
+  storage_size_gb:
+    type: integer
+    default: 10
+    description: The size in GB of the encrypted persistent storage for MySQL database.
+  admin_email:
+    type: string
+    description: Email address for Galaxy application administrator.
+  api_key:
+    type: string
+    description: API key for accessing Galaxy services.
+
+node_templates:
+
+  compute_node:
+    type: cloudify.nodes.Compute
+    properties:
+      flavor: { get_input: instance_flavor }
+
+  galaxy_container:
+    type: cloudify.nodes.DockerContainer
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: compute_node
+    properties:
+      image: { get_input: image_name }
+      container_ports:
+        - port: 8080
+
+  mysql_data_volume:
+    type: cloudify.nodes.Volume
+    interfaces:
+      volume_driver:
+        create:
+          properties:
+            size: { get_input: storage_size_gb }
+            encrypted: true
+
+  mysql_container:
+    type: cloudify.nodes.DockerContainer
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: compute_node
+      - type: cloudify.relationships.volumes_connected
+        target: mysql_data_volume
+    properties:
+      image: { get_input: database_image_name }
+      container_ports:
+        - port: 3306
+
+workflows:
+
+  setup_galaxy_environment:
+    mapping: workflow_mappings.yaml
+    inputs:
+      admin_email: { get_input: admin_email }
+      api_key: { get_input: api_key }
+
+outputs:
+  galaxy_url:
+    value: { concat: [ "http://", { get_attribute: [ compute_node, public_ips ] }, ":8080" ] }

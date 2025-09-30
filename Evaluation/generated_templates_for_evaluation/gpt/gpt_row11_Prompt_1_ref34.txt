@@ -1,0 +1,178 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: >
+  TOSCA template to deploy a clustered Galaxy instance with SLURM scheduler on CentOS 7,
+  supporting hybrid environments, with configurable parameters and reference data management
+  via CernVM-FS, including notification features.
+
+metadata:
+  template_name: galaxy_cluster_with_slurm
+  template_author: INDIGO Orchestrator
+  template_version: 1.0
+
+topology_template:
+  inputs:
+    admin_email:
+      type: string
+      description: Email address for the Galaxy admin user
+      required: true
+    admin_api_key:
+      type: string
+      description: Galaxy admin user's API key
+      required: true
+    galaxy_version:
+      type: string
+      description: Version of Galaxy to install
+      required: true
+      default: "22.01"
+    instance_description:
+      type: string
+      description: Description for the Galaxy instance
+      required: false
+    ssh_key:
+      type: string
+      description: SSH public key to configure for instance access
+      required: true
+    worker_count:
+      type: integer
+      description: Number of worker nodes in the cluster
+      default: 2
+      required: true
+    frontend_cpu:
+      type: integer
+      description: Number of CPUs for the front-end node
+      default: 4
+    frontend_ram:
+      type: integer
+      description: RAM (in MB) for the front-end node
+      default: 8192
+    worker_cpu:
+      type: integer
+      description: Number of CPUs for each worker node
+      default: 4
+    worker_ram:
+      type: integer
+      description: RAM (in MB) for each worker node
+      default: 8192
+    storage_size:
+      type: scalar-unit.size
+      description: Amount of storage required for Galaxy
+      default: 100 GB
+    storage_encrypted:
+      type: boolean
+      description: Enable encryption for Galaxy storage
+      default: false
+    hybrid_env:
+      type: boolean
+      description: Enable support for hybrid cloud environments
+      default: false
+    additional_software:
+      type: list
+      entry_schema:
+        type: string
+      description: List of additional software to install
+      required: false
+    galaxy_tools:
+      type: list
+      entry_schema:
+        type: string
+      description: List of Galaxy tools to install
+      required: false
+    reference_data:
+      type: list
+      entry_schema:
+        type: string
+      description: List of reference data resources to install
+      required: false
+    configure_cvmfs:
+      type: boolean
+      description: Enable and configure CernVM-FS for reference data
+      default: false
+    confirmation_email:
+      type: string
+      description: Email address to send setup confirmation and login instructions
+      required: true
+
+  node_templates:
+
+    galaxy_frontend:
+      type: indigo.nodes.Compute
+      properties:
+        image: "CentOS-7"
+        num_cpus: { get_input: frontend_cpu }
+        mem_size: { get_input: frontend_ram }
+        ssh_key: { get_input: ssh_key }
+        description: { get_input: instance_description }
+        hybrid_env: { get_input: hybrid_env }
+      requirements:
+        - local_storage: galaxy_storage
+        - cluster: galaxy_cluster
+      interfaces:
+        Standard:
+          create: scripts/install_galaxy_frontend.sh
+          configure:
+            implementation: scripts/configure_galaxy.sh
+            inputs:
+              galaxy_version: { get_input: galaxy_version }
+              admin_email: { get_input: admin_email }
+              admin_api_key: { get_input: admin_api_key }
+              galaxy_tools: { get_input: galaxy_tools }
+              additional_software: { get_input: additional_software }
+              reference_data: { get_input: reference_data }
+              configure_cvmfs: { get_input: configure_cvmfs }
+              confirmation_email: { get_input: confirmation_email }
+              storage_encrypted: { get_input: storage_encrypted }
+
+    galaxy_worker:
+      type: indigo.nodes.Compute
+      properties:
+        image: "CentOS-7"
+        num_cpus: { get_input: worker_cpu }
+        mem_size: { get_input: worker_ram }
+        ssh_key: { get_input: ssh_key }
+        hybrid_env: { get_input: hybrid_env }
+      interfaces:
+        Standard:
+          create: scripts/install_worker.sh
+          configure:
+            implementation: scripts/configure_worker.sh
+            inputs:
+              slurm: true
+              configure_cvmfs: { get_input: configure_cvmfs }
+              additional_software: { get_input: additional_software }
+      capabilities:
+        scalable:
+          min_instances: 1
+          max_instances: 100
+          default_instances: { get_input: worker_count }
+
+    galaxy_storage:
+      type: indigo.nodes.StorageBlock
+      properties:
+        size: { get_input: storage_size }
+        encrypted: { get_input: storage_encrypted }
+
+    galaxy_cluster:
+      type: indigo.nodes.slurm.Cluster
+      properties:
+        frontend_node: galaxy_frontend
+        worker_nodes: galaxy_worker
+        worker_count: { get_input: worker_count }
+
+    cvmfs_client:
+      type: indigo.nodes.CernVM-FS.Client
+      properties:
+        enable: { get_input: configure_cvmfs }
+        reference_data: { get_input: reference_data }
+      requirements:
+        - host: galaxy_frontend
+        - host: galaxy_worker
+
+  outputs:
+    galaxy_url:
+      description: URL to access the deployed Galaxy instance
+      value: { get_attribute: [ galaxy_frontend, endpoint, galaxy_url ] }
+    confirmation:
+      description: "Setup confirmation email sent to user with instructions"
+      value: { get_input: confirmation_email }

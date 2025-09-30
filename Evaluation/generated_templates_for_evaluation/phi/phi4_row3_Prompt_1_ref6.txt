@@ -1,0 +1,68 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: >
+  System for running a JavaScript application with efficient data storage capabilities.
+  
+imports:
+  - dtypes/alien4cloud.nodes.Compute.yaml
+  - dtypes/alien4cloud.nodes.Database.yaml
+  - dtypes/alien4cloud.relationships.ConnectivityRequirement.yaml
+  
+topology_template:
+  inputs:
+    app_port:
+      type: integer
+    db_port:
+      type: integer
+
+  node_templates:
+    js_server:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu_latest
+        flavor: m1.small
+        os_type: linux
+        capabilities:
+          host:
+            num_cpus: 2
+            mem_size: 2048
+      requirements:
+        - host:
+            node: infrastructure_node
+
+    data_store:
+      type: tosca.nodes.Database
+      properties:
+        db_type: postgresql
+        image: postgresql:13
+      capabilities:
+        endpoint:
+          port: { get_input: db_port }
+
+    infrastructure_node:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu_latest
+        flavor: m1.medium
+
+  relationships:
+    - type: alien4cloud.relationships.ConnectivityRequirement
+      target: data_store
+      source: js_server
+
+  policies:
+    expose_js_app:
+      type: tosca.policies.network.ExposePorts
+      properties:
+        ports:
+          - { get_input: app_port }
+        protocol: TCP
+      targets: [js_server]
+
+    expose_db:
+      type: tosca.policies.network.ExposePorts
+      properties:
+        ports:
+          - { get_input: db_port }
+        protocol: TCP
+      targets: [data_store]

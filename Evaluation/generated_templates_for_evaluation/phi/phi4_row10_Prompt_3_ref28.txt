@@ -1,0 +1,95 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+metadata:
+  template_name: single-node-elasticsearch-service
+  template_author: INDIGO Orchestrator
+
+description: |
+  This TOSCA template describes a deployment of a single-node Elasticsearch service on an Ubuntu-based virtual machine.
+  
+topology_template:
+
+  node_templates:
+
+    # Virtual Machine Template
+    elasticsearch_vm:
+      type: tosca.nodes.Compute
+      properties:
+        image: ubuntu-16.04
+        cpu_count: { get_input: cpus }
+        mem_size: { get_input: memory }
+
+    # Elasticsearch Service Node
+    elasticsearch_service:
+      type: tosca.nodes.ServiceComponent
+      properties:
+        version: { get_input: es_version, default: '7.4.1' }
+        config:
+          network.host: 0.0.0.0
+          http.port: 9200
+      requirements:
+        - host:
+            node: elasticsearch_vm
+      interfaces:
+        Standard:
+          create:
+            inputs:
+              elastic_password: { get_input: elastic_password }
+              kibana_system_password: { get_input: kibana_system_password }
+
+    # Network Configuration
+    public_network:
+      type: tosca.nodes.network.Network
+      properties:
+        ip_version: 4
+        address_prefix: 0.0.0.0/0
+
+    elasticsearch_endpoint:
+      type: tosca.nodes.Endpoint
+      metadata:
+        target_node_name: elasticsearch_service
+      requirements:
+        - virtual_link:
+            node: public_network
+
+  artifacts:
+
+    es_installation_script:
+      file: install-elasticsearch.sh
+      type: tosca.artifacts.FileArchive
+
+  groups:
+
+  policies:
+
+inputs:
+
+  cpus:
+    default: '2'
+    constraints:
+      - valid_values: [2, 4]
+
+  memory:
+    default: '4096'
+    constraints:
+      - valid_values: [4096, 8192]
+
+  es_version:
+    description: The version of Elasticsearch to deploy
+    type: string
+
+  elastic_password:
+    description: Password for the 'elastic' user
+    type: password
+
+  kibana_system_password:
+    description: Password for the 'kibana' system user
+    type: password
+
+outputs:
+
+  elasticsearch_endpoint_url:
+    value: { concat: [ "http://", { get_attribute: [ elasticsearch_service, host_node, public_address ] }, ":9200" ] }
+
+  node_public_ip:
+    value: { get_attribute: [ elasticsearch_vm, public_address ] }

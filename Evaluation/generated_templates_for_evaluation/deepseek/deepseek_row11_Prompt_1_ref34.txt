@@ -1,0 +1,142 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - indigo_constants: indigo_constants.yaml
+  - indigo_types: indigo_types.yaml
+  - indigo_interfaces: indigo_interfaces.yaml
+
+topology_template:
+  description: Galaxy Cluster Deployment
+  inputs:
+    - admin_email:
+        type: string
+        required: true
+    - api_key:
+        type: string
+        required: true
+    - galaxy_version:
+        type: string
+        required: true
+    - instance_description:
+        type: string
+        required: true
+    - ssh_public_key:
+        type: string
+        required: true
+    - num_workers:
+        type: integer
+        required: true
+    - frontend_specs:
+        type: indigo_types.NodeSpecs
+        required: true
+    - worker_specs:
+        type: indigo_types.NodeSpecs
+        required: true
+    - storage_size:
+        type: integer
+        required: true
+    - hybrid_support:
+        type: boolean
+        required: false
+        default: false
+    - storage_encryption:
+        type: boolean
+        required: false
+        default: false
+    - encryption_key:
+        type: string
+        required: false
+    - galaxy_tools:
+        type: list
+        required: false
+    - reference_data:
+        type: list
+        required: false
+    - cernvm_fs:
+        type: boolean
+        required: false
+        default: false
+    - cernvm_fs_repo:
+        type: string
+        required: false
+    - cernvm_fs_cache_size:
+        type: integer
+        required: false
+
+  node_templates:
+    galaxy_frontend:
+      type: indigo_types.Compute
+      properties:
+        os: CentOS 7
+        specs: {get_input: frontend_specs}
+        ssh_key: {get_input: ssh_public_key}
+      interfaces:
+        indigo.Interfaces.Compute:
+          - configure: scripts/configure_galaxy_frontend.sh
+          - start: scripts/start_galaxy_frontend.sh
+        indigo.Interfaces.Storage:
+          - attach_volume: {get_input: storage_size}
+          - encrypt_volume: {get_input: storage_encryption}
+          - encryption_key: {get_input: encryption_key}
+
+    galaxy_workers:
+      type: indigo_types.Compute
+      properties:
+        os: CentOS 7
+        specs: {get_input: worker_specs}
+        ssh_key: {get_input: ssh_public_key}
+        count: {get_input: num_workers}
+      interfaces:
+        indigo.Interfaces.Compute:
+          - configure: scripts/configure_galaxy_worker.sh
+          - start: scripts/start_galaxy_worker.sh
+        indigo.Interfaces.Storage:
+          - attach_volume: {get_input: storage_size}
+          - encrypt_volume: {get_input: storage_encryption}
+          - encryption_key: {get_input: encryption_key}
+
+    slurm_controller:
+      type: indigo_types.Compute
+      properties:
+        os: CentOS 7
+        specs: {get_input: frontend_specs}
+        ssh_key: {get_input: ssh_public_key}
+      interfaces:
+        indigo.Interfaces.Compute:
+          - configure: scripts/configure_slurm_controller.sh
+          - start: scripts/start_slurm_controller.sh
+        indigo.Interfaces.Storage:
+          - attach_volume: {get_input: storage_size}
+          - encrypt_volume: {get_input: storage_encryption}
+          - encryption_key: {get_input: encryption_key}
+
+    galaxy_reference_data:
+      type: indigo_types.Storage
+      properties:
+        data: {get_input: reference_data}
+        cernvm_fs: {get_input: cernvm_fs}
+        cernvm_fs_repo: {get_input: cernvm_fs_repo}
+        cernvm_fs_cache_size: {get_input: cernvm_fs_cache_size}
+
+  relationships:
+    - galaxy_frontend:
+        - connects_to: slurm_controller
+        - connects_to: galaxy_workers
+        - connects_to: galaxy_reference_data
+
+  workflows:
+    deploy:
+      steps:
+        - deploy frontend
+        - deploy workers
+        - deploy slurm_controller
+        - deploy reference_data
+        - configure frontend
+        - configure workers
+        - configure slurm_controller
+        - configure reference_data
+        - send_confirmation_email:
+            inputs:
+              admin_email: {get_input: admin_email}
+              login_instructions: "Login to your Galaxy instance at http://frontend_ip"

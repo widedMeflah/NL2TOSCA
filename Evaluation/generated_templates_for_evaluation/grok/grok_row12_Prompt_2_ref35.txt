@@ -1,0 +1,159 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA template for deploying a Galaxy application on a virtual machine using INDIGO orchestrator
+
+topology_template:
+  inputs:
+    galaxy_version:
+      type: string
+      description: Version of Galaxy to install
+      required: true
+    instance_description:
+      type: string
+      description: Description of the Galaxy instance
+      required: true
+    cpu_count:
+      type: integer
+      description: Number of CPU cores for the virtual machine
+      required: true
+      default: 2
+    memory_size:
+      type: string
+      description: Memory size for the virtual machine (e.g., 4 GB)
+      required: true
+      default: "4 GB"
+    disk_size:
+      type: string
+      description: Disk size for the virtual machine (minimum 50 GB)
+      required: true
+      default: "50 GB"
+    admin_email:
+      type: string
+      description: Email address for the admin user
+      required: true
+    admin_api_key:
+      type: string
+      description: API key for the admin user
+      required: true
+    ssh_public_key:
+      type: string
+      description: Public SSH key for VM access
+      required: true
+    galaxy_data_dir:
+      type: string
+      description: Directory path for storing Galaxy data
+      required: true
+      default: "/galaxy/data"
+    enable_encrypted_storage:
+      type: boolean
+      description: Enable encryption for storage
+      required: false
+      default: false
+    vault_server_url:
+      type: string
+      description: URL of the Vault server for encryption keys (if encryption is enabled)
+      required: false
+    vault_token:
+      type: string
+      description: Token for accessing Vault server (if encryption is enabled)
+      required: false
+    install_reference_data:
+      type: boolean
+      description: Option to install reference data for Galaxy
+      required: false
+      default: false
+    galaxy_flavor:
+      type: string
+      description: Specific Galaxy flavor for tool installation
+      required: false
+      default: "usegalaxy"
+
+  node_templates:
+    galaxy_vm:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: { get_input: cpu_count }
+        mem_size: { get_input: memory_size }
+        disk_size: { get_input: disk_size }
+      capabilities:
+        host:
+          properties:
+            num_cpus: { get_input: cpu_count }
+            mem_size: { get_input: memory_size }
+        os:
+          properties:
+            type: linux
+            distribution: ubuntu
+            version: "20.04"
+      requirements:
+        - local_storage:
+            node: galaxy_storage
+            relationship:
+              type: tosca.relationships.AttachesTo
+              properties:
+                location: { get_input: galaxy_data_dir }
+
+    galaxy_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: { get_input: disk_size }
+        encrypted: { get_input: enable_encrypted_storage }
+      requirements:
+        - encryption_key_management:
+            node: vault_server
+            relationship:
+              type: tosca.relationships.DependsOn
+            capability: tosca.capabilities.Encryption
+            condition: { get_input: enable_encrypted_storage }
+
+    vault_server:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        url: { get_input: vault_server_url }
+        token: { get_input: vault_token }
+      requirements:
+        - host:
+            node: galaxy_vm
+            relationship:
+              type: tosca.relationships.HostedOn
+
+    galaxy_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        version: { get_input: galaxy_version }
+        description: { get_input: instance_description }
+        admin_email: { get_input: admin_email }
+        admin_api_key: { get_input: admin_api_key }
+        data_dir: { get_input: galaxy_data_dir }
+        install_reference_data: { get_input: install_reference_data }
+        flavor: { get_input: galaxy_flavor }
+      requirements:
+        - host:
+            node: galaxy_vm
+            relationship:
+              type: tosca.relationships.HostedOn
+        - storage:
+            node: galaxy_storage
+            relationship:
+              type: tosca.relationships.AttachesTo
+
+    ssh_access:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        public_key: { get_input: ssh_public_key }
+      requirements:
+        - host:
+            node: galaxy_vm
+            relationship:
+              type: tosca.relationships.HostedOn
+
+  outputs:
+    galaxy_instance_description:
+      description: Description of the deployed Galaxy instance
+      value: { get_property: [galaxy_app, description] }
+    galaxy_admin_email:
+      description: Admin email for the Galaxy instance
+      value: { get_property: [galaxy_app, admin_email] }
+    galaxy_data_directory:
+      description: Directory path for Galaxy data
+      value: { get_property: [galaxy_app, data_dir] }

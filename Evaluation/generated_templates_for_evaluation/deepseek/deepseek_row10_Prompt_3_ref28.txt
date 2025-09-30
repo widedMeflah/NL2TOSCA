@@ -1,0 +1,98 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA template for deploying a single-node Elasticsearch service on a virtual machine.
+
+parameters:
+  es_version:
+    type: string
+    default: '7.4.1'
+    description: Version of Elasticsearch to deploy
+  cpus:
+    type: integer
+    default: 2
+    allowed_values: [2, 4]
+    description: Number of virtual CPUs for the VM
+  memory:
+    type: integer
+    default: 4
+    allowed_values: [4, 8]
+    description: Amount of memory in GB for the VM
+  elastic_password:
+    type: string
+    required: true
+    description: Password for the 'elastic' user
+  kibana_password:
+    type: string
+    required: true
+    description: Password for the 'kibana' system user
+
+node_templates:
+  es_vm:
+    type: tosca.nodes.Compute:VirtualMachine
+    properties:
+      os: 
+        type: tosca.nodes.OperatingSystem
+        properties:
+          type: Linux
+          distribution: Ubuntu
+          version: '16.04'
+      cpu:
+        num_cpus: {get_input: cpus}
+      memory:
+        size: {get_input: memory} 
+    capabilities:
+      endpoint:
+        properties:
+          ports:
+            - 9200
+
+  es_network:
+    type: tosca.nodes.Network
+    properties:
+      name: Public Network
+      vendor: Public
+      network_type: ipv4
+
+  es_subnet:
+    type: tosca.nodes.Network:Subnet
+    properties:
+      cidr: 10.0.0.0/24
+      gateway: 10.0.0.1
+      start_ip: 10.0.0.2
+      end_ip: 10.0.0.100
+
+  es_security_group:
+    type: tosca.nodes.SecurityGroup
+    properties:
+      name: Elasticsearch Security Group
+      rules:
+        - protocol: tcp
+          ports: 9200
+          direction: ingress
+
+  es_elasticsearch:
+    type: tosca.nodes.SoftwareComponent.Elasticsearch
+    properties:
+      version: {get_input: es_version}
+      bind_address: 0.0.0.0
+      elastic_password: {get_input: elastic_password}
+      kibana_password: {get_input: kibana_password}
+    relationships:
+      - type: tosca.relationships.HostedOn
+        target: es_vm
+      - type: tosca.relationships.ConnectsTo
+        target: es_network
+
+outputs:
+  elastic_search_endpoint:
+    description: URL endpoint for accessing Elasticsearch
+    value: {get_attribute: [es_vm, public_ip]}
+  public_ip:
+    description: Public IP address of the Elasticsearch node
+    value: {get_attribute: [es_vm, public_ip]}
+  credentials:
+    description: Credentials for accessing Elasticsearch
+    value:
+      elastic_user: elastic
+      elastic_password: {get_input: elastic_password}

@@ -1,0 +1,141 @@
+
+tosca_definitions_version: alien4cloud-1.4
+
+topology_template:
+  template_name: ElasticsearchDeployment
+  template_version: 1.0
+  description: Deployment topology for Alien4Cloud with remote Elasticsearch node
+
+  imports:
+    - tosca-normative-types:1.0.0-ALIEN20
+    - alien4cloud-types:1.4.0
+    - alien4cloud-network-types:1.4.0
+
+  node_templates:
+    Compute_Alien4Cloud:
+      type: alien4cloud.Compute.Linux
+      properties:
+        name: Alien4Cloud Server
+        template: ubuntu
+        flavor: small
+      capabilities:
+        hosting: {}
+      dependencies:
+        JDK_Alien4Cloud:
+          type: tosca.nodes.SoftwareComponent
+          properties:
+            name: JDK 8
+            version: 8
+            package: openjdk-8-jdk
+          dependencies:
+            - Compute_Alien4Cloud
+
+    JDK_Alien4Cloud:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: JDK 8
+        version: 8
+        package: openjdk-8-jdk
+
+    Alien4Cloud_Application:
+      type: alien4cloud.Application.SoftwareComponent
+      properties:
+        name: Alien4Cloud Application
+        version: 1.0
+        package: alien4cloud-app
+      dependencies:
+        - Compute_Alien4Cloud
+        - Elasticsearch
+      relationships:
+        - type: HostedOn
+          target: Compute_Alien4Cloud
+        - type: ConnectsTo
+          target: Elasticsearch
+
+    Compute_Elasticsearch:
+      type: alien4cloud.Compute.Linux
+      properties:
+        name: Elasticsearch Server
+        template: ubuntu
+        flavor: small
+      capabilities:
+        hosting: {}
+      dependencies:
+        JDK_Elasticsearch:
+          type: tosca.nodes.SoftwareComponent
+          properties:
+            name: JDK 8
+            version: 8
+            package: openjdk-8-jdk
+          dependencies:
+            - Compute_Elasticsearch
+
+    JDK_Elasticsearch:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: JDK 8
+        version: 8
+        package: openjdk-8-jdk
+
+    Elasticsearch:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: Elasticsearch
+        version: 7.10.2
+        package: elasticsearch
+      dependencies:
+        - Compute_Elasticsearch
+      relationships:
+        - type: HostedOn
+          target: Compute_Elasticsearch
+
+    Network:
+      type: alien4cloud.Network
+      properties:
+        name: Private Network
+        network_name: private
+        network_id: private
+
+    NetworkInterface_Alien4Cloud:
+      type: alien4cloud.NetworkInterface
+      properties:
+        name: Alien4Cloud Interface
+        network_name: private
+        network_id: private
+      relationships:
+        - type: connectedTo
+          target: Network
+
+    NetworkInterface_Elasticsearch:
+      type: alien4cloud.NetworkInterface
+      properties:
+        name: Elasticsearch Interface
+        network_name: private
+        network_id: private
+      relationships:
+        - type: connectedTo
+          target: Network
+
+    Compute_Alien4Cloud_Network:
+      type: alien4cloud.NetworkInterface
+      properties:
+        name: Alien4Cloud Network Interface
+        network_name: private
+        network_id: private
+      relationships:
+        - type: connectedTo
+          target: Network
+      dependencies:
+        - Compute_Alien4Cloud
+
+    Compute_Elasticsearch_Network:
+      type: alien4cloud.NetworkInterface
+      properties:
+        name: Elasticsearch Network Interface
+        network_name: private
+        network_id: private
+      relationships:
+        - type: connectedTo
+          target: Network
+      dependencies:
+        - Compute_Elasticsearch

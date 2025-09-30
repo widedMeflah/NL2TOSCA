@@ -1,0 +1,72 @@
+
+tosca_definitions_version: alien_dsl_2_0_0
+
+description: A system deploying a Java application connected to a search engine across two separate environments, ensuring network accessibility and inter-service communication.
+
+topology_template:
+  node_templates:
+    # Main Application Environment
+    app_compute:
+      type: alien.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    app_java_runtime:
+      type: alien.nodes.Java
+      requirements:
+        - host:
+            node: app_compute
+            capability: tosca.capabilities.Container.Runtime
+
+    java_application:
+      type: alien.nodes.War
+      properties:
+        context_path: /myapp
+      requirements:
+        - host:
+            node: app_java_runtime
+            capability: tosca.capabilities.Container.Runtime
+        - connects_to_search_engine:
+            node: search_engine
+            capability: tosca.capabilities.Endpoint
+            relationship: tosca.relationships.ConnectsTo
+      capabilities:
+        application_endpoint:
+          type: tosca.capabilities.Endpoint.WebServer
+          properties:
+            protocol: tcp
+            port: 8080
+
+    # Search Engine Environment
+    search_engine_compute:
+      type: alien.nodes.Compute
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+
+    search_engine_java_runtime:
+      type: alien.nodes.Java
+      requirements:
+        - host:
+            node: search_engine_compute
+            capability: tosca.capabilities.Container.Runtime
+
+    search_engine:
+      type: alien.nodes.ElasticSearch
+      properties:
+        version: "7.x"
+      requirements:
+        - host:
+            node: search_engine_java_runtime
+            capability: tosca.capabilities.Container.Runtime
+      capabilities:
+        search_engine_endpoint:
+          type: tosca.capabilities.Endpoint
+          properties:
+            protocol: tcp
+            port: 9200

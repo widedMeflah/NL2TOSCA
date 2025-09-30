@@ -1,0 +1,92 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: MongoDB_Topology
+  template_version: 1.0.0
+  template_author: User
+
+description: A topology template for a MongoDB service hosted on a Linux-based compute instance with configurable port and output attributes.
+
+node_types:
+  Custom.Compute.Linux:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_type:
+        type: string
+        default: linux
+        constraints:
+          - equal: linux
+      os_distribution:
+        type: string
+        default: ubuntu
+
+  Custom.Database.MongoDB:
+    derived_from: tosca.nodes.Database
+    properties:
+      port:
+        type: integer
+        default: 27017
+        constraints:
+          - in_range: [27017, 28000]
+    requirements:
+      - host:
+          capability: tosca.capabilities.Container
+          node: Custom.Compute.Linux
+          relationship: tosca.relationships.HostedOn
+    capabilities:
+      endpoint:
+        type: tosca.capabilities.Endpoint.Database
+    interfaces:
+      Standard:
+        configure:
+          implementation: scripts/configure_mongodb.sh
+        start:
+          implementation: scripts/start_mongodb.sh
+        stop:
+          implementation: scripts/stop_mongodb.sh
+
+topology_template:
+  node_templates:
+    LinuxCompute:
+      type: Custom.Compute.Linux
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+            disk_size: 20 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: linux
+            distribution: ubuntu
+            version: 20.04
+
+    MongoDB:
+      type: Custom.Database.MongoDB
+      properties:
+        port: { get_input: mongodb_port }
+      requirements:
+        - host: LinuxCompute
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            port: { get_property: [SELF, port] }
+            initiator: source
+
+  inputs:
+    mongodb_port:
+      type: integer
+      description: The port on which MongoDB will be accessible
+      default: 27017
+      constraints:
+        - in_range: [27017, 28000]
+
+  outputs:
+    mongodb_port:
+      description: The port on which MongoDB is accessible
+      value: { get_property: [MongoDB, port] }
+    host_ip:
+      description: The IP address of the host machine
+      value: { get_attribute: [LinuxCompute, public_ip_address] }

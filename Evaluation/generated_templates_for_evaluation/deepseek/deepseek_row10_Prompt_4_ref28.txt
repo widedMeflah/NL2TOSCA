@@ -1,0 +1,81 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: Elasticsearch deployment on Ubuntu VM
+
+topology_template:
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 2
+        mem_size: 4 GB
+        os: Ubuntu
+        os_version: 22.04 LTS
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: Elasticsearch_Network
+        network_type: public
+
+    Elasticsearch:
+      type: tosca.nodes.Software
+      properties:
+        version: 8.6.1
+        install_method: apt
+        repo: 'deb [arch=amd64] https://artifacts.elastic.co/packages/8.x/apt stable main'
+        packages:
+          - elasticsearch
+        config:
+          elasticsearch.yml: |
+            network.host: _eth0_
+            cluster.name: my_cluster
+            bootstrap.memory_lock: true
+            ES_JAVA_OPTS: -Xms2g -Xmx2g
+        passwords:
+          elasticsearch: {get_input: elasticsearch_password}
+          kibana: {get_input: kibana_password}
+      dependencies:
+        - Compute
+        - Network
+
+    Elasticsearch_Configuration:
+      type: tosca.nodes.Configuration
+      properties:
+        operations:
+          install: |
+            apt-get update
+            apt-get install -y elasticsearch
+          configure: |
+            echo 'cluster.name: my_cluster' > /etc/elasticsearch/elasticsearch.yml
+            echo 'network.host: _eth0_' >> /etc/elasticsearch/elasticsearch.yml
+            echo 'bootstrap.memory_lock: true' >> /etc/elasticsearch/elasticsearch.yml
+            echo 'ES_JAVA_OPTS: -Xms2g -Xmx2g' >> /etc/elasticsearch/elasticsearch.yml
+          start: |
+            systemctl enable elasticsearch
+            systemctl start elasticsearch
+      dependencies:
+        - Elasticsearch
+
+  inputs:
+    elasticsearch_password:
+      type: string
+      description: Password for Elasticsearch user
+      required: true
+      constraints:
+        - min_length: 8
+        - max_length: 30
+
+    kibana_password:
+      type: string
+      description: Password for Kibana user
+      required: true
+      constraints:
+        - min_length: 8
+        - max_length: 30
+
+    es_version:
+      type: string
+      default: 8.6.1
+      description: Version of Elasticsearch to install

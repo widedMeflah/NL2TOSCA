@@ -1,0 +1,72 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  node_templates:
+    web_server:
+      type: tosca.nodes.WebServer
+      properties:
+        version: 2.4
+        port: 80
+        website_files: /var/www
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+      requirements:
+        - host: web_compute
+        - network: private_network
+        - endpoint: data_endpoint
+
+    web_compute:
+      type: tosca.nodes.Compute
+      properties:
+        num_cpus: 1
+        mem_size: 1 GB
+      capabilities:
+        endpoint:
+          properties:
+            protocol: tcp
+            ports: 22
+
+    private_network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: private
+
+    data_endpoint:
+      type: tosca.nodes.Network
+      properties:
+        network_name: public
+      requirements:
+        - bind:
+            node: web_server
+            relationship: tosca.relationships.Network
+            properties:
+              protocol: http
+              ports: 80
+
+    health_check:
+      type: tosca.nodes.HealthCheck
+      properties:
+        check_interval: 30
+        timeout: 10
+      requirements:
+        - server: web_server
+
+  relationship_templates:
+    start:
+      type: tosca.relationships.Start
+    stop:
+      type: tosca.relationships.Stop
+    restart:
+      type: tosca.relationships.Restart
+
+  node_templates:
+    website_url:
+      type: tosca.nodes.Root
+      properties:
+        url: { get_attribute: [web_server, url] }
+      requirements:
+        - server: web_server

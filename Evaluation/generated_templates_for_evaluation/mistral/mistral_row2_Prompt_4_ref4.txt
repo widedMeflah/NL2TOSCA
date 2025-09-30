@@ -1,0 +1,99 @@
+
+topology_template_content:
+  nodes:
+    - type: Compute
+      name: compute_node
+      properties:
+        ram: 2048
+        cpu: 2
+        disk: 40
+        os: generic
+        architecture: x86_64
+
+    - type: Apache
+      name: apache_server
+      properties:
+        service_offering_ref: ApacheOffering
+
+    - type: Workflow
+      name: start_apache
+      properties:
+        action_list:
+          - action: invoke
+            provider: tosca_simple_yaml
+            operation: start_apache
+            artifact_library:
+              artifact_refs:
+                - apacheOffering
+
+    - type: Workflow
+      name: stop_apache
+      properties:
+        action_list:
+          - action: invoke
+            provider: tosca_simple_yaml
+            operation: stop_apache
+            artifact_library:
+              artifact_refs:
+                - apacheOffering
+
+    - type: Workflow
+      name: restart_apache
+      properties:
+        action_list:
+          - action: invoke
+            provider: tosca_simple_yaml
+            operation: restart_apache
+            artifact_library:
+              artifact_refs:
+                - apacheOffering
+
+    - type: Workflow
+      name: access_welcome_page
+      properties:
+        action_list:
+          - action: invoke
+            provider: tosca_simple_yaml
+            operation: exec_curl
+            artifact_library:
+              artifact_refs:
+                - curlTool
+        inputs:
+          - name: apache_server_ip
+        outputs:
+          - name: response
+
+  relations:
+    - from: apache_server
+      to: compute_node
+      relation_type: DeploysOn
+
+    - from: start_apache
+      to: apache_server
+      relation_type: Starts
+
+    - from: stop_apache
+      to: apache_server
+      relation_type: Stops
+
+    - from: restart_apache
+      to: apache_server
+      relation_type: Restarts
+
+    - from: access_welcome_page
+      to: apache_server
+      relation_type: Invokes
+
+artifacts:
+  - name: apacheOffering
+    type: service_template
+    artifact_type: TOSCA_Service_Template
+    artifact_version: 1.0.0
+    location: ApacheServer.yaml
+
+  - name: curlTool
+    type: executable
+    artifact_type: binary
+    artifact_version: 7.64.0
+    location: curl-7.64.0.tar.gz
+    install_method: tar

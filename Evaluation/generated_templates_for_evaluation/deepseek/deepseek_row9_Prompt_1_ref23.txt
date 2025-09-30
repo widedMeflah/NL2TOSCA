@@ -1,0 +1,66 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Plant Classification Application Deployment
+  node_templates:
+    swarm_cluster:
+      type: tosca.nodes.Indigo.Swarm.Cluster
+      properties:
+        ports:
+          - 80
+          - 2377
+        networks:
+          - name: plant_network
+            driver: overlay
+            ipam:
+              driver: default
+              config:
+                - subnet: 10.0.0.0/24
+
+    plant_classification_service:
+      type: tosca.nodes.Indigo.Swarm.Service
+      properties:
+        image: plant-classification-app:latest
+        ports:
+          - "80:80"
+        environment:
+          - MODEL_PATH=/app/models
+        resources:
+          limits:
+            cpus: '2'
+            memory: 4G
+          reservations:
+            cpus: '1'
+            memory: 2G
+        deploy:
+          mode: global
+          resources:
+            limits:
+              cpus: '2'
+              memory: 4G
+          restart_policy:
+            condition: on-failure
+            delay: 5s
+            max_attempts: 3
+        networks:
+          - plant_network
+      relationships:
+        - type: tosca.relationships.Network
+          target: plant_network
+        - type: tosca.relationships.Host
+          target: swarm_cluster
+
+    plant_network:
+      type: tosca.nodes.Network
+      properties:
+        name: plant_network
+        driver: overlay
+        ipam:
+          driver: default
+          config:
+            - subnet: 10.0.0.0/24
+
+  outputs:
+    plant_service_endpoint:
+      type: string
+      value: { get_attribute: [plant_classification_service, endpoints, "80"] }

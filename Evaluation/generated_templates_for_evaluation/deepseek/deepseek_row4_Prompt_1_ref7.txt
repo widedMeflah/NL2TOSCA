@@ -1,0 +1,39 @@
+tosca_definitions_version: alien4cloud-1.3
+
+description: TOSCA-compliant template for setting up a reliable data storage and management system.
+
+topology_template:
+  description: Data Storage and Management System
+
+  node_templates:
+    Server:
+      type: tosca.nodes.Compute
+      properties:
+        operating_system: Ubuntu
+        architecture: x86_64
+
+    DataStorageService:
+      type: tosca.nodes.Database
+      properties:
+        port: 27017
+        protocol: tcp
+        default_port: 27017
+      requirements:
+        - host: Server
+        - network: PrivateNetwork
+
+    PrivateNetwork:
+      type: tosca.networks.Network
+      properties:
+        network_name: private_network
+        protocol: tcp
+        port: 27017
+
+  outputs:
+    server_ip:
+      description: IP address of the server
+      value: { get_attribute: [Server, public_address] }
+
+    service_port:
+      description: Port number used for data operations
+      value: { get_attribute: [DataStorageService, port] }

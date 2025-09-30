@@ -1,0 +1,39 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+imports:
+  - https://raw.githubusercontent.com/indigo-dc/tosca-types/master/custom_types.yaml
+
+topology_template:
+  node_templates:
+    my_deep_learning_app:
+      type: indigo.nodes.DockerApplication
+      properties:
+        image: deephdc/deep-oc-plant-classification-theano
+        command: deepaas-run --listen-ip 0.0.0.0
+        cpu_count: 1
+        mem_size: 1024
+        ports:
+          - source: 5000
+            protocol: tcp
+        labels:
+          HAPROXY_GROUP: external
+      capabilities:
+        container_endpoint:
+          properties:
+            port: 5000
+
+    my_load_balancer:
+      type: indigo.nodes.LoadBalancer
+      properties:
+        protocol: tcp
+        port: 5000
+      requirements:
+        - target:
+            node: my_deep_learning_app
+            capability: container_endpoint
+            relationship: indigo.relationships.ConnectsTo
+
+  outputs:
+    application_access_endpoint:
+      description: External endpoint for accessing the deep learning application.
+      value: { concat: [ "tcp://", { get_attribute: [ my_load_balancer, public_address ] }, ":", { get_property: [ my_load_balancer, port ] } ] }

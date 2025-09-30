@@ -1,0 +1,181 @@
+
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  TOSCA template for standing up a scalable Kubernetes cluster with Alien4Cloud,
+  featuring Ubuntu-based master and worker nodes, secure Docker, Flannel overlay,
+  Etcd, dashboard UI, and API access.
+
+imports:
+  - tosca-normative-types:1.0.0
+  - alien-base-types:1.0.0
+
+topology_template:
+  inputs:
+    cluster_dns_domain:
+      type: string
+      description: DNS domain name for the Kubernetes cluster master
+    dashboard_namespace:
+      type: string
+      description: Kubernetes namespace for the dashboard UI
+      default: kube-system
+
+  node_templates:
+
+    # Master Compute Node
+    k8s_master_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+            os_arch: x86_64
+            os_type: linux
+            os_distribution: ubuntu
+        endpoint:
+          properties:
+            protocol: tcp
+            secure: true
+            network_name: private
+      requirements:
+        - network: private_network
+
+    # Worker Compute Nodes (scalable)
+    k8s_worker_host:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4096 MB
+            disk_size: 40 GB
+            os_arch: x86_64
+            os_type: linux
+            os_distribution: ubuntu
+        endpoint:
+          properties:
+            protocol: tcp
+            secure: true
+            network_name: private
+      requirements:
+        - network: private_network
+      scalable:
+        min_instances: 1
+        max_instances: 5
+        default_instances: 1
+
+    # Private Network
+    private_network:
+      type: tosca.nodes.Network
+      properties:
+        network_name: private
+
+    # Etcd Key Value Store
+    etcd:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: k8s_master_host
+      properties:
+        version: "3.4"
+
+    # Docker Engine on Master
+    docker_master:
+      type: tosca.nodes.Container.Runtime.Docker
+      requirements:
+        - host: k8s_master_host
+
+    # Docker Engine on Worker
+    docker_worker:
+      type: tosca.nodes.Container.Runtime.Docker
+      requirements:
+        - host: k8s_worker_host
+
+    # Flannel Overlay on Master
+    flannel_master:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        network_backend: vxlan
+      requirements:
+        - host: k8s_master_host
+        - dependency: etcd
+
+    # Flannel Overlay on Worker
+    flannel_worker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        network_backend: vxlan
+      requirements:
+        - host: k8s_worker_host
+        - dependency: etcd
+
+    # Kubernetes Master Component
+    kube_master:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        role: master
+        dns_domain: { get_input: cluster_dns_domain }
+      requirements:
+        - host: k8s_master_host
+        - dependency: docker_master
+        - dependency: etcd
+        - dependency: flannel_master
+
+    # Kubernetes Worker Component
+    kube_worker:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        role: worker
+      requirements:
+        - host: k8s_worker_host
+        - dependency: docker_worker
+        - dependency: etcd
+        - dependency: flannel_worker
+        - cluster_master: kube_master
+
+    # Kubernetes Command Line Tool (kubectl)
+    kubectl:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        version: "latest"
+      requirements:
+        - host: k8s_master_host
+        - cluster_master: kube_master
+
+    # Kubernetes Dashboard
+    k8s_dashboard:
+      type: tosca.nodes.WebApplication
+      properties:
+        namespace: { get_input: dashboard_namespace }
+        service_type: ClusterIP
+      requirements:
+        - host: k8s_master_host
+        - dependency: kube_master
+
+    # API Endpoint of the master node
+    k8s_api_endpoint:
+      type: tosca.capabilities.Endpoint.Public
+      properties:
+        protocol: https
+        port: 6443
+        url_path: /
+
+    # Dashboard UI Endpoint
+    k8s_dashboard_ui:
+      type: tosca.capabilities.Endpoint.Public
+      properties:
+        protocol: https
+        port: 443
+        url_path: { get_property: [ k8s_dashboard, namespace ] }
+      requirements:
+        - hosted_on: k8s_dashboard
+
+  outputs:
+    dashboard_ui_url:
+      value: { concat: [ "https://", { get_attribute: [ k8s_master_host, public_address ] }, ":443/api/v1/namespaces/", { get_property: [ k8s_dashboard, namespace ] }, "/services/https:kubernetes-dashboard:/proxy/" ] }
+      description: Access URL for Kubernetes dashboard UI
+
+    api_endpoint_url:
+      value: { concat: [ "https://", { get_attribute: [ k8s_master_host, public_address ] }, ":6443/" ] }
+      description: Kubernetes API endpoint for the master node

@@ -1,0 +1,63 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+topology_template:
+  description: Web Application Deployment on Apache Tomcat
+
+  node_templates:
+    Compute:
+      type: tosca.nodes.Compute
+      properties:
+        os_type: { get_input: os_type }
+        architecture: { get_input: architecture }
+
+    JDK:
+      type: company.types.JDK
+      properties:
+        version: '8'
+        download_url: 'https://www.oracle.com/java/technologies/javase-jdk8-downloads.html'
+      requirements:
+        - host: Compute
+
+    Tomcat:
+      type: company.types.ApacheTomcat
+      properties:
+        version: '9.0'
+        download_url: 'https://tomcat.apache.org/download-90.cgi'
+      requirements:
+        - host: JDK
+
+    WAR:
+      type: company.types.WAR
+      properties:
+        war_file: { get_input: war_file_url }
+        context_path: '/myapp'
+      requirements:
+        - host: Tomcat
+
+  relationship_templates:
+    HostedOn:
+      type: tosca.relationships.HostedOn
+      properties:
+        management: true
+        scalable: true
+
+  outputs:
+    war_url:
+      value: { get_attribute: [WAR, url] }
+    tomcat_url:
+      value: { get_attribute: [Tomcat, url] }
+
+  inputs:
+    os_type:
+      type: string
+      default: Linux
+      constraints:
+        - valid_values: [Linux, AIX, Mac OS, Windows]
+    architecture:
+      type: string
+      default: x86_64
+      constraints:
+        - valid_values: [x86_32, x86_64]
+    war_file_url:
+      type: string
+      default: http://example.com/myapp.war

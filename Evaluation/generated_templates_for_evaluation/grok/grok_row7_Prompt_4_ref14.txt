@@ -1,0 +1,86 @@
+tosca_definitions_version: alien_dsl_2_0_0
+
+metadata:
+  template_name: WebApplicationTomcatDeployment
+  template_version: 1.0.0
+  template_author: Anonymous
+
+description: TOSCA configuration for deploying a web application on Apache Tomcat with Java environment and compute resource.
+
+imports:
+  - tosca-normative-types:1.0.0-ALIEN20
+
+node_types:
+  Custom.Compute:
+    derived_from: tosca.nodes.Compute
+    properties:
+      os_arch:
+        type: string
+        required: true
+      os_type:
+        type: string
+        required: true
+
+topology_template:
+  node_templates:
+    ComputeResource:
+      type: Custom.Compute
+      properties:
+        os_arch: { get_input: os_architecture }
+        os_type: { get_input: os_type }
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            cpu_frequency: 2.0 GHz
+            disk_size: 10 GB
+            mem_size: 4 GB
+
+    JavaEnvironment:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: ComputeResource
+      artifacts:
+        - java_install:
+            file: java_install_script
+            type: tosca.artifacts.Implementation.Bash
+
+    TomcatServer:
+      type: tosca.nodes.WebServer.Tomcat
+      requirements:
+        - host: JavaEnvironment
+      capabilities:
+        endpoint:
+          properties:
+            protocol: http
+            port: 8080
+            initiator: source
+
+    WebApplication:
+      type: tosca.nodes.WebApplication
+      requirements:
+        - host: TomcatServer
+      artifacts:
+        - war_file:
+            file: { get_input: war_file_path }
+            type: tosca.artifacts.File
+            deploy_path: /webapps
+
+  inputs:
+    os_architecture:
+      type: string
+      description: The operating system architecture (e.g., x86_64)
+    os_type:
+      type: string
+      description: The operating system type (e.g., Linux, Windows)
+    war_file_path:
+      type: string
+      description: Path to the WAR file for the web application
+
+  outputs:
+    application_url:
+      description: URL to access the deployed web application
+      value: { concat: [ 'http://', get_attribute: [ ComputeResource, ip_address ], ':', get_attribute: [ TomcatServer, endpoint, port ], '/', get_input: war_file_path ] }
+    server_url:
+      description: URL to access the Tomcat server
+      value: { concat: [ 'http://', get_attribute: [ ComputeResource, ip_address ], ':', get_attribute: [ TomcatServer, endpoint, port ] ] }

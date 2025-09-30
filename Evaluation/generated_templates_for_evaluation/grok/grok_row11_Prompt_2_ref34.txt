@@ -1,0 +1,122 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: TOSCA definition for deploying a Galaxy instance with SLURM on CentOS 7 using INDIGO orchestrator
+
+topology_template:
+  inputs:
+    admin_email:
+      type: string
+      description: Email address to receive setup completion notification
+      default: "user@example.com"
+
+  node_templates:
+    galaxy_server:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: string
+          value: "CentOS 7"
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8 GB
+        os:
+          properties:
+            type: linux
+            distribution: centos
+            version: 7
+      requirements:
+        - storage: galaxy_storage
+      interfaces:
+        Standard:
+          create:
+            implementation: ansible
+            inputs:
+              playbook: "deploy_galaxy.yml"
+              extra_vars:
+                galaxy_version: "latest"
+                companion_software: "enabled"
+                reference_data: "enabled"
+
+    galaxy_storage:
+      type: tosca.nodes.BlockStorage
+      properties:
+        size: 500 GB
+        encryption: true
+      capabilities:
+        attachment:
+          properties:
+            location: /data/galaxy
+
+    slurm_controller:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: string
+          value: "CentOS 7"
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+      interfaces:
+        Standard:
+          create:
+            implementation: ansible
+            inputs:
+              playbook: "deploy_slurm_controller.yml"
+
+    slurm_worker:
+      type: tosca.nodes.Compute
+      properties:
+        os:
+          type: string
+          value: "CentOS 7"
+      capabilities:
+        host:
+          properties:
+            num_cpus: 2
+            mem_size: 4 GB
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 10
+            default_instances: 2
+      requirements:
+        - controller: slurm_controller
+      interfaces:
+        Standard:
+          create:
+            implementation: ansible
+            inputs:
+              playbook: "deploy_slurm_worker.yml"
+
+    notification_service:
+      type: tosca.nodes.SoftwareComponent
+      requirements:
+        - host: galaxy_server
+      interfaces:
+        Standard:
+          create:
+            implementation: script
+            inputs:
+              script: "send_email_notification.sh"
+              email_recipient: { get_input: admin_email }
+              message: "Galaxy instance setup complete. Access instructions: [URL]"
+
+  relationships:
+    - source: galaxy_server
+      target: slurm_controller
+      type: tosca.relationships.ConnectsTo
+      interfaces:
+        Standard:
+          configure:
+            implementation: ansible
+            inputs:
+              playbook: "configure_galaxy_slurm.yml"
+
+  outputs:
+    galaxy_access_url:
+      description: URL to access the Galaxy instance
+      value: { get_attribute: [galaxy_server, public_ip] }

@@ -1,0 +1,124 @@
+topology_template:
+  description: Web Application for Data Analysis
+  node_templates:
+    web_server:
+      type: tosca.nodes.WebServer
+      properties:
+        name: Web Server
+        ports:
+          - 80
+      requirements:
+        - host: linux_vm
+    application:
+      type: tosca.nodes.WebApplication
+      properties:
+        name: Data Analysis Application
+        framework: flask
+        packages:
+          - pandas
+          - matplotlib
+        ports:
+          - 5000
+      requirements:
+        - host: web_server
+        - database: mysql_db
+    mysql_db:
+      type: tosca.nodes.Database
+      properties:
+        name: MySQL Database
+        username: admin
+        password: password
+        database_name: data_analysis
+      requirements:
+        - host: linux_vm
+    linux_vm:
+      type: tosca.nodes.Compute
+      properties:
+        name: Linux VM
+        os: ubuntu
+        cpu: 4
+        memory: 16 GB
+      capabilities:
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 5
+            default_instances: 1
+    test_framework:
+      type: tosca.nodes.TestFramework
+      properties:
+        name: Test Framework
+        tests:
+          - test_data_analysis
+      requirements:
+        - host: web_server
+    backup:
+      type: tosca.nodes.Backup
+      properties:
+        name: Backup Mechanism
+        schedule: daily
+        retention: 7 days
+      requirements:
+        - host: linux_vm
+    security_group:
+      type: tosca.nodes.SecurityGroup
+      properties:
+        name: Security Group
+        rules:
+          - protocol: tcp
+            port: 80
+          - protocol: tcp
+            port: 22
+      requirements:
+        - host: linux_vm
+    data_storage:
+      type: tosca.nodes.Storage
+      properties:
+        name: Data Storage
+        size: 100 GB
+        type: ssd
+      requirements:
+        - host: linux_vm
+  relationship_templates:
+    - connect_web_server_to_linux_vm:
+        type: ConnectsTo
+        properties:
+          protocol: http
+        source: web_server
+        target: linux_vm
+    - connect_application_to_web_server:
+        type: ConnectsTo
+        properties:
+          protocol: http
+        source: application
+        target: web_server
+    - connect_mysql_db_to_linux_vm:
+        type: ConnectsTo
+        properties:
+          protocol: tcp
+        source: mysql_db
+        target: linux_vm
+    - connect_test_framework_to_web_server:
+        type: ConnectsTo
+        properties:
+          protocol: http
+        source: test_framework
+        target: web_server
+    - connect_backup_to_linux_vm:
+        type: ConnectsTo
+        properties:
+          protocol: tcp
+        source: backup
+        target: linux_vm
+    - connect_security_group_to_linux_vm:
+        type: ConnectsTo
+        properties:
+          protocol: tcp
+        source: security_group
+        target: linux_vm
+    - connect_data_storage_to_linux_vm:
+        type: ConnectsTo
+        properties:
+          protocol: tcp
+        source: data_storage
+        target: linux_vm

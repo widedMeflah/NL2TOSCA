@@ -1,0 +1,146 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+description: TOSCA service template for a Wine Cellar Management Web Application.
+topology_template:
+  node_templates:
+    web_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: 20 GB
+            mem_size: 2 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: Linux
+            distribution: Ubuntu
+            version: 20.04
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+        web_endpoint:
+          type: tosca.capabilities.Endpoint.Public
+          properties:
+            protocol: tcp
+            port: 80
+            network_name: PUBLIC
+      interfaces:
+        Standard:
+          create:
+            operations:
+              exec:
+                inputs:
+                  command: |
+                    sudo apt update && sudo apt install -y apache2 php libapache2-mod-php
+                    sudo systemctl enable apache2
+                    sudo systemctl start apache2
+          configure:
+            operations:
+              exec:
+                inputs:
+                  command: |
+                    echo "Web server configured for wine_cellar_app"
+
+    wine_cellar_app:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        component_version: 1.0
+        app_source_url: "https://example.com/wine_cellar_app_v1.0.zip"
+      requirements:
+        - host:
+            node: web_server
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+        - database:
+            node: wine_cellar_db
+            capability: tosca.capabilities.Endpoint.Database
+            relationship: tosca.relationships.ConnectsTo
+      interfaces:
+        Standard:
+          create:
+            operations:
+              exec:
+                inputs:
+                  command: |
+                    echo "Application deployed and configured."
+          configure:
+            operations:
+              exec:
+                inputs:
+                  command: |
+                    echo "Application configured with database connection."
+                    echo "Security configurations applied: Setup user authentication and authorization mechanisms."
+
+    database_server:
+      type: tosca.nodes.Compute
+      capabilities:
+        host:
+          properties:
+            num_cpus: 1
+            disk_size: 50 GB
+            mem_size: 2 GB
+        os:
+          properties:
+            architecture: x86_64
+            type: Linux
+            distribution: Ubuntu
+            version: 20.04
+        scalable:
+          properties:
+            min_instances: 1
+            max_instances: 1
+            default_instances: 1
+
+    wine_cellar_db:
+      type: tosca.nodes.Database.MySQL
+      properties:
+        root_password: { get_input: db_root_password }
+        db_name: wine_cellar_db
+        user_name: wine_user
+        user_password: { get_input: db_user_password }
+        port: 3306
+      requirements:
+        - host:
+            node: database_server
+            capability: tosca.capabilities.Container
+            relationship: tosca.relationships.HostedOn
+      interfaces:
+        Standard:
+          create:
+            operations:
+              exec:
+                inputs:
+                  command: |
+                    sudo apt update && sudo apt install -y mysql-server
+                    sudo systemctl enable mysql
+                    sudo systemctl start mysql
+                    mysql -u root -p"{ get_input: db_root_password }" -e "CREATE DATABASE IF NOT EXISTS { get_property: [ wine_cellar_db, db_name ] };"
+                    mysql -u root -p"{ get_input: db_root_password }" -e "CREATE USER '{ get_property: [ wine_cellar_db, user_name ] }'@'%' IDENTIFIED BY '{ get_property: [ wine_cellar_db, user_password ] }';"
+                    mysql -u root -p"{ get_input: db_root_password }" -e "GRANT ALL PRIVILEGES ON { get_property: [ wine_cellar_db, db_name ] }.* TO '{ get_property: [ wine_cellar_db, user_name ] }'@'%';"
+                    mysql -u root -p"{ get_input: db_root_password }" -e "FLUSH PRIVILEGES;"
+          configure:
+            operations:
+              exec:
+                inputs:
+                  command: |
+                    echo "Database security measures applied (placeholder)."
+
+  inputs:
+    db_root_password:
+      type: string
+      description: The root password for the database server.
+      required: true
+      sensitive: true
+    db_user_password:
+      type: string
+      description: The password for the wine cellar database user.
+      required: true
+      sensitive: true
+
+  outputs:
+    app_url:
+      description: The URL to access the Wine Cellar Management application.
+      value: { get_attribute: [ web_server, web_endpoint, url ] }

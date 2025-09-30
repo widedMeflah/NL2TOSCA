@@ -1,0 +1,91 @@
+
+description: Flexible Computing Environment Orchestration with INDIGO
+
+resources:
+  MainControlUnit:
+    type: compute
+    properties:
+      architecture: custom
+      os: centos
+      cpu: 8
+      ram: 32GB
+      workload_manager:
+        - torque
+        - sge
+        - slurm
+        - condor
+      max_worker_units: 50
+      hybrid_capable: true
+
+  WorkerUnit:
+    type: compute
+    properties:
+      architecture: custom
+      os: centos
+      cpu: 4
+      ram: 16GB
+      workload_manager:
+        - torque
+        - sge
+        - slurm
+        - condor
+      hybrid_capable: true
+
+  DataStore:
+    type: storage
+    properties:
+      size: 1TB
+
+  WebInterface:
+    type: web_interface
+    properties:
+      customizable: true
+      version: "1.0.0"
+      description: Custom Web Interface
+      login:
+        type: email_and_api_key
+      ssh_key: "<YOUR_SSH_PUBLIC_KEY>"
+
+  System:
+    type: composite
+    properties:
+      orchestrator: indigo
+      nodes:
+        - ref: MainControlUnit
+        - ref: WorkerUnit
+        - ref: DataStore
+        - ref: WebInterface
+
+  SystemCredentials:
+    type: credential
+    properties:
+      username: "<YOUR_USERNAME>"
+      password: "<YOUR_PASSWORD>"
+      api_key: "<YOUR_API_KEY>"
+
+  SystemURL:
+    type: credential
+    properties:
+      url: "<YOUR_SYSTEM_PUBLIC_URL>"
+
+relationships:
+  - type: manage
+    source: System
+    target: MainControlUnit
+    target_roles: [control_unit]
+  - type: manage
+    source: System
+    target: WorkerUnit
+    target_roles: [worker]
+  - type: store_data_on
+    source: System
+    target: DataStore
+  - type: expose
+    source: System
+    target: WebInterface
+  - type: provide_credentials
+    source: System
+    target: SystemCredentials
+  - type: provide_credentials
+    source: System
+    target: SystemURL

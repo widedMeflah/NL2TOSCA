@@ -1,0 +1,60 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: Deployment of a plant classification application using a containerized environment.
+
+topology_template:
+  node_templates:
+    plant_classification_app:
+      type: tosca.nodes.nfv.Vdu
+      properties:
+        name: plant-classifier
+        description: Containerized plant classification application
+        ip_address: 0.0.0.0
+        port: 5000
+        resources:
+          vcpu: 2
+          memory_mb: 4096
+        interfaces:
+          management:
+            endpoints:
+              - endpoint:
+                  protocol: TCP
+                  port: 5000
+      requirements:
+        - virtual_binding:
+            capability: tosca.capabilities.nfv.VirtualCompute
+            node: compute_node
+        - virtual_link:
+            capability: tosca.capabilities.nfv.VirtualLinkable
+            node: network_link
+
+    compute_node:
+      type: tosca.nodes.nfv.Compute
+      properties:
+        name: compute-1
+        description: Compute node for hosting the application
+        resources:
+          vcpu: 4
+          memory_mb: 8192
+
+    network_link:
+      type: tosca.nodes.nfv.Network
+      properties:
+        name: network-1
+        description: Network for connecting the application
+        network_type: vxlan
+        ip_profile:
+          ip_version: 4
+          subnet_ip_pool: 192.168.100.0/24
+
+    load_balancer:
+      type: tosca.nodes.nfv.LoadBalancer
+      properties:
+        name: lb-plant-classifier
+        description: Load balancer for distributing traffic to the application
+        protocol: HTTP
+        port: 80
+        target_port: 5000
+      requirements:
+        - vdu:
+            node: plant_classification_app

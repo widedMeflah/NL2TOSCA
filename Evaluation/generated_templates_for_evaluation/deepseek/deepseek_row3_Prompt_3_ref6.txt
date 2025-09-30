@@ -1,0 +1,103 @@
+tosca_definitions_version: tosca_simple_yaml_1_0
+
+description: TOSCA service template for deploying Nodecellar application with MongoDB and Node.js
+
+service_templates:
+  nodecellar_deployment:
+    topology_template:
+      description: Nodecellar application topology with MongoDB and Node.js
+      node_templates:
+        mongo_db:
+          type: tosca.nodes.Database.MongoDB
+          properties:
+            port:
+              default: 27017
+              constraints:
+                - greater_or_equal: 8000
+                - less_or_equal: 65535
+          capabilities:
+            endpoint:
+              properties:
+                network_name: private
+                port: 27017
+          requirements:
+            - host: compute_mongo
+
+        nodejs_app:
+          type: tosca.nodes.WebApplication.Nodejs
+          properties:
+            port:
+              default: 8088
+          capabilities:
+            endpoint:
+              properties:
+                network_name: private
+                port: 8088
+          requirements:
+            - database: mongo_db
+            - host: compute_nodejs
+
+        compute_mongo:
+          type: tosca.nodes.Compute_LINUX.Ubuntu
+          properties:
+            os_distribution: Ubuntu
+            network:
+              private:
+                ports:
+                  - 27017
+          capabilities:
+            endpoint:
+              properties:
+                network_name: private
+
+        compute_nodejs:
+          type: tosca.nodes.Compute_LINUX.Ubuntu
+          properties:
+            os_distribution: Ubuntu
+            network:
+              private:
+                ports:
+                  - 8088
+          capabilities:
+            endpoint:
+              properties:
+                network_name: private
+
+        private_network:
+          type: tosca.nodes.Network_IPV4
+          properties:
+            network_name: private
+
+        database_endpoint:
+          type: tosca.relationships.Network
+          properties:
+            network_name: private
+          interfaces:
+            - type: tosca.interfaces.network.Connects
+              operations:
+                connect: scripts/connect_mongo.sh
+
+        app_endpoint:
+          type: tosca.relationships.Network
+          properties:
+            network_name: private
+          interfaces:
+            - type: tosca.interfaces.network.Connects
+              operations:
+                connect: scripts/connect_nodejs.sh
+
+      relationship_templates:
+        connects_to_db:
+          type: tosca.relationships.ConnectsTo
+          properties:
+            port: 27017
+
+        connects_to_app:
+          type: tosca.relationships.ConnectsTo
+          properties:
+            port: 8088
+
+      outputs:
+        nodejs_url:
+          value:
+            str: "http://{get_property: [compute_nodejs, public_address]}:{get_property: [nodejs_app, port]}"

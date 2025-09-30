@@ -1,0 +1,88 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A system to run a sample JavaScript application using Node.js with persistent data storage.
+
+topology_template:
+
+  node_templates:
+
+    nodejs_runtime:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: nodejs-server
+        description: Node.js runtime environment for the JavaScript application.
+        image: ubuntu:latest
+        mgmt_ip_address: { get_output: [ nodejs_runtime, outputs, mgmt_ip ] }
+        ports:
+          - name: nodejs_app_port
+            protocol: tcp
+            port: 3000
+      requirements:
+        - host:
+            node: tosca.nodes.nfv.Vdu.Compute
+            relationship: tosca.relationships.HostedOn
+
+    mongodb_db:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: mongodb-server
+        description: MongoDB database server for structured data storage.
+        image: ubuntu:latest
+        mgmt_ip_address: { get_output: [ mongodb_db, outputs, mgmt_ip ] }
+        ports:
+          - name: db_port
+            protocol: tcp
+            port: 27017
+      requirements:
+        - host:
+            node: tosca.nodes.nfv.Vdu.Compute
+            relationship: tosca.relationships.HostedOn
+
+    nodejs_app:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: nodejs-app
+        description: Node.js application container running the JavaScript application.
+        image: node:latest
+        mgmt_ip_address: { get_output: [ nodejs_app, outputs, mgmt_ip ] }
+        ports:
+          - name: app_port
+            protocol: tcp
+            port: 8080
+        relationships:
+          - type: tosca.relationships.DependsOn
+            target: nodejs_runtime
+        interfaces:
+          Standard:
+            create:
+              implementation: scripts/start_node_app.sh
+            configure:
+              implementation: scripts/configure_node_app.sh
+
+    mongodb_instance:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        name: mongodb-instance
+        description: MongoDB instance for persistent structured data storage.
+        image: mongo:latest
+        mgmt_ip_address: { get_output: [ mongodb_instance, outputs, mgmt_ip ] }
+        ports:
+          - name: db_instance_port
+            protocol: tcp
+            port: 27017
+        relationships:
+          - type: tosca.relationships.DependsOn
+            target: mongodb_db
+
+    web_access:
+      type: tosca.nodes.Root
+      properties:
+        name: web-access
+        description: Web interface access point for the application.
+        interfaces:
+          Standard:
+            configure:
+              implementation: scripts/setup_web_access.sh
+        relationships:
+          - type: tosca.relationships.DependsOn
+            target: nodejs_app

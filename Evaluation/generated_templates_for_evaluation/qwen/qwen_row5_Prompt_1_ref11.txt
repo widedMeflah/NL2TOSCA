@@ -1,0 +1,101 @@
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+description: A TOSCA template to deploy a system with a specific application, data storage services, and testing component.
+
+topology_template:
+  node_templates:
+    ApplicationServer:
+      type: tosca.nodes.Compute
+      properties:
+        endpoint:
+          protocol: HTTP
+          port: 8080
+        ip_address: 192.168.1.10
+        host_name: app-server
+      interfaces:
+        Standard:
+          create:
+            implementation: install_jdk_and_app.sh
+            inputs:
+              jdk_url: https://example.com/jdk-11.0.12.tar.gz
+              install_dir: /opt/jdk/11.0.12
+              app_args: "-Dsecurity.enabled=true -Ddocumentation.enabled=true"
+        Custom:
+          start_app:
+            implementation: start_app.sh
+
+    DataStorageService1:
+      type: tosca.nodes.Database
+      properties:
+        replication: true
+        peer: DataStorageService2
+        ip_address: 192.168.1.20
+        host_name: db1
+      interfaces:
+        Standard:
+          create:
+            implementation: setup_db.sh
+            inputs:
+              replication: true
+              peer_ip: 192.168.1.30
+
+    DataStorageService2:
+      type: tosca.nodes.Database
+      properties:
+        replication: true
+        peer: DataStorageService1
+        ip_address: 192.168.1.30
+        host_name: db2
+      interfaces:
+        Standard:
+          create:
+            implementation: setup_db.sh
+            inputs:
+              replication: true
+              peer_ip: 192.168.1.20
+
+    TestComponent:
+      type: tosca.nodes.Compute
+      properties:
+        ip_address: 192.168.1.40
+        host_name: test-server
+      interfaces:
+        Standard:
+          create:
+            implementation: setup_test_env.sh
+            inputs:
+              branch: main
+              plugin_version: 2.5.3
+              test_suite: full
+        Custom:
+          run_tests:
+            implementation: run_integration_tests.sh
+
+    Network:
+      type: tosca.nodes.Network
+      properties:
+        ip_version: IPv4
+        subnet: 192.168.1.0/24
+      interfaces:
+        Standard:
+          create:
+            implementation: setup_network.sh
+
+  relationships:
+    - source: ApplicationServer
+      target: Network
+      type: tosca.relationships.ConnectsTo
+    - source: DataStorageService1
+      target: Network
+      type: tosca.relationships.ConnectsTo
+    - source: DataStorageService2
+      target: Network
+      type: tosca.relationships.ConnectsTo
+    - source: TestComponent
+      target: Network
+      type: tosca.relationships.ConnectsTo
+    - source: ApplicationServer
+      target: DataStorageService1
+      type: tosca.relationships.ConnectsTo
+    - source: ApplicationServer
+      target: DataStorageService2
+      type: tosca.relationships.ConnectsTo

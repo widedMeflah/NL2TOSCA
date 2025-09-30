@@ -1,0 +1,106 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+description: >
+  Deployment topology for Alien4Cloud application with remote Elasticsearch node, each with its own JDK, on distinct Linux servers.
+
+topology_template:
+  node_templates:
+    # Compute nodes
+    app_host:
+      type: tosca.nodes.Compute
+      properties:
+        os_distribution: ubuntu
+        os_version: 20.04
+        mem_size: 8192 MB
+        num_cpus: 4
+        disk_size: 100 GB
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8192 MB
+            disk_size: 100 GB
+
+    es_host:
+      type: tosca.nodes.Compute
+      properties:
+        os_distribution: ubuntu
+        os_version: 20.04
+        mem_size: 8192 MB
+        num_cpus: 4
+        disk_size: 100 GB
+      capabilities:
+        host:
+          properties:
+            num_cpus: 4
+            mem_size: 8192 MB
+            disk_size: 100 GB
+
+    # JDK installations
+    jdk_on_app_host:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: openjdk
+        version: 11
+      requirements:
+        - host: app_host
+
+    jdk_on_es_host:
+      type: tosca.nodes.SoftwareComponent
+      properties:
+        name: openjdk
+        version: 11
+      requirements:
+        - host: es_host
+
+    # Alien4Cloud Application
+    alien4cloud_app:
+      type: tosca.nodes.WebApplication
+      properties:
+        application_name: Alien4Cloud
+        version: 3.1.0
+      requirements:
+        - host: app_host
+        - dependency: jdk_on_app_host
+        - connectTo:
+            node: elasticsearch_node
+            relationship: tosca.relationships.ConnectsTo
+
+    # Remote Elasticsearch Service
+    elasticsearch_node:
+      type: tosca.nodes.Database.Elasticsearch
+      properties:
+        version: 7.17.0
+      requirements:
+        - host: es_host
+        - dependency: jdk_on_es_host
+
+    # Networking
+    network:
+      type: tosca.nodes.network.Network
+      properties:
+        network_name: application_network
+
+    app_host_network_port:
+      type: tosca.nodes.network.Port
+      properties:
+        ip_address: { get_attribute: [ app_host, private_address ] }
+      requirements:
+        - network: network
+        - binding: app_host
+
+    es_host_network_port:
+      type: tosca.nodes.network.Port
+      properties:
+        ip_address: { get_attribute: [ es_host, private_address ] }
+      requirements:
+        - network: network
+        - binding: es_host
+
+  outputs:
+    alien4cloud_endpoint:
+      description: Alien4Cloud application endpoint.
+      value: { get_attribute: [ app_host, public_address ] }
+    elasticsearch_endpoint:
+      description: Elasticsearch service endpoint.
+      value: { get_attribute: [ es_host, public_address ] }

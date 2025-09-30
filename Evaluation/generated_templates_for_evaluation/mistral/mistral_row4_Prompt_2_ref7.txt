@@ -1,0 +1,82 @@
+
+definitions:
+  Alien4cloudOrchestrator:
+    description: Alien4cloud Orchestrator for data storage and management system
+    type: orchestrator
+    orchestration_artifact_ref: Alien4cloudArtifact
+    capabilities:
+      - name: store_data
+      - name: manage_data
+      - name: network_access
+      - name: secure_data_operations
+      - name: retrieve_ip_address
+      - name: retrieve_port
+
+  Alien4cloudArtifact:
+    description: Alien4cloud artifact for data storage and management system
+    type: node
+    topology_template:
+      type: standalone
+      node_template:
+        type: Alien4cloudDataManager
+        properties:
+          os:
+            type: linux
+            distribution: ubuntu
+          software:
+            - name: Alien4cloudDataManager
+            - name: OpenSSH
+            - name: TCP
+          network:
+            port:
+              type: int
+              description: Configurable port within a certain range
+              default: 8080
+              constraints:
+                min_value: 1024
+                max_value: 65535
+          data_storage:
+            type: block
+            properties:
+              # Configuration for data storage (e.g., database, filesystem, etc.)
+            requirements:
+              - name: store_data
+              - name: manage_data
+
+  Alien4cloudDataManager:
+    description: Alien4cloud data manager node for data storage and management
+    type: compute
+    requirements:
+      - name: store_data
+      - name: manage_data
+      - name: network_access
+      - name: secure_data_operations
+    interfaces:
+      - name: data_interface
+        protocol: TCP
+        port: $port
+        security_mechanisms:
+          - name: ssl
+      - name: management_interface
+        protocol: ICMP
+        requirements:
+          - name: retrieve_ip_address
+          - name: retrieve_port
+
+  NetworkInterface:
+    description: Interface for network access and IP address retrieval
+    type: network
+    interfaces:
+      - name: management_interface
+
+  SecureDataOperations:
+    description: Secure data operations interface
+    type: opaque
+
+  RetrieveIPAddress:
+    description: Interface for retrieving the server's IP address
+    type: opaque
+
+  RetrievePort:
+    description: Interface for retrieving the port being used for data operations
+    type: opaque

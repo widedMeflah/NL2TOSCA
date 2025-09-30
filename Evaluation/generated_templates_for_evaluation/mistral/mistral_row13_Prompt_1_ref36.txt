@@ -1,0 +1,56 @@
+
+definition_templates:
+  Indigo:
+    type: compute
+    id: indigo
+    version: 1.0.0
+    template_group: cloud_template_grouping
+
+    properties:
+      software_version: {your_software_version}
+      admin_email: {your_administrator_email}
+      api_key: {your_API_key}
+      description: {your_description}
+      ssh_public_key: {your_SSH_public_key}
+      data_directory: {your_data_directory}
+      max_worker_nodes: {specific_worker_node_limit}
+
+    node_templates:
+      ManagementNode:
+        type: compute
+        properties:
+          cpus: {specified_number_of_CPUs_for_management_node}
+          ram: {specified_amount_of_memory_for_management_node}
+
+      WorkerNode:
+        type: compute
+        properties:
+          cpus: {specified_number_of_CPUs_for_worker_node}
+          ram: {specified_amount_of_memory_for_worker_node}
+        constraints:
+          - relation(Indigo, has_worker)
+          - max(num_worker_instances, {specific_worker_node_limit})
+
+    relationships:
+      has_worker:
+        type: composes
+        source: ManagementNode
+        target: WorkerNode
+
+    capabilities:
+      - name: cloud.apache.org/compute
+        mixins:
+          - cloud.apache.org/web_management_interface
+      - name: cloud.apache.org/web_management_interface
+        properties:
+          url: {web_interface_url}
+        interfaces:
+          - http
+
+  HybridSetup:
+    type: relationships
+    id: hybrid_setup
+    source: Indigo
+    target: Indigo
+    role_arcs:
+      - role: cloud.apache.org/hybrid

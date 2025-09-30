@@ -1,0 +1,111 @@
+
+tosca_definitions_version: tosca_simple_profile_for_nfv_1_0_0
+
+description: A setup to run a secure web server within a private network to host a website.
+
+topology_template:
+  node_templates:
+    PrivateNetwork:
+      type: tosca.nodes.nfv.Network.Private
+      properties:
+        network_name: private_web_network
+        network_type: VLAN
+        network_characteristics:
+          network_type: private
+          isolation: true
+          security_groups:
+            - name: web_server_security_group
+              rules:
+                - direction: ingress
+                  protocol: tcp
+                  port_range_min: 80
+                  port_range_max: 80
+                  source_ip_prefix: 0.0.0.0/0
+                - direction: ingress
+                  protocol: icmp
+                  source_ip_prefix: 0.0.0.0/0
+                - direction: egress
+                  protocol: all
+                  source_ip_prefix: 0.0.0.0/0
+                  destination_ip_prefix: 0.0.0.0/0
+
+    WebServerVM:
+      type: tosca.nodes.nfv.Vdu.Compute
+      properties:
+        vdu_id: web_server_vdu
+        vm_flavor: small
+        image: ubuntu_20_04
+        mgmt_ip_address: 192.168.1.10
+        mgmt_network: { get_property: [PrivateNetwork, network_name] }
+        additional_config:
+          - type: tosca.nodes.nfv.Vdu.Configuration
+            properties:
+              config_type: init
+              content: |
+                #!/bin/bash
+                apt update
+                apt install -y apache2
+                systemctl enable apache2
+                systemctl start apache2
+                echo "Welcome to my website!" > /var/www/html/index.html
+                ufw allow 80
+                ufw enable
+      requirements:
+        - virtual_binding:
+            node: PrivateNetwork
+
+    WebServerService:
+      type: tosca.nodes.nfv.Vdu
+      properties:
+        vdu: { get_property: [WebServerVM, vdu_id] }
+        mgmt_ip_address: { get_property: [WebServerVM, mgmt_ip_address] }
+        mgmt_network: { get_property: [PrivateNetwork, network_name] }
+
+    WebServer:
+      type: tosca.nodes.WebServer
+      properties:
+        port: 80
+        website_directory: /var/www/html
+        secure: true
+        private_network: true
+      requirements:
+        - host:
+            node: WebServerService
+
+    WebServerHealthCheck:
+      type: tosca.nodes.HealthCheck
+      properties:
+        type: HTTP
+        url: http://192.168.1.10/index.html
+        interval: 60
+        timeout: 10
+        threshold: 3
+      requirements:
+        - target:
+            node: WebServer
+
+  groups:
+    WebServerGroup:
+      type: tosca.groups.nfv.Group
+      members:
+        - WebServerVM
+        - WebServer
+        - WebServerHealthCheck
+      properties:
+        group_type: web_server_group
+        lifecycle_state: active
+
+  policies:
+    - type: tosca.policies.Scaling
+      description: Allow scaling of the web server group.
+      targets: [WebServerGroup]
+      properties:
+        min_instances: 1
+        max_instances: 5
+        cooldown: 300
+        scaling_policies:
+          - type: tosca.policies.Scaling.Policy
+            name: scale_out
+            description: Scale out when health check fails.
+            adjustment: add 1
+            condition: health_check_fails
